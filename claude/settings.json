@@ -1,0 +1,34 @@
+{
+  "env": {
+    "CLAUDE_CODE_SCROLL_SPEED": "5",
+    "EDITOR": "nvim",
+    "VISUAL": "nvim"
+  },
+  "permissions": {
+    "defaultMode": "bypassPermissions"
+  },
+  "model": "claude-fable-5[1m]",
+  "effortLevel": "xhigh",
+  "tui": "fullscreen",
+  "skipDangerousModePermissionPrompt": true,
+  "theme": "auto",
+  "editorMode": "vim",
+  "autoCompactEnabled": false,
+  "statusLine": {
+    "type": "command",
+    "command": "~/.claude/sdd/statusline.sh"
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/sdd/hooks/require-plan-approval.py"
+          }
+        ]
+      }
+    ]
+  }
+}

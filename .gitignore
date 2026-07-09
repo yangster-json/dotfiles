@@ -1,0 +1,23 @@
+# claude: allowlist config only — everything else (sessions, history,
+# credentials, caches, runtime state) is ignored by default
+claude/*
+!claude/agents/
+!claude/commands/
+!claude/sdd/
+!claude/CLAUDE.md
+!claude/settings.json
+!claude/statusline-command.py
+!claude/statusline-command.sh
+!claude/triage-fw-rule-file.md
+!claude/triage-local-logs-rule-file.md
+
+# redundant with claude/* but explicit: these hold credentials, never commit
+claude/.credentials.json
+claude/.mcp.json
+
+# netrw browsing history, not config
+nvim/.netrwhist
+
+# upstream git clone — reinstall on new machines:
+# git clone https://github.com/jeffreytse/zsh-vi-mode ~/.oh-my-zsh/custom/plugins/zsh-vi-mode
+oh-my-zsh-custom/plugins/zsh-vi-mode/
