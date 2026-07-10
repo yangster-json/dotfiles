@@ -1,0 +1,12 @@
+let g:netrw_dirhistmax  =10
+let g:netrw_dirhistcnt =8
+let g:netrw_dirhist_8='/home/jasyang/.config/nvim'
+let g:netrw_dirhist_7='/home/jasyang/.config/nvim/lua'
+let g:netrw_dirhist_6='/home/jasyang/.config/nvim/lua/jasyang'
+let g:netrw_dirhist_5='/home/jasyang/.config/nvim/lua/jasyang/core'
+let g:netrw_dirhist_4='/home/jasyang/.config/nvim/lua/jasyang'
+let g:netrw_dirhist_3='/home/jasyang/.config/nvim/lua/jasyang/core'
+let g:netrw_dirhist_2='/home/jasyang/.config/nvim/lua/jasyang'
+let g:netrw_dirhist_1='/home/jasyang/.config/nvim/lua'
+let g:netrw_dirhist_0='/home/jasyang/.config/nvim'
+let g:netrw_dirhist_9='/home/jasyang'

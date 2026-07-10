@@ -1,0 +1,55 @@
+;; global configuration options
+(defcfg
+	process-unmapped-keys yes
+)
+
+;; global config options
+(defsrc
+    bspc
+    tab q w e r t y u i o p
+    caps a s d f g h j k l ;
+    lsft c v n m rsft
+    spc
+)
+
+;; default/base layer
+(deflayer default
+    _
+    @tab _ _ _ _ _ _ _ _ _ _
+    @caps _ _ _ _ _ _ _ _ _ _
+    @lsft _ _ _ _ @rsft
+    @spc
+)
+
+;; values used by multiple
+(defvar
+    tap-time 150
+    hold-time 200
+)
+
+;; shifted layer by holding space
+(deflayer nums
+    _
+    @tab S-1 S-2 S-3 S-4 S-5 S-6 S-7 S-8 S-- S-=
+    @caps 1 2 3 4 5 6 7 8 9 0
+    @lsft S-[ [ ] S-] @rsft
+    @spc
+)
+
+;; shifted layer by holding tab
+(deflayer move
+    del
+    @tab _ _ _ _ _ home pgdn pgup end _
+    @caps _ _ _ _ _ left down up right _
+    @lsft C-S-c C-S-v _ _ @rsft
+    @spc
+)
+
+;; remapping between keys and functionality
+(defalias
+    tab (tap-hold-press $tap-time $hold-time tab (layer-toggle move))
+    caps (tap-hold-press $tap-time $hold-time esc lctl)
+    lsft (tap-hold-press $tap-time $hold-time S-9 lsft)
+    rsft (tap-hold-press $tap-time $hold-time S-0 rsft)
+    spc (tap-hold-release $tap-time $hold-time spc (layer-toggle nums))
+)
