@@ -1,6 +1,8 @@
 # tasks: <feature-slug>
 
-<!-- immutable after gate 1; statuses are tracked in state.md, not here -->
+<!-- plan of record — revised only by sdd-planner via gate routes (a
+     revision is re-presented at the gate). statuses are tracked in
+     state.md, not here; gate-2 fix tasks (F1..) live only in state.md. -->
 
 ## coverage
 | requirement | tasks |

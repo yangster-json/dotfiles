@@ -8,11 +8,14 @@ usage:
 
 or under watch:  watch -c -n2 .claude/sdd/watch
 meant to live in a tmux side pane while /sdd:run works.
+state.md parsing lives in statelib.py (shared with statusline + quality).
 """
 import os
-import re
 import sys
 import time
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import statelib as st  # noqa: E402
 
 DIM, BLD, RST = "\033[2m", "\033[1m", "\033[0m"
 GRN, YLW, RED, CYN = "\033[32m", "\033[33m", "\033[31m", "\033[36m"
@@ -30,34 +33,6 @@ def find_root():
         if parent == d:
             return None
         d = parent
-
-
-def field(text, key, default=""):
-    m = re.search(rf"^{key}:\s*(.+?)\s*(?:<!--.*)?$", text, re.M)
-    return (m.group(1).strip() if m else default) or default
-
-
-def sections(text):
-    out, name = {}, None
-    for line in text.splitlines():
-        m = re.match(r"^##\s+(.*)", line)
-        if m:
-            name = m.group(1).strip().lower()
-            out[name] = []
-        elif name:
-            out[name].append(line)
-    return out
-
-
-def task_rows(lines):
-    rows = []
-    for line in lines:
-        if not line.lstrip().startswith("|"):
-            continue
-        cells = [c.strip() for c in line.strip().strip("|").split("|")]
-        if len(cells) >= 4 and re.fullmatch(r"[TFQ]\d+", cells[0]):
-            rows.append(cells + [""] * (6 - len(cells)))
-    return rows
 
 
 def ladder(phase, plan_ok, review_ok):
@@ -90,23 +65,30 @@ def clean(lines, limit=None):
 
 
 def render(root):
+    if len(sys.argv) > 1 and not sys.argv[1].startswith("-"):
+        slug = sys.argv[1]
+        resolved = st.resolve_active(root)
+        if resolved and not os.path.isfile(
+                os.path.join(root, "specs", slug, "state.md")):
+            root = resolved[0]  # slug may live in the active worktree
+    else:
+        resolved = st.resolve_active(root)
+        if not resolved:
+            return f"{DIM}no active sdd feature (specs/ACTIVE not found){RST}"
+        root, slug = resolved
     try:
-        slug = sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("-") \
-            else open(os.path.join(root, "specs", "ACTIVE")).read().strip()
-        if slug.startswith("worktree:"):
-            # feature lives in a spun-off worktree; follow the pointer
-            root = os.path.join(root, slug.split(":", 1)[1].strip())
-            slug = open(os.path.join(root, "specs", "ACTIVE")).read().strip()
-        text = open(os.path.join(root, "specs", slug, "state.md")).read()
+        with open(os.path.join(root, "specs", slug, "state.md")) as f:
+            text = f.read()
     except OSError:
-        return f"{DIM}no active sdd feature (specs/ACTIVE not found){RST}"
+        return f"{DIM}no state.md for feature '{slug}' under {root}{RST}"
 
-    phase = field(text, "phase", "?").split()[0]
-    jira = field(text, "jira", "none")
-    upstream = field(text, "upstream", "none")
-    testbed, bay = field(text, "hw_testbed", "none"), field(text, "hw_bay", "")
-    sec = sections(text)
-    rows = task_rows(sec.get("tasks", []))
+    phase = (st.field(text, "phase", "?").split() or ["?"])[0]
+    jira = st.field(text, "jira", "none")
+    upstream = st.field(text, "upstream", "none")
+    testbed = st.field(text, "hw_testbed", "none")
+    bay = st.field(text, "hw_bay", "")
+    sec = st.sections(text)
+    rows = st.task_rows(text)
     rule = f"{DIM}{'─' * 78}{RST}"
 
     out = []
@@ -118,23 +100,26 @@ def render(root):
     if testbed != "none":
         hdr += f"   {DIM}hw{RST} {testbed}/{bay}"
     out += [hdr, rule,
-            " " + ladder(phase, field(text, "plan_approved") == "yes",
-                         field(text, "review_approved") == "yes"), ""]
+            " " + ladder(phase, st.flag(text, "plan_approved"),
+                         st.flag(text, "review_approved")), ""]
 
     if rows:
         counts = {}
         for r in rows:
-            counts[r[3]] = counts.get(r[3], 0) + 1
+            counts[r["status"]] = counts.get(r["status"], 0) + 1
         summary = " · ".join(
             f"{STATUS_COLOR.get(s, '')}{counts[s]} {s}{RST}"
             for s in ["done", "in_progress", "blocked", "pending"] if s in counts)
         out += [f" {BLD}tasks{RST}  {summary}", rule]
         for r in rows:
-            c = STATUS_COLOR.get(r[3], "")
-            title = r[1][:44] + ("…" if len(r[1]) > 44 else "")
-            dep = f"  {DIM}← {r[4]}{RST}" if r[4] and r[4] not in ("—", "-", "") else ""
-            cx = {"simple": "sim", "standard": "std"}.get(r[2], r[2][:3])
-            out.append(f"  {r[0]:<4} {title:<46} {DIM}{cx:<4}{RST} {c}{r[3]}{RST}{dep}")
+            c = STATUS_COLOR.get(r["status"], "")
+            title = r["title"][:44] + ("…" if len(r["title"]) > 44 else "")
+            dep = (f"  {DIM}← {r['depends']}{RST}"
+                   if r["depends"] not in ("—", "-", "") else "")
+            cx = {"simple": "sim", "standard": "std"}.get(
+                r["complexity"], r["complexity"][:3])
+            out.append(f"  {r['id']:<4} {title:<46} {DIM}{cx:<4}{RST}"
+                       f" {c}{r['status']}{RST}{dep}")
         out.append("")
 
     for name, limit in [("amendments", None), ("waived findings", None),

@@ -12,17 +12,20 @@ usage:
 token counts are exact (transcript usage records, deduped by message id).
 dollars start from the PRICES table below and are AUTO-CALIBRATED: the sdd
 statusline caches claude code's as-billed session totals into
-.claude/.cost-actuals.json, and this script scales its estimates by the
-median actual/estimate ratio across those sessions. pricing drift corrects
-itself once a few sessions have run; the table is only the starting point.
+<claude-config>/projects/<munged-root>/cost-actuals.json, and this script
+scales its estimates by the median actual/estimate ratio across those
+sessions. pricing drift corrects itself once a few sessions have run; the
+table is only the starting point.
 """
 import glob
 import json
 import os
-import re
 import sys
 import time
 from datetime import datetime, timedelta, timezone
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import statelib as st  # noqa: E402
 
 # usd per million tokens: input, output, cache_write, cache_read.
 # base rates only — displayed dollars are scaled by the calibration factor.
@@ -38,16 +41,8 @@ DIM, BLD, RST, GRN, YLW = "\033[2m", "\033[1m", "\033[0m", "\033[32m", "\033[33m
 
 
 def projects_dir(root):
-    munged = re.sub(r"[^a-zA-Z0-9]", "-", os.path.abspath(root))
-    bases = []
-    if os.environ.get("CLAUDE_CONFIG_DIR"):
-        bases.append(os.environ["CLAUDE_CONFIG_DIR"])
-    bases.append(os.path.expanduser("~/.claude"))
-    for base in bases:
-        d = os.path.join(base, "projects", munged)
-        if os.path.isdir(d):
-            return d
-    return None
+    d = os.path.join(st.config_dir(), "projects", st.munge(root))
+    return d if os.path.isdir(d) else None
 
 
 def load(pdir):
@@ -125,11 +120,18 @@ def agg(recs):
 
 
 def load_actuals(root):
-    try:
-        with open(os.path.join(root, ".claude", ".cost-actuals.json")) as f:
-            return json.load(f)
-    except (OSError, json.JSONDecodeError):
-        return {}
+    """as-billed totals cached by the statusline. current location is under
+    the claude config dir; the old in-project cache is merged in for
+    continuity with sessions recorded before the move."""
+    data = {}
+    legacy = os.path.join(root, ".claude", ".cost-actuals.json")
+    for path in (legacy, st.actuals_path(root)):
+        try:
+            with open(path) as f:
+                data.update(json.load(f))
+        except (OSError, json.JSONDecodeError):
+            pass
+    return data
 
 
 def calibration(recs, actuals):

@@ -7,35 +7,23 @@ when the project has an active sdd feature, nothing otherwise — cost display
 is the base statusline's job.
 
 side job: caches claude code's as-billed session totals into
-<project>/.claude/.cost-actuals.json, which ~/.claude/sdd/cost uses to
-auto-calibrate its estimates. only caches into projects that already have a
-.claude/ or specs/ directory, so it never litters unrelated repos.
+<claude-config>/projects/<munged-root>/cost-actuals.json (NEVER inside the
+project — a cache file must not dirty a repo), which ~/.claude/sdd/cost uses
+to auto-calibrate its estimates.
+
+state.md parsing lives in statelib.py (shared with watch + quality).
 """
 import json
 import os
-import re
 import sys
 import time
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import statelib as st  # noqa: E402
 
 DIM, BLD, RST = "\033[2m", "\033[1m", "\033[0m"
 GRN, YLW, RED, CYN = "\033[32m", "\033[33m", "\033[31m", "\033[36m"
 SEP = f" {DIM}│{RST} "
-
-
-def field(text, key, default=""):
-    m = re.search(rf"^{key}:\s*(\S+)", text, re.M)
-    return m.group(1) if m else default
-
-
-def task_rows(text):
-    rows = []
-    for line in text.splitlines():
-        if not line.lstrip().startswith("|"):
-            continue
-        cells = [c.strip() for c in line.strip().strip("|").split("|")]
-        if len(cells) >= 4 and re.fullmatch(r"[TFQ]\d+", cells[0]):
-            rows.append({"id": cells[0], "status": cells[3]})
-    return rows
 
 
 def cache_actual(root, session):
@@ -44,12 +32,7 @@ def cache_actual(root, session):
     usd = (session.get("cost") or {}).get("total_cost_usd")
     if not sid or not isinstance(usd, (int, float)) or usd <= 0:
         return
-    claude_dir = os.path.join(root, ".claude")
-    if not os.path.isdir(claude_dir):
-        if not os.path.isdir(os.path.join(root, "specs")):
-            return  # not an sdd-using project — don't litter it
-        os.makedirs(claude_dir, exist_ok=True)
-    path = os.path.join(claude_dir, ".cost-actuals.json")
+    path = st.actuals_path(root)
     try:
         with open(path) as f:
             data = json.load(f)
@@ -58,6 +41,7 @@ def cache_actual(root, session):
     if abs(usd - (data.get(sid) or {}).get("usd", 0)) < 0.01:
         return  # throttle: rewrite only when the total moves a cent
     data[sid] = {"usd": round(usd, 4), "ts": int(time.time())}
+    os.makedirs(os.path.dirname(path), exist_ok=True)
     tmp = path + ".tmp"
     with open(tmp, "w") as f:
         json.dump(data, f)
@@ -76,23 +60,15 @@ def main():
     except Exception:
         pass  # the statusline must never fail on cache trouble
 
-    try:
-        with open(os.path.join(root, "specs", "ACTIVE")) as f:
-            slug = f.read().strip()
-        if slug.startswith("worktree:"):
-            # feature lives in a spun-off worktree; follow the pointer
-            root = os.path.join(root, slug.split(":", 1)[1].strip())
-            with open(os.path.join(root, "specs", "ACTIVE")) as f:
-                slug = f.read().strip()
-        with open(os.path.join(root, "specs", slug, "state.md")) as f:
-            text = f.read()
-    except OSError:
+    state = st.read_state(root)
+    if not state:
         return  # no active sdd feature — print nothing, base line stands alone
+    _, slug, text = state
 
-    phase = field(text, "phase", "?")
+    phase = st.field(text, "phase", "?")
     parts = [f"{BLD}sdd:{slug}{RST} ▸ {CYN}{phase}{RST}"]
 
-    rows = task_rows(text)
+    rows = st.task_rows(text)
     if rows:
         done = sum(1 for r in rows if r["status"] == "done")
         blocked = sum(1 for r in rows if r["status"] == "blocked")
@@ -102,16 +78,16 @@ def main():
         parts.append(seg)
 
     def gate(flag):
-        return f"{GRN}✔{RST}" if flag == "yes" else f"{DIM}─{RST}"
+        return f"{GRN}✔{RST}" if flag else f"{DIM}─{RST}"
 
     parts.append(
-        f"gates plan {gate(field(text, 'plan_approved'))} "
-        f"review {gate(field(text, 'review_approved'))}"
+        f"gates plan {gate(st.flag(text, 'plan_approved'))} "
+        f"review {gate(st.flag(text, 'review_approved'))}"
     )
 
-    testbed, bay = field(text, "hw_testbed"), field(text, "hw_bay")
+    testbed = st.field(text, "hw_testbed")
     if testbed and testbed != "none":
-        parts.append(f"hw {testbed}/{bay}")
+        parts.append(f"hw {testbed}/{st.field(text, 'hw_bay')}")
 
     print(SEP.join(parts))
 

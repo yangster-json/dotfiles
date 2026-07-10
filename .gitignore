@@ -31,6 +31,9 @@ claude/.cost-actuals.json
 claude/.last-cleanup
 claude/.last-update-result.json
 
+# python bytecode from the sdd script tests
+__pycache__/
+
 # --- oh-my-zsh: upstream git clone — reinstall on new machines: ---
 # git clone https://github.com/jeffreytse/zsh-vi-mode ~/.oh-my-zsh/custom/plugins/zsh-vi-mode
 oh-my-zsh-custom/plugins/zsh-vi-mode/

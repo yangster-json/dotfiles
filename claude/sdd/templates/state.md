@@ -6,14 +6,31 @@ upstream: none       <!-- confirmed base branch (e.g. origin/master) — set at 
 phase: research  <!-- research | spec | plan | implement | review | test | commit | done -->
 plan_approved: no    <!-- gate 1 — unlocks source edits (enforced by hook) -->
 review_approved: no  <!-- gate 2 -->
-base_ref:            <!-- set when implement starts; review/test diff against this -->
+base_ref:            <!-- feature-branch HEAD after the specs snapshot; review/test diff against this -->
 hw_testbed: none     <!-- e.g. fw-comet02 — from pipeline config or gate 2 -->
 hw_bay: none         <!-- e.g. 19 -->
 
 ## tasks
-<!-- mirrored from tasks.md by the plan stage; statuses live here, tasks.md is immutable -->
+<!-- mirrored from tasks.md by the plan stage; statuses live here. gate-2
+     fix tasks (F1..) and quick tasks (Q1) are appended here and get
+     subspecs (specs/<slug>/tasks/<id>.md) like any other task. -->
 | id | title | complexity | status | depends_on | parallel_ok |
 |----|-------|------------|--------|------------|-------------|
+
+## metrics
+<!-- counters the orchestrator updates as events happen; ~/.claude/sdd/quality
+     aggregates them across features. keep the `key: n` shape. -->
+verify_retries: 0
+tasks_blocked: 0
+ambiguities: 0
+file_list_fixes: 0
+findings_confirmed: 0
+findings_rejected: 0
+findings_waived: 0
+gate1_reroutes: 0
+gate2_reroutes: 0
+test_failures: 0
+merge_conflicts: 0
 
 ## amendments
 <!-- spec decisions made after gate 1; amendments override spec.md where they conflict -->

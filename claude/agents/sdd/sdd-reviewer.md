@@ -27,7 +27,8 @@ function — grep for the function boundaries when the context is cut off. A
 hunk without its surrounding function lies, but a 5000-line file read in
 full six times across the review is waste: read a changed file in full only
 when it is small (under ~400 lines) or a suspected finding needs the wider
-invariant. guardian additionally reads specs/<slug>/spec.md and the
+invariant. Hunks under specs/ are pipeline artifacts — context, not review
+targets. guardian additionally reads specs/<slug>/spec.md and the
 Amendments in specs/<slug>/state.md.
 
 - A finding needs a concrete failure scenario (input/state → wrong outcome);
