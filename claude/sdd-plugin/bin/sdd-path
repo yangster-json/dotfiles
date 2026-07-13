@@ -1,0 +1,37 @@
+#!/usr/bin/env python3
+"""sdd-path — print the absolute path of a file bundled in the sdd plugin.
+
+usage:
+  sdd-path <relative/path>      e.g. sdd-path templates/state.md
+                                     sdd-path workflows/review.js
+                                     sdd-path pipeline.yaml
+
+the orchestrator runs this to locate bundled resources (templates, workflow
+scripts, the pipeline file) without hardcoding the plugin's versioned cache
+path or relying on ${CLAUDE_PLUGIN_ROOT} expansion inside slash-command
+bodies. resolves relative to the plugin root (this script lives in bin/), and
+refuses a path that escapes it.
+"""
+import os
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def main(argv):
+    if len(argv) != 1 or argv[0].startswith("-"):
+        sys.stderr.write("usage: sdd-path <relative/path>\n")
+        return 1
+    target = os.path.normpath(os.path.join(ROOT, argv[0]))
+    if target != ROOT and not target.startswith(ROOT + os.sep):
+        sys.stderr.write(f"sdd-path: {argv[0]!r} escapes the plugin root\n")
+        return 1
+    if not os.path.exists(target):
+        sys.stderr.write(f"sdd-path: no bundled resource at {argv[0]!r}\n")
+        return 1
+    print(target)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

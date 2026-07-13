@@ -1,0 +1,342 @@
+#!/usr/bin/env python3
+"""sdd git helper — the pipeline's git choreography as precondition-checked
+commands instead of prose-executed git lines.
+
+usage:
+  .claude/sdd/git [-C <dir>] feature-start <slug> <upstream>
+  .claude/sdd/git [-C <dir>] task-start <slug> <task-id>
+  .claude/sdd/git [-C <dir>] wip <task-id> <title>
+  .claude/sdd/git [-C <dir>] task-merge <slug> <task-id>
+  .claude/sdd/git [-C <dir>] task-abort <slug> <task-id>
+  .claude/sdd/git [-C <dir>] snapshot [<message>]
+  .claude/sdd/git [-C <dir>] dissolve <upstream> [--force]
+  .claude/sdd/git [-C <dir>] learnings-dir
+
+  feature-start  fetch the upstream (when it names a remote), then cut the
+                 feature worktree: .claude/worktrees/sdd/<slug> on branch
+                 sdd/<slug>. prints `worktree: <path>` for EnterWorktree.
+  task-start     cut an isolated task worktree from the feature branch:
+                 .claude/worktrees/sdd/<slug>-<id> on sdd/<slug>-<id>.
+  wip            commit everything in the current worktree as the
+                 provisional "wip(sdd): <id> <title>" commit.
+  task-merge     merge --no-ff the task branch into the feature branch from
+                 the feature worktree, then remove the task worktree and
+                 branch. a conflict aborts the merge and exits 2 — the plan
+                 lied about file sets; mark the task blocked.
+  task-abort     remove the task worktree and delete its branch (-D),
+                 discarding the isolated attempt on purpose — for
+                 merge-conflict recovery, so the task can be re-run serially
+                 on the current feature HEAD. refuses if the branch is
+                 unknown.
+  snapshot       stage specs/ only and commit "wip(sdd): <message>"
+                 (default: specs snapshot). refuses if anything outside
+                 specs/ is already staged; no-op when specs/ is unchanged.
+  dissolve       git reset --soft to the merge-base with <upstream> so the
+                 commit stage can regroup. refuses on a non-sdd/ branch, on
+                 a dirty tree, or when the range holds non-wip(sdd) commits
+                 (--force overrides the last two). prints the pre-dissolve
+                 HEAD so the reset is recoverable.
+  learnings-dir [--global]
+                 print a learnings directory (creating it if missing).
+                 default is the PROJECT scope:
+                 <claude-config>/sdd-learnings/<munged-repo>, keyed by the
+                 main checkout's absolute path (main_root(), same as wt_path)
+                 the same way cost's cost-actuals.json is keyed to a project
+                 — so a feature or task worktree resolves the identical
+                 directory, and it never writes anything into the project's
+                 own tree (nothing to gitignore there). --global prints the
+                 cross-project scope: <claude-config>/sdd-learnings/_global.
+                 both live outside the plugin cache, so /plugin update never
+                 wipes accumulated lessons.
+
+every command validates its preconditions and refuses loudly instead of
+guessing: exit 0 = done (or safe no-op), 1 = refused/error, 2 = merge
+conflict (already aborted). a refusal is a stop signal for the
+orchestrator, not something to work around with raw git.
+
+tested by tests/test_git.py.
+"""
+import os
+import re
+import subprocess
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import statelib as st  # noqa: E402
+
+SLUG = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
+TASK = re.compile(r"^[A-Za-z]{1,2}\d+$")  # matches statelib task ids
+WIP_SUBJECT = re.compile(r"^wip\(sdd\)|^Merge branch 'sdd/")
+
+
+def die(msg, code=1):
+    sys.stderr.write(f"sdd git: {msg}\n")
+    sys.exit(code)
+
+
+def git(*args, cwd=None, check=True):
+    p = subprocess.run(["git", *args], cwd=cwd, text=True,
+                       capture_output=True)
+    if check and p.returncode != 0:
+        die(f"`git {' '.join(args)}` failed: "
+            f"{p.stderr.strip() or p.stdout.strip()}")
+    return p
+
+
+def out(*args, cwd=None):
+    return git(*args, cwd=cwd).stdout.strip()
+
+
+def worktrees():
+    """[(abs path, branch ref or None)]; the main checkout is first."""
+    entries, path, branch = [], None, None
+    for line in out("worktree", "list", "--porcelain").splitlines() + [""]:
+        if line.startswith("worktree "):
+            path = line[len("worktree "):]
+        elif line.startswith("branch "):
+            branch = line[len("branch "):]
+        elif line == "":
+            if path:
+                entries.append((path, branch))
+            path, branch = None, None
+    return entries
+
+
+def main_root():
+    return worktrees()[0][0]
+
+
+def branch_exists(name):
+    return git("rev-parse", "--verify", "--quiet", f"refs/heads/{name}",
+               check=False).returncode == 0
+
+
+def current_branch(cwd=None):
+    return out("rev-parse", "--abbrev-ref", "HEAD", cwd=cwd)
+
+
+def status_lines(cwd=None):
+    return [l for l in out("status", "--porcelain", cwd=cwd).splitlines() if l]
+
+
+def tracked_dirty(cwd=None):
+    return [l for l in status_lines(cwd) if not l.startswith("??")]
+
+
+def wt_path(slug, task=None):
+    name = slug if task is None else f"{slug}-{task}"
+    return os.path.join(main_root(), ".claude", "worktrees", "sdd", name)
+
+
+def learnings_root(scope="project"):
+    if scope == "global":
+        return st.global_learnings_path()
+    return st.project_learnings_path(main_root())
+
+
+def find_worktree(branch):
+    for path, ref in worktrees():
+        if ref == f"refs/heads/{branch}":
+            return path
+    return None
+
+
+def check_slug(slug):
+    if not SLUG.fullmatch(slug):
+        die(f"bad slug {slug!r} (kebab-case: [a-z0-9-])")
+
+
+def check_task(task):
+    if not TASK.fullmatch(task):
+        die(f"bad task id {task!r} (expected T1 / F2 / Q1 style)")
+
+
+def require_sdd_branch(cwd=None):
+    branch = current_branch(cwd)
+    if not branch.startswith("sdd/"):
+        die(f"current branch is {branch!r}, not an sdd/ branch — refusing")
+    return branch
+
+
+def cmd_feature_start(slug, upstream):
+    check_slug(slug)
+    branch = f"sdd/{slug}"
+    if branch_exists(branch):
+        die(f"branch {branch} already exists — resume it, or /sdd:cleanup first")
+    path = wt_path(slug)
+    if os.path.exists(path):
+        die(f"worktree path {path} already exists")
+    remote = upstream.split("/", 1)[0]
+    if "/" in upstream and remote in out("remote").split():
+        p = git("fetch", remote, upstream.split("/", 1)[1], check=False)
+        if p.returncode != 0:
+            sys.stderr.write(f"sdd git: warning: fetch {upstream} failed "
+                             f"({p.stderr.strip()}); using the local ref\n")
+    if git("rev-parse", "--verify", "--quiet", f"{upstream}^{{commit}}",
+           check=False).returncode != 0:
+        die(f"upstream {upstream!r} does not resolve to a commit")
+    git("worktree", "add", path, "-b", branch, upstream)
+    print(f"worktree: {path}")
+    print(f"branch: {branch}")
+
+
+def cmd_task_start(slug, task):
+    check_slug(slug)
+    check_task(task)
+    feature = f"sdd/{slug}"
+    if not branch_exists(feature):
+        die(f"feature branch {feature} does not exist — feature-start first")
+    branch = f"{feature}-{task}"
+    if branch_exists(branch):
+        die(f"task branch {branch} already exists")
+    path = wt_path(slug, task)
+    if os.path.exists(path):
+        die(f"worktree path {path} already exists")
+    git("worktree", "add", path, "-b", branch, feature)
+    print(f"worktree: {path}")
+    print(f"branch: {branch}")
+
+
+def cmd_wip(task, title):
+    check_task(task)
+    require_sdd_branch()
+    if not status_lines():
+        print("nothing to commit — worktree already clean")
+        return
+    git("add", "-A")
+    git("commit", "-m", f"wip(sdd): {task} {title}")
+    print(f"committed: {out('rev-parse', '--short', 'HEAD')} "
+          f"wip(sdd): {task} {title}")
+
+
+def cmd_task_merge(slug, task):
+    check_slug(slug)
+    check_task(task)
+    feature = f"sdd/{slug}"
+    branch = f"{feature}-{task}"
+    feature_wt = find_worktree(feature)
+    if feature_wt is None:
+        die(f"no worktree has {feature} checked out")
+    if not branch_exists(branch):
+        die(f"task branch {branch} does not exist")
+    task_wt = find_worktree(branch)
+    if task_wt and status_lines(cwd=task_wt):
+        die(f"task worktree {task_wt} has uncommitted work — `wip` it first")
+    if tracked_dirty(cwd=feature_wt):
+        die(f"feature worktree {feature_wt} has uncommitted tracked changes "
+            "— refusing to merge into it")
+    p = git("merge", "--no-ff", "--no-edit", branch, cwd=feature_wt,
+            check=False)
+    if p.returncode != 0:
+        git("merge", "--abort", cwd=feature_wt, check=False)
+        die(f"merge of {branch} conflicts — aborted; the plan lied about "
+            "file sets. mark the task blocked (branch and worktree kept).",
+            code=2)
+    if task_wt:
+        git("worktree", "remove", task_wt)
+    git("branch", "-d", branch, cwd=feature_wt)
+    print(f"merged: {out('rev-parse', '--short', 'HEAD', cwd=feature_wt)} "
+          f"({branch} into {feature}; worktree and branch removed)")
+
+
+def cmd_task_abort(slug, task):
+    check_slug(slug)
+    check_task(task)
+    feature = f"sdd/{slug}"
+    branch = f"{feature}-{task}"
+    if not branch_exists(branch):
+        die(f"task branch {branch} does not exist — nothing to abort")
+    task_wt = find_worktree(branch)
+    if task_wt:
+        # recovery: the isolated attempt is being discarded on purpose
+        git("worktree", "remove", "--force", task_wt)
+    # -D from a worktree that is NOT on this branch (feature, else main)
+    cwd = find_worktree(feature) or main_root()
+    git("branch", "-D", branch, cwd=cwd)
+    print(f"aborted: removed task worktree and branch {branch}")
+
+
+def cmd_snapshot(message):
+    require_sdd_branch()
+    top = out("rev-parse", "--show-toplevel")
+    if not os.path.isdir(os.path.join(top, "specs")):
+        die(f"no specs/ directory under {top}")
+    git("add", "specs", cwd=top)
+    staged = out("diff", "--cached", "--name-only", cwd=top).splitlines()
+    if not staged:
+        print("nothing to snapshot — specs/ unchanged")
+        return
+    outside = [f for f in staged if not f.startswith("specs/")]
+    if outside:
+        die("staged changes outside specs/ would ride along: "
+            f"{', '.join(outside)} — unstage them first")
+    git("commit", "-m", f"wip(sdd): {message}", cwd=top)
+    print(f"snapshot: {out('rev-parse', '--short', 'HEAD', cwd=top)} "
+          f"({len(staged)} specs file(s))")
+
+
+def cmd_dissolve(upstream, force):
+    require_sdd_branch()
+    if tracked_dirty() and not force:
+        die("working tree has uncommitted tracked changes — commit them "
+            "(wip) or stash first (--force to override)")
+    if git("rev-parse", "--verify", "--quiet", f"{upstream}^{{commit}}",
+           check=False).returncode != 0:
+        die(f"upstream {upstream!r} does not resolve to a commit")
+    base = out("merge-base", "HEAD", upstream)
+    head = out("rev-parse", "HEAD")
+    if base == head:
+        print("nothing to dissolve — HEAD is at the merge-base")
+        return
+    entries = out("log", "--format=%h%x09%s", f"{base}..HEAD").splitlines()
+    offenders = [e for e in entries
+                 if not WIP_SUBJECT.search(e.split("\t", 1)[1])]
+    if offenders and not force:
+        die("range holds non-wip(sdd) commits — refusing (--force to "
+            "dissolve them too):\n  " + "\n  ".join(offenders))
+    git("reset", "--soft", base)
+    print(f"dissolved {len(entries)} commit(s); diff is staged on "
+          f"{current_branch()} at {base[:12]}")
+    print(f"pre-dissolve HEAD: {head}  (recover: git reset --hard {head})")
+
+
+def cmd_learnings_dir(scope="project"):
+    path = learnings_root(scope)
+    os.makedirs(path, exist_ok=True)
+    print(path)
+
+
+def main(argv):
+    args = list(argv)
+    if args[:1] == ["-C"]:
+        if len(args) < 2:
+            die("-C needs a directory")
+        os.chdir(args[1])
+        args = args[2:]
+    if not args:
+        die("usage: see header of this script (feature-start | task-start | "
+            "wip | task-merge | task-abort | snapshot | dissolve | "
+            "learnings-dir)")
+    cmd, rest = args[0], args[1:]
+    if cmd == "feature-start" and len(rest) == 2:
+        cmd_feature_start(*rest)
+    elif cmd == "task-start" and len(rest) == 2:
+        cmd_task_start(*rest)
+    elif cmd == "wip" and len(rest) == 2:
+        cmd_wip(*rest)
+    elif cmd == "task-merge" and len(rest) == 2:
+        cmd_task_merge(*rest)
+    elif cmd == "task-abort" and len(rest) == 2:
+        cmd_task_abort(*rest)
+    elif cmd == "snapshot" and len(rest) <= 1:
+        cmd_snapshot(rest[0] if rest else "specs snapshot")
+    elif cmd == "dissolve" and 1 <= len(rest) <= 2 and rest[1:] in ([], ["--force"]):
+        cmd_dissolve(rest[0], force="--force" in rest)
+    elif cmd == "learnings-dir" and rest in ([], ["--global"]):
+        cmd_learnings_dir("global" if rest == ["--global"] else "project")
+    else:
+        die(f"unknown command or wrong arguments: {' '.join(args)}")
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

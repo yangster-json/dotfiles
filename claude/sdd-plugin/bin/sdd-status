@@ -1,0 +1,71 @@
+#!/usr/bin/env python3
+"""sdd-status — one-line progress for the active sdd feature, on demand.
+
+the compact segment that used to live in the statusline. run it anytime
+(e.g. after closing the tmux `sdd-watch` pane) to see phase, task counts,
+gate flags, and hw target for the active feature under the current directory.
+prints nothing if there is no active feature.
+
+`sdd-watch` renders the full dashboard (and `--loop` for a live pane); this
+is just the terse one-liner. state.md parsing lives in statelib.py.
+"""
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import statelib as st  # noqa: E402
+
+DIM, BLD, RST = "\033[2m", "\033[1m", "\033[0m"
+GRN, YLW, RED, CYN = "\033[32m", "\033[33m", "\033[31m", "\033[36m"
+SEP = f" {DIM}│{RST} "
+
+
+def find_root(start):
+    d = os.path.abspath(start)
+    while True:
+        if os.path.isdir(os.path.join(d, "specs")):
+            return d
+        parent = os.path.dirname(d)
+        if parent == d:
+            return None
+        d = parent
+
+
+def main():
+    root = find_root(os.getcwd())
+    if not root:
+        return
+    state = st.read_state(root)
+    if not state:
+        return  # no active sdd feature
+    _, slug, text = state
+
+    phase = st.field(text, "phase", "?")
+    parts = [f"{BLD}sdd:{slug}{RST} ▸ {CYN}{phase}{RST}"]
+
+    rows = st.task_rows(text)
+    if rows:
+        done = sum(1 for r in rows if r["status"] == "done")
+        blocked = sum(1 for r in rows if r["status"] == "blocked")
+        seg = f"tasks {GRN}{done}{RST}/{len(rows)}"
+        if blocked:
+            seg += f" ({RED}{blocked} blocked{RST})"
+        parts.append(seg)
+
+    def gate(flag):
+        return f"{GRN}✔{RST}" if flag else f"{DIM}─{RST}"
+
+    parts.append(
+        f"gates plan {gate(st.flag(text, 'plan_approved'))} "
+        f"review {gate(st.flag(text, 'review_approved'))}"
+    )
+
+    testbed = st.field(text, "hw_testbed")
+    if testbed and testbed != "none":
+        parts.append(f"hw {testbed}/{st.field(text, 'hw_bay')}")
+
+    print(SEP.join(parts))
+
+
+if __name__ == "__main__":
+    main()

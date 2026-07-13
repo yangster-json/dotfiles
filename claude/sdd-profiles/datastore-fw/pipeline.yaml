@@ -1,0 +1,74 @@
+# personal sdd profile — datastore-fw. layers firmware-engineer-specific
+# research/intake behavior on the plugin's bundled default. activated via a
+# local, git-excluded .claude/sdd/pipeline.yaml pointer in the datastore-fw
+# checkout — see README.md in this folder for the one-time setup.
+#
+# merge rules: see the sdd plugin's commands/run.md "## extends" section.
+# short version — config: keys here replace the same-named key from the
+# extended file wholesale; keys not listed here are inherited unchanged.
+#
+# `extends: plugin` is a sentinel — run.md resolves it to the plugin's
+# bundled pipeline.yaml via `sdd-path pipeline.yaml`, so it stays correct
+# across `/plugin update` (the bundled default moves to a versioned cache;
+# a hardcoded absolute path would not survive).
+
+extends: plugin
+
+config:
+  # forces testbed/bay at intake (dropping the "decide at gate 2" option)
+  # when the feature description matches one of these, case-insensitive.
+  # see run.md's "## hw-test heuristic" for exactly when/how this fires.
+  hw_test_heuristic:
+    - drive
+    - flash
+    - NAND
+    - watchdog
+    - PCIe
+    - DMA
+    - media error
+    - telemetry
+    - crash repro
+    - testbed
+    - bay
+    - hw pytest
+    - error injection
+    - firmware boot
+    - erase
+    - program error
+
+  # extra research-stage lookups the ORCHESTRATOR runs itself (session MCP
+  # tools + one-off agent spawns), in parallel with the usual scout
+  # fan-out — see run.md's "## internal docs". hits fold into research.md's
+  # context section alongside the scout reports.
+  internal_docs:
+    glean: >
+      if mcp__claude_ai_Glean__* tools are available this session (check
+      via ToolSearch — the connector needs a prior authenticate /
+      complete_authentication), search Glean for design docs, RFCs,
+      postmortems, and specs matching the feature's key terms. Glean
+      typically indexes Confluence/Drive already — treat it as the
+      broadest single source and the other three as supplements/fallback.
+    confluence: >
+      always available via wiki-mcp-server — run confluence_search (CQL,
+      text ~ feature terms) for spec pages.
+    google_drive: >
+      if mcp__claude_ai_Google_Drive__* tools are available this session,
+      search Drive directly for spec docs/PDFs — supplements Glean, useful
+      when Glean isn't authenticated or a doc isn't indexed there yet.
+    local_path: null   # e.g. docs/specs — fill in once you know where
+                        # datastore-fw keeps spec PDFs checked into the
+                        # repo (or a local mirror), if it does
+    jira: >
+      orchestrator runs a direct jira_search (project = FW, text ~ feature
+      terms) for related tickets, regardless of what the intake jira
+      question resolved to. If intake resolved to a specific existing
+      ticket, additionally spawn jira-analyst with that ticket ID for
+      deep related-issue analysis — it already scopes all JQL to
+      project = FW and reads the top related issues.
+    jenkins: >
+      opportunistic, not mechanical — jenkins-analyst needs a concrete
+      ticket or build reference, it can't search by feature description
+      alone. When research surfaces a related FW ticket, or after opening
+      a PR (skill fw-pr) and wanting its CI result, spawn jenkins-analyst
+      against whichever of fwjenkins2 (master CI) / fwreljenkins (release
+      branch CI) / fwprjenkins (PR/pre-merge CI) is relevant.

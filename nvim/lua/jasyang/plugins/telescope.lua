@@ -30,8 +30,9 @@ return {
     -- set keymaps
     local keymap = vim.keymap -- for conciseness
 
-    keymap.set("n", "<leader>ff", "<cmd>Telescope find_files<cr>", { desc = "Fuzzy find files in cwd" })
-    keymap.set("n", "<leader>fF", "<cmd>Telescope find_files no_ignore=true hidden=true<cr>", { desc = "Find files (incl. gitignored)" })
+    keymap.set("n", "<leader>ff", "<cmd>Telescope find_files hidden=true<cr>", { desc = "Fuzzy find files in cwd (incl. hidden)" })
+    keymap.set("n", "<leader>fa", "<cmd>Telescope find_files hidden=true no_ignore=true<cr>", { desc = "Find all files (incl. hidden + gitignored)" })
+    keymap.set("n", "<leader>fF", "<cmd>Telescope git_files<cr>", { desc = "Find git-tracked files" })
     keymap.set("n", "<leader>fr", "<cmd>Telescope oldfiles<cr>", { desc = "Fuzzy find recent files" })
     keymap.set("n", "<leader>fs", "<cmd>Telescope live_grep<cr>", { desc = "Find string in cwd" })
     keymap.set("n", "<leader>fS", "<cmd>Telescope live_grep additional_args={'--no-ignore','--hidden'}<cr>", { desc = "Find string (incl. gitignored)" })

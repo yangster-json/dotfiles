@@ -1,0 +1,159 @@
+#!/usr/bin/env python3
+"""sdd quality aggregator — pipeline health across features, from the
+metrics counters and task tables in specs/*/state.md.
+
+usage:
+  .claude/sdd/quality [project-root]     (default root: cwd, walks up to specs/)
+
+reads every specs/*/state.md and specs/archive/*/state.md and reports, per
+feature and in total: task outcomes, verifier retries, blocked tasks,
+review findings confirmed/rejected/waived, gate reroutes, ambiguities,
+test failures, merge conflicts — plus derived rates that answer "is the
+pipeline earning its tokens":
+
+  retry rate        verify_retries / tasks     (implementer quality)
+  block rate        tasks_blocked / tasks      (planning quality)
+  review precision  confirmed / (confirmed+rejected)  (reviewer signal)
+  waive rate        waived / confirmed         (finding relevance)
+
+the counters are maintained by /sdd:run in each state.md's ## metrics
+section; parsing lives in statelib.py. learnings are counted from this
+project's scope: <claude-config>/sdd/learnings/<munged-root>/*.md (never
+inside the project itself — same keyed-by-project convention as
+cost-actuals.json). global lessons in <claude-config>/sdd/learnings/ are
+shared across every project, so they aren't counted here.
+"""
+import glob
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import statelib as st  # noqa: E402
+
+DIM, BLD, RST, GRN, YLW, RED = ("\033[2m", "\033[1m", "\033[0m",
+                                "\033[32m", "\033[33m", "\033[31m")
+
+COUNTERS = ["verify_retries", "tasks_blocked", "ambiguities",
+            "file_list_fixes", "findings_confirmed", "findings_rejected",
+            "findings_waived", "gate1_reroutes", "gate2_reroutes",
+            "test_failures", "merge_conflicts"]
+
+
+def find_root(start):
+    d = os.path.abspath(start)
+    while True:
+        if os.path.isdir(os.path.join(d, "specs")):
+            return d
+        parent = os.path.dirname(d)
+        if parent == d:
+            return None
+        d = parent
+
+
+def collect(root):
+    """one row per feature: slug, phase, task counts, metrics counters."""
+    rows = []
+    for pattern in ("specs/*/state.md", "specs/archive/*/state.md"):
+        for path in sorted(glob.glob(os.path.join(root, pattern))):
+            # a project's specs/templates/state.md override is a template, not
+            # a feature — don't scrape it as a phantom row
+            if os.path.basename(os.path.dirname(path)) == "templates":
+                continue
+            try:
+                with open(path) as f:
+                    text = f.read()
+            except OSError:
+                continue
+            tasks = st.task_rows(text)
+            row = {
+                "slug": os.path.basename(os.path.dirname(path)),
+                "phase": (st.field(text, "phase", "?").split() or ["?"])[0],
+                "tasks": len(tasks),
+                "done": sum(1 for t in tasks if t["status"] == "done"),
+                "blocked_now": sum(1 for t in tasks
+                                   if t["status"] == "blocked"),
+            }
+            row.update({c: 0 for c in COUNTERS})
+            row.update(st.metrics(text))
+            rows.append(row)
+    return rows
+
+
+def totals(rows):
+    t = {c: sum(r.get(c, 0) for r in rows) for c in COUNTERS}
+    t["tasks"] = sum(r["tasks"] for r in rows)
+    t["done"] = sum(r["done"] for r in rows)
+    return t
+
+
+def rate(num, den):
+    return f"{100 * num / den:.0f}%" if den else f"{DIM}n/a{RST}"
+
+
+def render(root):
+    rows = collect(root)
+    if not rows:
+        return f"{DIM}no specs/*/state.md found under {root}{RST}"
+    t = totals(rows)
+    rule = f"{DIM}{'─' * 92}{RST}"
+
+    hdr = (f"  {'feature':<28} {'phase':<10} {'tasks':>6} {'retry':>6}"
+           f" {'blkd':>5} {'ambig':>6} {'find c/r/w':>11} {'gates':>6}"
+           f" {'test✗':>6}")
+    out = [f" {BLD}sdd quality — {os.path.basename(root)}{RST}"
+           f"   {DIM}{len(rows)} features{RST}", rule, f"{BLD}{hdr}{RST}"]
+    for r in rows:
+        finds = (f"{r['findings_confirmed']}/{r['findings_rejected']}"
+                 f"/{r['findings_waived']}")
+        gates = r["gate1_reroutes"] + r["gate2_reroutes"]
+        blocked = r["tasks_blocked"] or r["blocked_now"]
+        out.append(
+            f"  {r['slug'][:28]:<28} {r['phase']:<10}"
+            f" {r['done']}/{r['tasks']:<4} {r['verify_retries']:>6}"
+            f" {(RED if blocked else DIM)}{blocked:>5}{RST}"
+            f" {r['ambiguities']:>6} {finds:>11} {gates:>6}"
+            f" {r['test_failures']:>6}")
+
+    conf, rej = t["findings_confirmed"], t["findings_rejected"]
+    out += [rule, f" {BLD}rates{RST}"
+            f"   retry {YLW}{rate(t['verify_retries'], t['tasks'])}{RST}"
+            f"   block {YLW}{rate(t['tasks_blocked'], t['tasks'])}{RST}"
+            f"   review precision {GRN}{rate(conf, conf + rej)}{RST}"
+            f"   waive {YLW}{rate(t['findings_waived'], conf)}{RST}"
+            f"   ambiguities {t['ambiguities']}"
+            f"   file-list fixes {t['file_list_fixes']}"
+            f"   merge conflicts {t['merge_conflicts']}"]
+
+    learnings_dir = st.project_learnings_path(root)
+    learnings = [p for p in glob.glob(os.path.join(learnings_dir, "*.md"))
+                 if os.path.basename(p) != "INDEX.md"]
+    home = os.path.expanduser("~")
+    shown = "~" + learnings_dir[len(home):] if learnings_dir.startswith(home) \
+        else learnings_dir
+    out.append(f" {BLD}learnings{RST}   {len(learnings)} recorded"
+               f"   {DIM}({shown}/){RST}")
+
+    high_retry = [r["slug"] for r in rows
+                  if r["tasks"] and r["verify_retries"] / r["tasks"] > 0.5]
+    if high_retry:
+        out.append(f" {YLW}high retry rate:{RST} {', '.join(high_retry)}"
+                   f" {DIM}— check task sizing / spec precision{RST}")
+    if conf + rej and rej > conf:
+        out.append(f" {YLW}review rejects more than it confirms{RST}"
+                   f" {DIM}— reviewer stances may be over-triggering{RST}")
+    return "\n".join(out)
+
+
+def main():
+    start = next((a for a in sys.argv[1:] if not a.startswith("-")),
+                 os.getcwd())
+    root = find_root(start)
+    if not root:
+        print(f"{DIM}not inside an sdd project (no specs/ found from "
+              f"{start}){RST}")
+        return
+    print(render(root))
+
+
+if __name__ == "__main__":
+    main()

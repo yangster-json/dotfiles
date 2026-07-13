@@ -1,0 +1,210 @@
+#!/usr/bin/env python3
+"""sdd state writer — bookkeeping edits to the active feature's state.md as
+single commands, so phase flips, counters, and task statuses stop being
+prose-maintained markdown edits.
+
+usage:
+  .claude/sdd/state [--root DIR] get  <key>
+  .claude/sdd/state [--root DIR] set  <key> <value>
+  .claude/sdd/state [--root DIR] bump <counter> [n]
+  .claude/sdd/state [--root DIR] task <id> <status>
+  .claude/sdd/state [--root DIR] log  <message>
+
+  get   print a header field (or metrics counter) value.
+  set   rewrite a header `key: value` line in place (trailing html comment
+        kept); a missing key is inserted at the end of the header. counters
+        are refused — use bump.
+  bump  increment a `## metrics` counter by n (default 1). unknown counters
+        are refused, listing the known ones — typos must not create rows.
+  task  set the status cell of one row in the `## tasks` table (id matched
+        case-insensitively, any column order/aliases statelib accepts).
+  log   append `- YYYY-MM-DD <message>` to the `## log` section.
+
+the active feature resolves exactly like the other tools: specs/ACTIVE
+under --root (default cwd), following one `worktree:` pointer. edits are
+surgical — only the targeted line changes — and tolerate the same
+emphasis/spacing drift statelib tolerates when reading. sections the CLI
+does not cover (amendments, waived findings, tests run, the initial tasks
+table) remain hand-edited.
+
+tested by tests/test_state_cli.py.
+"""
+import os
+import re
+import sys
+import tempfile
+import time
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import statelib as st  # noqa: E402
+
+
+def die(msg):
+    sys.stderr.write(f"sdd state: {msg}\n")
+    sys.exit(1)
+
+
+def locate(root):
+    got = st.read_state(root)
+    if not got:
+        die(f"no active sdd feature under {root} (specs/ACTIVE)")
+    r, slug, text = got
+    return os.path.join(r, "specs", slug, "state.md"), text
+
+
+def save(path, text):
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix=".state-")
+    with os.fdopen(fd, "w") as f:
+        f.write(text)
+    os.replace(tmp, path)
+
+
+def key_line(key):
+    """same tolerance as statelib.field, with the value span capturable."""
+    return re.compile(
+        rf"^(?P<pre>\s*(?:-\s+)?[*_]*{re.escape(key)}[*_]*\s*:\s*)"
+        rf"(?P<val>.*?)(?P<post>\s*(?:<!--.*)?)$",
+        re.M | re.I)
+
+
+def cmd_get(text, key):
+    val = st.field(text, key)
+    if not val:
+        val = st.metrics(text).get(key.lower())
+    if val in ("", None):
+        die(f"no field or counter named {key!r}")
+    print(val)
+
+
+def cmd_set(path, text, key, value):
+    if key.lower() in st.metrics(text):
+        die(f"{key!r} is a metrics counter — use bump")
+    m = key_line(key).search(text)
+    if m:
+        text = text[:m.start("val")] + value + text[m.end("val"):]
+    else:
+        sec = re.search(r"^##\s", text, re.M)
+        at = sec.start() if sec else len(text)
+        text = text[:at] + f"{key}: {value}\n\n" + text[at:]
+    save(path, text)
+    print(f"{key}: {value}")
+
+
+def metrics_span(text):
+    """(start, end) offsets of the ## metrics section body, or None."""
+    lines = text.splitlines(keepends=True)
+    pos = start = None
+    off = 0
+    for line in lines:
+        m = re.match(r"^##\s+(.*)", line)
+        if m:
+            if start is not None:
+                return start, off
+            if st.strip_md(m.group(1)).lower() == "metrics":
+                pos = off + len(line)
+                start = pos
+        off += len(line)
+    return (start, off) if start is not None else None
+
+
+def cmd_bump(path, text, counter, n):
+    span = metrics_span(text)
+    if not span:
+        die("state.md has no ## metrics section")
+    body = text[span[0]:span[1]]
+    m = re.search(
+        rf"^(?P<pre>\s*(?:-\s+)?[*_]*{re.escape(counter)}[*_]*\s*:\s*)"
+        rf"(?P<num>\d+)", body, re.M | re.I)
+    if not m:
+        known = ", ".join(sorted(st.metrics(text))) or "none"
+        die(f"unknown counter {counter!r} — known: {known}")
+    new = int(m.group("num")) + n
+    body = body[:m.start("num")] + str(new) + body[m.end("num"):]
+    save(path, text[:span[0]] + body + text[span[1]:])
+    print(f"{counter}: {new}")
+
+
+def cmd_task(path, text, task_id, status):
+    lines = text.splitlines(keepends=True)
+    header = None
+    for i, line in enumerate(lines):
+        if not line.lstrip().startswith("|"):
+            header = None
+            continue
+        raw = line.strip().strip("|").split("|")
+        cells = [st.strip_md(c) for c in raw]
+        if header is None:
+            cols = [st._ALIAS.get(c.lower().replace(" ", "_")) for c in cells]
+            header = cols if ("id" in cols and "status" in cols) else False
+            continue
+        if header is False or st._is_separator(cells):
+            continue
+        row = dict(zip(header, cells))
+        if (row.get("id") or "").lower() == task_id.lower():
+            raw[header.index("status")] = f" {status} "
+            nl = "\n" if line.endswith("\n") else ""
+            lines[i] = "|" + "|".join(raw) + "|" + nl
+            save(path, "".join(lines))
+            print(f"{row['id']}: {status}")
+            return
+    die(f"no task row with id {task_id!r} in the ## tasks table")
+
+
+def cmd_log(path, text, message):
+    entry = f"- {time.strftime('%Y-%m-%d')} {message}\n"
+    lines = text.splitlines(keepends=True)
+    in_log, end = False, None
+    for i, line in enumerate(lines):
+        m = re.match(r"^##\s+(.*)", line)
+        if m:
+            if in_log:
+                end = i
+                break
+            in_log = st.strip_md(m.group(1)).lower() == "log"
+    if not in_log:
+        text = text.rstrip("\n") + "\n\n## log\n" + entry
+    else:
+        end = len(lines) if end is None else end
+        # insert after the section's last non-blank line
+        while end > 0 and lines[end - 1].strip() == "":
+            end -= 1
+        lines.insert(end, entry)
+        text = "".join(lines)
+    save(path, text)
+    print(entry.strip())
+
+
+def main(argv):
+    args = list(argv)
+    root = os.getcwd()
+    if args[:1] == ["--root"]:
+        if len(args) < 2:
+            die("--root needs a directory")
+        root = args[1]
+        args = args[2:]
+    if not args:
+        die("usage: state [--root DIR] get|set|bump|task|log ... "
+            "(see header of this script)")
+    cmd, rest = args[0], args[1:]
+    path, text = locate(root)
+    if cmd == "get" and len(rest) == 1:
+        cmd_get(text, rest[0])
+    elif cmd == "set" and len(rest) == 2:
+        cmd_set(path, text, rest[0], rest[1])
+    elif cmd == "bump" and 1 <= len(rest) <= 2:
+        n = 1
+        if len(rest) == 2:
+            if not rest[1].lstrip("-").isdigit():
+                die(f"bump amount must be an integer, got {rest[1]!r}")
+            n = int(rest[1])
+        cmd_bump(path, text, rest[0], n)
+    elif cmd == "task" and len(rest) == 2:
+        cmd_task(path, text, rest[0], rest[1])
+    elif cmd == "log" and len(rest) == 1:
+        cmd_log(path, text, rest[0])
+    else:
+        die(f"unknown command or wrong arguments: {' '.join(args)}")
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

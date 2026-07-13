@@ -30,12 +30,19 @@ You cannot open files under `/mnt/tlogs` with the Read tool — use Bash (`cat`,
 ## Determining Jenkins Instance
 
 There are multiple Jenkins instances, each with its own archive directory under `/mnt/tlogs`
-(e.g. `fwjenkins`, `fwjenkins2`, and others visible via `ls /mnt/tlogs`).
+(e.g. `fwjenkins`, `fwjenkins2`, `fwreljenkins`, `fwprjenkins`, and others visible via
+`ls /mnt/tlogs`). `fwreljenkins` runs release-branch CI; `fwprjenkins` runs PR/pre-merge CI.
 
 Detection from Jira ticket:
-1. Summary/title starts with the jenkins host (e.g. `fwjenkins2` or `fwjenkins`)
-2. Description URLs: `https://fwjenkins2.dev...` vs `https://fwjenkins.dev...`
+1. Summary/title starts with the jenkins host (e.g. `fwjenkins2`, `fwjenkins`, `fwreljenkins`,
+   `fwprjenkins`)
+2. Description URLs: `https://fwjenkins2.dev...` vs `https://fwjenkins.dev...` (same pattern for
+   `fwreljenkins`/`fwprjenkins`)
 3. Labels: `master_jenkins2-view` → fwjenkins2
+
+If instead you're given a host + job name + build number directly (no ticket to derive them
+from — e.g. checking a PR's `fwprjenkins` result, or a release branch's `fwreljenkins` health),
+skip detection and go straight to the log path pattern above.
 
 ## Workflow
 

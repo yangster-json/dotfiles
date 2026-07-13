@@ -1,0 +1,13 @@
+{
+  "name": "jasyang-dotfiles",
+  "owner": {
+    "name": "Jason Yang"
+  },
+  "plugins": [
+    {
+      "name": "sdd",
+      "source": "./sdd-plugin",
+      "description": "Spec-driven development pipeline for Claude Code — gated multi-agent research→spec→plan→implement→review→test→commit."
+    }
+  ]
+}

@@ -142,6 +142,11 @@ alias listssh="ps -AF | grep ssh" # for listing ssh sessions that hang
 eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
 eval "$(zoxide init --cmd cd zsh)"
 zvm_after_init_commands+=('source <(fzf --zsh)')
+# Load zsh-syntax-highlighting AFTER zsh-vi-mode finishes remapping ZLE widgets
+# (loading it via the omz plugins array would let zvm strip its hooks), then
+# apply the Catppuccin Mocha palette on top so its styles override the defaults.
+zvm_after_init_commands+=('source $ZSH_CUSTOM/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh')
+zvm_after_init_commands+=('source $ZSH_CUSTOM/catppuccin/catppuccin_mocha-zsh-syntax-highlighting.zsh')
 
 export PYENV_ROOT="$HOME/.pyenv"
 [[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"

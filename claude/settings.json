@@ -7,28 +7,26 @@
   "permissions": {
     "defaultMode": "bypassPermissions"
   },
-  "model": "sonnet",
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Edit|Write|NotebookEdit|Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "~/.claude/sdd/hooks/require-plan-approval.py"
-          }
-        ]
-      }
-    ]
-  },
+  "model": "opus[1m]",
   "statusLine": {
     "type": "command",
-    "command": "~/.claude/sdd/statusline.sh"
+    "command": "~/.claude/statusline-command.py"
   },
-  "effortLevel": "xhigh",
+  "extraKnownMarketplaces": {
+    "jasyang-dotfiles": {
+      "source": {
+        "source": "directory",
+        "path": "/u/jasyang/.claude"
+      }
+    }
+  },
+  "effortLevel": "high",
   "tui": "fullscreen",
   "skipDangerousModePermissionPrompt": true,
   "theme": "auto",
   "editorMode": "vim",
-  "autoCompactEnabled": false
+  "autoCompactEnabled": true,
+  "enabledPlugins": {
+    "sdd@jasyang-dotfiles": true
+  }
 }

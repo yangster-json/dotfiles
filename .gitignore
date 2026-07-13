@@ -30,10 +30,17 @@ claude/remote-settings.json
 claude/.cost-actuals.json
 claude/.last-cleanup
 claude/.last-update-result.json
+# sdd's per-project learnings cache, keyed by munged repo path — same
+# convention as cost-actuals.json. claude/sdd-learnings/_global/ is the
+# GLOBAL scope and stays tracked.
+claude/sdd-learnings/*/
+!claude/sdd-learnings/_global/
 
 # python bytecode from the sdd script tests
 __pycache__/
 
-# --- oh-my-zsh: upstream git clone — reinstall on new machines: ---
+# --- oh-my-zsh: upstream git clones — reinstall on new machines: ---
 # git clone https://github.com/jeffreytse/zsh-vi-mode ~/.oh-my-zsh/custom/plugins/zsh-vi-mode
 oh-my-zsh-custom/plugins/zsh-vi-mode/
+# git clone https://github.com/zsh-users/zsh-syntax-highlighting ~/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting
+oh-my-zsh-custom/plugins/zsh-syntax-highlighting/

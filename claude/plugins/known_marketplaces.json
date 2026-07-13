@@ -5,6 +5,14 @@
       "repo": "anthropics/claude-plugins-official"
     },
     "installLocation": "/u/jasyang/.claude/plugins/marketplaces/claude-plugins-official",
-    "lastUpdated": "2026-07-10T17:09:27.008Z"
+    "lastUpdated": "2026-07-13T20:30:27.178Z"
+  },
+  "jasyang-dotfiles": {
+    "source": {
+      "source": "directory",
+      "path": "/u/jasyang/.claude"
+    },
+    "installLocation": "/u/jasyang/.claude",
+    "lastUpdated": "2026-07-13T20:26:19.998Z"
   }
 }

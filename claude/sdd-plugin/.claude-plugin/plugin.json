@@ -1,0 +1,5 @@
+{
+  "name": "sdd",
+  "description": "Spec-driven development pipeline: research → spec → plan → gate → implement → review → gate → test → commit, with combative review, isolated worktrees, and precondition-checked git/state choreography.",
+  "version": "0.1.0"
+}
