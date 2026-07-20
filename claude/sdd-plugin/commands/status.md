@@ -15,6 +15,7 @@ Read `specs/<slug>/state.md` and report, compactly:
 
 - feature slug, jira, upstream, current phase, hw testbed/bay if set
 - gate flags: plan_approved (note if gate1_auto_approved is yes), review_approved
+- adaptive stage-skips: the `stages_skipped` field, if it names any stage
 - task table: done / in_progress / blocked / pending counts, then one line
   per non-pending task (include blocked reasons)
 - amendments, waived findings, tests run — if any

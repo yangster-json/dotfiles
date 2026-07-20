@@ -7,18 +7,24 @@ export const meta = {
 }
 
 // invoked by /sdd:run's research stage (see pipeline.yaml run_via).
-// args: { feature, slug, workdir, angles: [{ angle, depth, learnings }] }
+// args: { feature, slug, workdir, angles: [{ angle, depth, learnings }], models }
 //   feature   — the feature description from intake
 //   workdir   — absolute path of the feature worktree
 //   angles    — 2-4 entries picked by the orchestrator (that is judgment and
 //               stays there); depth "enum" -> sdd:sdd-researcher,
 //               "deep" -> sdd:sdd-researcher-deep
 //   learnings — optional array of learning-entry file paths for that angle
+//   models    — optional config.models map (agent short-name -> tier); applied
+//               as a per-agent model override, frontmatter is the fallback
 // the script only guarantees the fan-out; the orchestrator synthesizes
-// research.md from the returned reports. models are pinned in agent
-// frontmatter and resolved via agentType — never set model here.
+// research.md from the returned reports. model tier comes from models[] when
+// it names the agent, else the agent's frontmatter default; effort stays
+// pinned in frontmatter.
 
-const { feature, slug, workdir, angles } = args
+const { feature, slug, workdir, angles, models = {} } = args
+// spread this into an agent()'s opts to route its tier from config.models;
+// no entry -> {} -> the key is absent and the agent's frontmatter model stands
+const modelOf = name => (models[name] ? { model: models[name] } : {})
 
 phase('Scout')
 const scouts = await parallel(angles.map((a, i) => () =>
@@ -33,6 +39,8 @@ const scouts = await parallel(angles.map((a, i) => () =>
     ].filter(Boolean).join('\n'),
     {
       agentType: a.depth === 'deep' ? 'sdd:sdd-researcher-deep' : 'sdd:sdd-researcher',
+      // model tier from config.models when it names this scout, else omitted
+      ...modelOf(a.depth === 'deep' ? 'sdd-researcher-deep' : 'sdd-researcher'),
       // effort matches each scout's frontmatter — explicit so the routing
       // holds on the workflow path regardless of how agentType resolves it
       effort: a.depth === 'deep' ? 'medium' : 'low',

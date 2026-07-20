@@ -8,9 +8,11 @@ Run the SDD pipeline for: $ARGUMENTS
 You are the orchestrator. Read the pipeline file FIRST — the project's
 `.claude/sdd/pipeline.yaml` if it exists, else the plugin's bundled copy
 (run `sdd-path pipeline.yaml` to get its absolute path). It defines the
-stages, agent assignments, the two gates, and their routing (models/effort
-are NOT set there — they are pinned in each agent's frontmatter, invocable as
-`sdd:sdd-<name>`). This command only tells you how to interpret it; the
+stages, agent assignments, the two gates, and their routing. Agents are
+invocable as `sdd:sdd-<name>`. EFFORT is pinned in each agent's frontmatter;
+MODEL TIER comes from `config.models` when present (it overrides frontmatter —
+see "## model routing" below), otherwise from frontmatter. This command only
+tells you how to interpret it; the
 pipeline file is authoritative and the user edits it, so never assume it
 still says what it said last run.
 
@@ -53,18 +55,33 @@ instead of duplicating the whole file.
      (`git symbolic-ref refs/remotes/origin/HEAD`), the current branch
      (`git rev-parse --abbrev-ref HEAD`), and its configured upstream
      (`git rev-parse --abbrev-ref @{upstream}`, which may not exist).
-  2. Ask ONE AskUserQuestion menu covering config.intake.questions —
-     upstream base (the candidates above as options), jira ticket,
-     hardware-test intent, pipeline depth. Every question carries a
-     "you decide" option. Tokens in $ARGUMENTS (upstream=, jira=,
-     testbed=/bay=) pre-answer their question — skip those. Never skip the
-     menu entirely unless every question is pre-answered. Before building
-     the hw_test question's options, apply config.hw_test_heuristic if set
-     (see ## hw-test heuristic below).
+  2. Ask the intake questions covering config.intake.questions — upstream base
+     (the candidates above as options), jira ticket, hardware-test intent,
+     pipeline depth, gates, tier, stages, on_findings, on_test_fail, pr.
+     AskUserQuestion caps at 4 questions per call, so batch them across
+     back-to-back menus (all before anything starts), most decision-shaping
+     first. PRINCIPLE: every decision that would otherwise surface LATER — a
+     gate, an auto-decision restated for veto, a halt — is pre-answerable here,
+     so a fully-specified launch never needs a second look; if you ever add a
+     later pause point, add its intake question too. Every question carries a
+     "you decide" option that reproduces today's behavior, so a user who
+     ignores the extras loses nothing. Tokens in $ARGUMENTS (upstream=, jira=,
+     testbed=/bay=, gates=, tier=, stages=, on_findings=, on_test_fail=, pr=)
+     pre-answer their question — skip those; when ALL are pre-answered, skip the
+     menus entirely (e.g. `gates=unattended on_findings=fix pr=open` +
+     upstream/jira launches with no prompt at all). Before building the hw_test
+     question's options, apply config.hw_test_heuristic if set (see ## hw-test
+     heuristic below).
   3. Resolve each "you decide" per the pipeline file's intake notes, record
      everything in state.md once it exists, and restate every auto-decision
      at gate 1 for veto. If depth resolves to quick, hand off to /sdd:quick
-     and say so.
+     and say so. Otherwise, when config.adaptive.enabled, resolve depth into a
+     TAILORED graph — decide which optional stages to skip per
+     "## adaptive stage selection" and record the skip-list in state.md's
+     `stages_skipped:` — rather than assuming the full graph. When
+     config.auto_route.enabled, also take the feature-level difficulty read here
+     and record it in state.md's `tier_offset:` per "## model tier auto-routing"
+     — it sets the tier for every spawn from the first scout on.
   4. The fetch happens inside `feature-start` (below). Only without
      worktrees (config disabled / not a git repo) run
      `git fetch origin <upstream>` yourself so the base is current —
@@ -83,7 +100,22 @@ instead of duplicating the whole file.
   `specs/templates/state.md` if present, else `$(sdd-path templates/state.md)`)
   and write the plain slug to `specs/ACTIVE` in the current root. Record the
   confirmed base as `upstream:` in state.md, and parse optional `jira=`,
-  `testbed=`, `bay=` tokens (they override config.hw_test).
+  `testbed=`, `bay=` tokens (they override config.hw_test). Resolve the `gates`
+  answer to state.md's `autopilot:` field (`gate1=<ask|skip>,gate2=<ask|skip>`):
+  "both gates" -> ask,ask; "skip plan gate" -> skip,ask; "unattended" ->
+  skip,skip; "you decide" or absent -> the config.autopilot defaults. The
+  `gates=` token maps the same (both|skip-plan|unattended). This is the run's
+  authority for both gates; the gate stages read it, not config directly.
+  Resolve the remaining intake answers to their state.md fields the same way
+  (answer or matching token; "you decide"/absent -> the field's default):
+  `tier` -> tier_offset (standard|heavy|light; you-decide -> the auto_route read
+  per "## model tier auto-routing", which then owns it); `stages` -> full sets
+  stages_skipped: none and suppresses adaptive for the run, tailor/you-decide ->
+  normal adaptive per "## adaptive stage selection"; `on_findings` ->
+  findings_policy (fix|waive|stop); `on_test_fail` -> test_fail_policy
+  (halt|proceed); `pr` -> pr (none|open). All are recorded before the first
+  stage and read by the stage that owns each (gate 2, test, commit); on resume
+  they are already set — do not re-ask.
 - Resume ($ARGUMENTS empty): read `specs/ACTIVE`. If it starts with
   `worktree:`, the feature lives in that worktree — call EnterWorktree with
   `path` set to it, then read specs/ACTIVE there. Resume from the `phase:`
@@ -99,7 +131,8 @@ instead of duplicating the whole file.
   give per-stage cost deltas), `state set plan_approved yes` /
   `review_approved yes` at the gates, `state task <id> <status>` as tasks
   move. Hand-edit only what the CLI doesn't cover: the initial tasks
-  table, amendments, waived findings, tests run.
+  table, amendments, waived findings, tests run, `stages_skipped:`
+  (the adaptive skip-list), and `tier_offset:` (the auto-route read).
 - Keep the `## metrics` counters current with
   `sdd-state bump <counter>` at the events the pipeline file
   names (verify_retries, tasks_blocked, ambiguities, file_list_fixes,
@@ -112,8 +145,10 @@ instead of duplicating the whole file.
   refusal as a stop signal to diagnose, never something to work around
   with raw git.
 - The ONLY times you take user input are: the intake menu at the very
-  start, GATE 1 (after plan), and GATE 2 (after review). Nothing between
-  those points pauses for the user — not a behavioral ambiguity, not a
+  start, GATE 1 (after plan), and GATE 2 (after review) — and either gate is
+  dropped when config.autopilot skips it (its decision then moves to the
+  final report per the commit stage's close; with both skipped, intake is the
+  sole touchpoint). Nothing between those points pauses for the user — not a behavioral ambiguity, not a
   file-list miss, not a blocked task. When a mid-pipeline decision you might
   once have asked about comes up, RESOLVE IT YOURSELF with best judgment
   (the spec's summary / non-goals / constraints and the surrounding code are
@@ -145,6 +180,33 @@ instead of duplicating the whole file.
 - After a gate routes backward (spec-writer / planner / implementer), re-run
   only the affected downstream work (delta), not the whole pipeline.
 
+## model routing (config.models)
+
+Model tier is centralized in `config.models` (role -> tier), so a rebalance is
+one edit there instead of a sweep across `agents/*.md`, and it layers through
+`extends:`. Apply it at EVERY spawn:
+
+- Agent-tool spawns (any `sdd:sdd-<name>` you launch directly — the scouts on
+  the research fallback path, an inline judge re-run, a spec-writer/planner
+  revision, etc.): the `config.models` KEY is the agent's file basename, i.e.
+  the whole `sdd-<name>` (agent `sdd:sdd-planner` keys on `sdd-planner`, NOT
+  `planner`). If `config.models` has that key, pass its value as the spawn's
+  `model`. No entry (or no `config.models` block at all) -> pass no model and
+  let the agent's frontmatter default stand. EFFORT always comes from
+  frontmatter — never override it here.
+- Workflow spawns (research, review): the scripts spawn via `agentType` and
+  cannot read the pipeline file, so THREAD the map in. Add `models:
+  config.models` (the whole map, as real json) to the `args` you pass the
+  Workflow tool. Each script applies `models[<agent-name>]` as that agent's
+  model override and falls back to frontmatter when the map lacks the key —
+  so passing nothing preserves today's behavior.
+
+This is override-with-fallback: `config.models` wins where it speaks,
+frontmatter fills every gap. Deleting the block restores pre-config behavior
+exactly. When config.auto_route is on, the map you apply here is the
+OFFSET-SHIFTED effective map, not config.models verbatim — see "## model tier
+auto-routing".
+
 ## context discipline (applies to every spawn)
 
 - Pass each agent ONLY what its agent-file "inputs" contract lists: compact
@@ -175,8 +237,8 @@ if present, else `$(sdd-path templates/learning.md)`):
   testbed, conventions, file layout). Run `sdd-git learnings-dir`
   to get its directory — it prints (and creates)
   `<claude-config>/sdd-learnings/<munged-repo>`, keyed by the main
-  checkout's absolute path (same convention `cost` uses for
-  `cost-actuals.json`), so a feature or task worktree all resolve the same
+  checkout's absolute path (same convention `sdd-cost` uses for its
+  per-project transcripts), so a feature or task worktree all resolve the same
   directory. Its index is `<that-dir>/INDEX.md`. NEVER written into the
   project's own tree — nothing to gitignore there, and it persists across
   every worktree and every feature regardless of the project's own git
@@ -252,9 +314,10 @@ executed by a Workflow script, not by you spawning agents:
   via `sdd-path <config.workflows.name>` — and pass that ABSOLUTE path as
   `scriptPath`.
 - Build `args` exactly as the stage's `orchestrator` note describes, as
-  real json (objects and arrays, never a json-encoded string). Everything
-  around the call stays yours: angle selection, round 0, gates, state.md,
-  metrics, learnings.
+  real json (objects and arrays, never a json-encoded string), PLUS
+  `models: config.models` so the script can route each agent's tier (see
+  "## model routing"). Everything around the call stays yours: angle
+  selection, round 0, gates, state.md, metrics, learnings.
 - Workflow-spawned agents return schema-validated json — the result object
   is the machine payload, no parsing (the research scouts are the one
   exception: they return markdown reports the orchestrator synthesizes). A
@@ -296,6 +359,86 @@ Because the user never saw the plan, GATE 2 restates the auto-approval
 gate, and an objection there routes exactly like any other "spec or plan
 wrong" gate-2 finding. A project or profile can set this false in its
 pipeline.yaml to restore the always-ask gate 1.
+
+## adaptive stage selection (config.adaptive)
+
+Between "full `/sdd:run`" and "hand off to `/sdd:quick`" there is a middle
+ground: run `/sdd:run` but SKIP the optional stages this feature does not need.
+When `config.adaptive.enabled` (default true), you own that judgment — never
+silently. The rules:
+
+- **What is skippable.** Only a stage (or substep) that carries `optional:
+  true` / `critics_optional: true` in the pipeline file. Today that is the
+  `research` stage and the `spec` stage's two critics. Everything else — spec
+  writer, plan, implement, review, test, commit — always runs. Never invent a
+  skip the pipeline file does not mark optional.
+- **When you decide.** At the very start, as part of resolving the intake
+  `depth` question (see "start or resume" step 3). For each optional stage read
+  its `skip_when:` heuristic against this feature and decide run/skip with a
+  one-line reason. `research` must be decided here because it runs first; the
+  critics decision can be made now or refreshed once the spec exists.
+- **Record it.** Write the skip-list to `state.md`'s `stages_skipped:` field
+  (stage name + one-line reason each; `none` if nothing skipped) before the
+  stage would have run, and `state log` it. A skipped stage's `when_skipped:`
+  note in the pipeline file says how to keep downstream inputs intact (e.g.
+  research writes a stub research.md) — follow it; never leave the next stage
+  without its contract.
+- **Surface for veto.** The skip-list is an auto-decision: restate it at GATE 1
+  in the plan summary (and at GATE 2 when gate 1 auto-approved), exactly like an
+  intake "you decide" choice. If the user objects, un-skip the named stage and
+  run it as a delta before continuing — route it like a gate "modify".
+- **Off switch.** `config.adaptive.enabled: false` forces the full graph: run
+  every stage, propose no skips, and set `stages_skipped: none`. The `stages`
+  intake answer does the same per-run: `full` forces the full graph regardless
+  of config; `tailor`/`you decide` runs the normal proposal above.
+
+This is discretion with a receipt: the model tailors the graph, the human keeps
+the veto, and nothing is dropped without a recorded reason.
+
+## model tier auto-routing (config.auto_route)
+
+`config.models` is the BASELINE role -> tier map. When
+`config.auto_route.enabled` (default false — off leaves that map untouched and
+this whole section inert), you take ONE difficulty read for the feature at intake
+and shift the whole map up or down a rung for this run. Like the adaptive
+skip-list, this is your judgment, never silent.
+
+- **The ladder and the offset.** Tiers rank `haiku < sonnet < opus`. The read
+  yields an offset applied to EVERY role in config.models and clamped at the ends:
+    - **heavy (+1)** — unfamiliar subsystem, cross-cutting change, subtle
+      invariants / concurrency / data-flow: bump each role up (haiku->sonnet,
+      sonnet->opus, opus stays).
+    - **standard (0)** — the common case: config.models unchanged.
+    - **light (-1)** — trivial, isolated, mechanical, well-understood: bump each
+      role down (opus->sonnet, sonnet->haiku, haiku stays).
+- **When you decide.** At the very start, alongside the intake depth /
+  adaptive-skip resolution (see "start or resume" step 3), from the feature
+  description and any base-spec context — before any agent spawns, so the first
+  scouts already run at the chosen tier. An explicit `tier` intake answer
+  (standard|heavy|light) OVERRIDES this read; you only take the read when that
+  answer is "you decide".
+- **How to apply it.** Do NOT teach the spawn sites about offsets. Resolve the
+  EFFECTIVE map once — apply the offset to config.models with ladder clamping —
+  and use that effective map everywhere config.models is used per "## model
+  routing": as each Agent-tool spawn's `model`, and as the `models:` arg threaded
+  to the research / review workflows. The scripts stay unchanged; they receive an
+  already-shifted plain map. Offset 0 => the effective map IS config.models.
+- **Composition with complexity.** Orthogonal: the per-task `complexity` tag
+  picks WHICH agent (implementer-lite vs implementer), this offset then shifts
+  that agent's tier. A heavy feature runs a simple task's lite implementer at
+  sonnet and a standard task's implementer at opus.
+- **Record it.** Write the read + one-line reason to state.md's `tier_offset:`
+  (`standard` when offset 0) before the first spawn, and `state log` it.
+- **Surface for veto.** Restate it at GATE 1 in the plan summary (and at GATE 2
+  when gate 1 auto-approved), exactly like the adaptive skip-list and intake
+  auto-decisions. If the user objects, re-resolve the offset per their note and
+  rebuild the effective map for the remaining stages — no completed stage reruns.
+- **Bias.** Lean toward `standard`; reserve `light` for genuinely trivial
+  features, because a light read can route a standard-complexity task to haiku,
+  and a down-route is costlier to get wrong than an up-route. When torn between
+  two reads, pick the higher one.
+- **Off switch.** `config.auto_route.enabled: false` (default) => no read,
+  `tier_offset: standard`, config.models used verbatim.
 
 ## hardware tests
 

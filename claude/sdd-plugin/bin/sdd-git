@@ -41,7 +41,7 @@ usage:
                  default is the PROJECT scope:
                  <claude-config>/sdd-learnings/<munged-repo>, keyed by the
                  main checkout's absolute path (main_root(), same as wt_path)
-                 the same way cost's cost-actuals.json is keyed to a project
+                 the same way sdd-cost keys its per-project transcript dir
                  — so a feature or task worktree resolves the identical
                  directory, and it never writes anything into the project's
                  own tree (nothing to gitignore there). --global prints the

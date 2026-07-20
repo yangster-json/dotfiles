@@ -19,8 +19,8 @@ pipeline earning its tokens":
 the counters are maintained by /sdd:run in each state.md's ## metrics
 section; parsing lives in statelib.py. learnings are counted from this
 project's scope: <claude-config>/sdd/learnings/<munged-root>/*.md (never
-inside the project itself — same keyed-by-project convention as
-cost-actuals.json). global lessons in <claude-config>/sdd/learnings/ are
+inside the project itself — keyed by the project's munged absolute path).
+global lessons in <claude-config>/sdd/learnings/ are
 shared across every project, so they aren't counted here.
 """
 import glob

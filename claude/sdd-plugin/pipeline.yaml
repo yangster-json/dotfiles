@@ -3,13 +3,46 @@
 # a project may override it with its own .claude/sdd/pipeline.yaml (/sdd:run
 # prefers the project copy).
 # edit this file to reshape the pipeline (stages, gates, routing).
-# edit the plugin's agents/*.md to reshape agent behavior — MODELS AND EFFORT
-# ARE PINNED THERE, in each agent's frontmatter; stage entries below name
-# agents, never models.
+# edit the plugin's agents/*.md to reshape agent behavior. EFFORT is pinned
+# there, in each agent's frontmatter. MODEL TIER defaults to frontmatter too,
+# but config.models below overrides it per role in ONE place (and layers via
+# `extends:`, which agent files cannot) — so a tier rebalance is a one-line
+# edit here, not a sweep across agents/*.md. stage entries still name agents,
+# never models.
 # /sdd:run interprets this file top to bottom, resuming from the phase in
 # specs/<slug>/state.md.
 
 config:
+  # role -> model-tier routing, in ONE place. keyed by the agent's file
+  # basename `agents/<key>.md` (e.g. sdd-planner); that agent's agentType is
+  # `sdd:<key>` (sdd:sdd-planner). values are tier
+  # aliases (opus | sonnet | haiku) that always resolve to the current model of
+  # that tier, so a model refresh needs no edit here at all. this block exists
+  # for the OTHER axis — rebalancing which ROLE runs on which tier — which used
+  # to mean editing N agent frontmatters. now it is one edit here, and because
+  # it lives in config it layers through `extends:` (a profile can shift the
+  # whole pipeline up a tier for a hard codebase without shipping agent-file
+  # overrides). EFFORT is deliberately NOT here — it is tied to each agent's
+  # behavior and stays pinned in frontmatter.
+  #   authority: an entry here OVERRIDES that agent's frontmatter `model:`.
+  #   a missing entry (or the whole block absent) falls back to frontmatter —
+  #   so deleting this block restores the pre-config behavior exactly.
+  # run.md's "## model routing" applies these at every spawn (Agent-tool and
+  # workflow paths alike); the workflow scripts read the same map from args.
+  models:
+    sdd-researcher:        haiku
+    sdd-researcher-deep:   sonnet
+    sdd-spec-writer:       opus
+    sdd-spec-critic:       opus
+    sdd-spec-critic-lite:  sonnet
+    sdd-planner:           opus
+    sdd-implementer:       sonnet
+    sdd-implementer-lite:  haiku
+    sdd-verifier:          sonnet
+    sdd-reviewer:          sonnet
+    sdd-review-judge:      opus
+    sdd-test-recommender:  sonnet
+
   # repo-relative; the authoritative standard
   coding_standard: docs/coding_standard.md
 
@@ -115,9 +148,10 @@ config:
   # conditional rounds, withdrawal filtering, schema-validated agent
   # outputs. the values below resolve to the bundled script via
   # `sdd-path <value>`, unless a project ships its own .claude/sdd/<value>
-  # override. invocation and fallback rules live in run.md; agent models
-  # stay pinned in agent frontmatter (the scripts spawn via agentType,
-  # never set model).
+  # override. invocation and fallback rules live in run.md. the scripts spawn
+  # via agentType; the orchestrator passes config.models into the workflow
+  # args, and each script applies it as a per-agent model override (frontmatter
+  # is the fallback when the map has no entry).
   workflows:
     research: workflows/research.js   # bundled; resolve via `sdd-path <value>`
     review: workflows/review.js       # (or a project .claude/sdd/<value> override)
@@ -140,6 +174,20 @@ config:
     # "start or resume" + the implement stage, not restated here. /sdd:quick
     # always runs in place, no worktree.
 
+  # adaptive stage selection — lets the pipeline BEND to the feature's shape
+  # instead of always running the full graph or falling back to /sdd:quick.
+  # when enabled (default), the orchestrator proposes which OPTIONAL stages to
+  # skip for this feature (a stage is optional only if it carries `optional:
+  # true` below — today: research and the spec-critics substep; the core
+  # research-less stages, implement, review, test, commit are never skippable).
+  # the proposal is judgment, so the model owns it — but it is never silent:
+  # the skip-list is recorded in state.md and RESTATED AT GATE 1 for veto
+  # (and at gate 2 when gate 1 auto-approved), exactly like an intake
+  # auto-decision. mechanics live in run.md's "## adaptive stage selection".
+  # set false in a project/profile to force the full graph every run.
+  adaptive:
+    enabled: true
+
   # gate 1 (plan approval) is normally a human checkpoint. when true, the
   # plan stage's gate: block (below) skips it automatically IF every task
   # in tasks.md is tagged complexity: simple and nothing else forces a
@@ -149,6 +197,55 @@ config:
   # true: trivial plans skip gate 1 unless a project/profile sets this
   # false to restore the always-ask behavior.
   gate1_skip_if_simple: true
+
+  # unattended run — auto-PASS the human gates and run straight through to
+  # commit, so you inspect the finished commit instead of gating mid-flight.
+  # each gate is independent (skip one, keep the other). a skipped gate is
+  # never silent: its decision is recorded in state.md and surfaced in the
+  # FINAL report, and the recovery ladders / fix loops still run — this trades
+  # the checkpoints for throughput, it does NOT lower the quality bar.
+  #   gate1:
+  #     ask  (default) -> normal GATE 1, subject to gate1_skip_if_simple above
+  #     skip           -> plan gate auto-approved UNCONDITIONALLY (supersedes
+  #                       gate1_skip_if_simple): set plan_approved yes +
+  #                       gate1_auto_approved yes, log the plan + coverage,
+  #                       unlock source edits, continue to implement
+  #   gate2:
+  #     ask  (default) -> normal GATE 2
+  #     skip           -> review gate auto-approved: confirmed findings take the
+  #                       "just fix the code" route (fix tasks -> re-review delta
+  #                       ONCE); anything still confirmed after that round is
+  #                       WAIVED-and-reported (never silently dropped); set
+  #                       review_approved yes + gate2_auto_approved yes, continue
+  # set BOTH to skip for a fully unattended run to commit (the only remaining
+  # human touchpoint is the intake menu — pre-answer it via args to unattend
+  # that too). default ask/ask preserves today's two-checkpoint behavior.
+  autopilot:
+    gate1: ask     # ask | skip
+    gate2: ask     # ask | skip
+
+  # feature-level model-tier auto-routing. config.models above is the BASELINE
+  # role -> tier map; this shifts the WHOLE map up or down one rung for THIS
+  # feature, from a single difficulty read taken once at intake. the tier ladder
+  # is haiku < sonnet < opus; the read yields an offset applied to every role and
+  # clamped at the ends (mechanics in run.md's "## model tier auto-routing"):
+  #   heavy  (+1) unfamiliar subsystem, cross-cutting change, subtle
+  #               invariants/concurrency/data-flow -> bump every role up a rung
+  #               (haiku->sonnet, sonnet->opus, opus stays)
+  #   standard (0) baseline — config.models unchanged (the common case)
+  #   light  (-1) trivial, isolated, mechanical, well-understood -> bump every
+  #               role down a rung (opus->sonnet, sonnet->haiku, haiku stays)
+  # this composes UNDER the per-task complexity tag: complexity picks WHICH
+  # implementer (lite vs standard), this offset then shifts that agent's tier.
+  # the read is an auto-decision with a receipt — recorded in state.md's
+  # tier_offset: and RESTATED AT GATE 1 for veto, exactly like the adaptive
+  # skip-list. bias toward standard; reserve `light` for genuinely trivial
+  # features because it can route a standard-complexity task to haiku, and a
+  # down-route is costlier to get wrong than an up-route. default false: today's
+  # static config.models routing is unchanged until you set this true (delete
+  # the block or leave it false to restore the exact pre-feature behavior).
+  auto_route:
+    enabled: false
 
   # how hard the pipeline tries to RESCUE a failing task or test before it
   # gives up. a dead end (a blocked task, a still-red test halt) is the only
@@ -200,8 +297,47 @@ config:
       - hw_test    # options: testbed+bay now, decide at gate 2, no hw tests.
                    # you-decide -> follow the test-recommender's hw_required.
       - depth      # options: full pipeline, /sdd:quick.
-                   # you-decide -> pick by feature size; if quick, hand off
-                   # to /sdd:quick and say so.
+                   # you-decide -> pick by feature size. tiny/isolated -> hand
+                   # off to /sdd:quick and say so. otherwise stay on /sdd:run
+                   # but, when config.adaptive.enabled, TAILOR it: propose the
+                   # optional stages to skip (see "## adaptive stage selection"
+                   # in run.md) rather than always running the full graph. the
+                   # tailoring is restated at gate 1 for veto.
+      - gates      # when should I stop for you? sets config.autopilot for THIS
+                   # run (recorded in state.md autopilot, overriding the config
+                   # default). options:
+                   #   both gates        -> gate1 ask, gate2 ask (the default)
+                   #   skip plan gate    -> gate1 skip, gate2 ask
+                   #   unattended        -> gate1 skip, gate2 skip; launch and
+                   #                        review the finished commit (the plan
+                   #                        + findings land in the final report)
+                   # you-decide -> use config.autopilot as written (ask/ask
+                   # unless a project/profile changed it). asked once up front
+                   # so an unattended run needs no further looking.
+      # the questions below pre-answer decisions that otherwise surface LATER
+      # (a gate veto, a halt). each defaults to you-decide = today's behavior,
+      # so they only matter to someone front-loading an unattended launch.
+      - tier       # model tier for this feature -> state.md tier_offset,
+                   # overriding the auto_route read. options: standard | heavy |
+                   # light. you-decide -> the auto_route difficulty read when
+                   # config.auto_route.enabled, else standard.
+      - stages     # stage selection. options: full graph | tailor (skip the
+                   # optional stages this feature doesn't need). you-decide ->
+                   # tailor when config.adaptive.enabled, else full. `full`
+                   # forces state.md stages_skipped: none regardless of config.
+      - on_findings # default disposition for CONFIRMED review findings ->
+                   # state.md findings_policy. options: fix (fix tasks ->
+                   # re-review) | waive (record + report, ship as-is) | stop
+                   # (pause for me even under autopilot). used verbatim when
+                   # gate2 is skipped; pre-selects the gate-2 route when it asks.
+                   # you-decide -> fix.
+      - on_test_fail # policy when tests stay red after
+                   # config.recovery.test_fix_rounds -> state.md
+                   # test_fail_policy. options: halt (stop + report, default) |
+                   # proceed (commit anyway with red tests led prominently in
+                   # the report — never faked as passing). you-decide -> halt.
+      - pr         # when done -> state.md pr. options: stop at commit (default)
+                   # | open a PR (skill fw-pr). you-decide -> stop at commit.
 
 # context rules for every spawn live in the /sdd:run command file (run.md) —
 # that is the single source; they are deliberately not restated here.
@@ -210,6 +346,22 @@ pipeline:
 
   - stage: research
     run_via: workflow research     # config.workflows — the script owns the fan-out
+    optional: true                 # adaptive: may be skipped (config.adaptive)
+    skip_when: >
+      the change is small AND the touched area is already covered by the living
+      base specs (config.spec_base) or is otherwise well-understood from the
+      feature description alone — nothing to enumerate or trace that the
+      spec-writer and planner cannot read directly. NOT skippable when the
+      feature spans an unfamiliar subsystem, needs cross-file/data-flow
+      reasoning, or has open questions the scouts would resolve.
+    when_skipped: >
+      do NOT leave downstream stages without their input contract: the
+      orchestrator writes a short research.md stub from the matching base-spec
+      contracts plus a targeted grep of the touched files (conventions +
+      interfaces only), and notes at the top that scouts were skipped. the
+      spec-writer and planner read that stub exactly as they would a full
+      research.md. the skip and its one-line reason are recorded in state.md
+      and restated at gate 1.
     agents: 2-4 scouts in parallel — sdd:sdd-researcher for enumeration and
       convention angles (file layout, test conventions, naming);
       sdd:sdd-researcher-deep for angles that need cross-file reasoning
@@ -233,13 +385,24 @@ pipeline:
   - stage: spec
     agents: sdd:sdd-spec-writer, then sdd:sdd-spec-critic + sdd:sdd-spec-critic-lite
       (parallel)
+    critics_optional: true         # adaptive: the WRITER always runs; the two
+                                   # critics are the skippable substep
+    critics_skip_when: >
+      the spec is short and low-risk — few requirements, no new external
+      contract, no base-spec overlap to contradict, nothing a feasibility or
+      consistency pass would realistically catch. NOT skippable when the spec
+      introduces new interfaces, touches a shared/base-spec area, or carries
+      requirements with non-obvious edge cases. skipping the critics never
+      skips the writer, and the spec still reaches the human at gate 1; the
+      skip and its reason are recorded in state.md and restated there.
     input: >
       writer — slug, feature description, open questions from research.md,
       matching learnings; critics — slug only, run in parallel: sdd:sdd-spec-critic
       hunts feasibility + edge-cases, sdd:sdd-spec-critic-lite hunts testability +
       consistency (each agent file owns its focus). they read the artifacts
       themselves.
-    revision: one round if any critic returns a blocking finding;
+    revision: one round if any critic returns a blocking finding (skipped when
+      the critics were skipped per critics_skip_when);
       unresolved blockers are surfaced at gate 1, not looped again
     output: specs/<slug>/spec.md
     gate: none
@@ -250,6 +413,16 @@ pipeline:
     output: specs/<slug>/tasks.md + tasks table mirrored into state.md,
       each task tagged complexity simple|standard
     gate: |
+      autopilot check (state.md autopilot gate1 — resolved at intake from the
+      `gates` question, default from config.autopilot.gate1): if `skip`,
+      auto-approve UNCONDITIONALLY regardless of complexity — `state set
+      plan_approved yes`, `state set gate1_auto_approved yes`, `state log` the
+      plan (task count + titles) and coverage, unlock source edits, and
+      continue straight to implement. This supersedes the gate1_skip_if_simple
+      check below. Because no human saw the plan, it is surfaced later: at
+      gate 2 if that gate still asks, else in the final report (see the commit
+      stage's close).
+
       auto-approve check (config.gate1_skip_if_simple, default true): if
       true AND every task row in tasks.md is tagged complexity: simple AND
       the planner returned zero unplannable requirements AND no spec critic
@@ -265,7 +438,9 @@ pipeline:
       checkpoint before commit.
 
       GATE 1 (human) — present plan, coverage map (including any requirements
-      the planner returned as unplannable), unresolved spec blockers, and
+      the planner returned as unplannable), unresolved spec blockers, the
+      adaptive stage-skip list (state.md stages_skipped, if any), the model-tier
+      auto-route read (state.md tier_offset, when not standard), and
       every intake auto-decision (for veto).
       record the outcome in state.md immediately; then this is a safe /clear
       point (resume is lossless via /sdd:run).
@@ -439,15 +614,38 @@ pipeline:
       round_1, round_2_combat, and judge yourself via the Agent tool
       exactly as written above, and note it once in the final report.
     gate: |
+      autopilot check (state.md autopilot gate2 — resolved at intake from the
+      `gates` question, default from config.autopilot.gate2): if `skip`,
+      auto-approve without asking, disposing of confirmed findings (round 0
+      M-findings + judge-confirmed) per state.md findings_policy:
+        fix   -> the "just fix the code" route below: fix tasks (F1..), run the
+                 implement loop, re-review the delta ONCE; anything still
+                 confirmed after that round is WAIVED and reported (increment
+                 findings_waived, record a learning) — never silently dropped.
+        waive -> record every confirmed finding under waived findings
+                 (increment findings_waived, record a learning) and ship as-is.
+        stop  -> do NOT auto-approve: halt and present the findings for the
+                 user, exactly like GATE 2 below (autopilot yields to a genuine
+                 problem). a clean review still auto-approves.
+      Then (fix/waive) `state set review_approved yes`, `state set
+      gate2_auto_approved yes`, `state log` the finding tally, and continue to
+      test. A clean review just auto-approves regardless of policy. The final report (commit stage
+      close) carries the confirmed/fixed/waived findings and — when gate 1 was
+      also skipped — the plan, since this run reached commit with no human look.
+
       GATE 2 (human) — present confirmed findings (or the clean-review
       shortcut), rejected count, and the test recommendations. if
       state.md's gate1_auto_approved is yes, restate it here in one line
-      (task count/titles, from the plan stage's log note) — the user's
-      first look at the plan is now this gate, so treat an objection to it
-      as "spec or plan wrong" routing (below), same as any other gate-2
-      finding. supply testbed/bay here if config.hw_test is empty. record
+      (task count/titles, from the plan stage's log note) AND restate the
+      adaptive stage-skip list (state.md stages_skipped, if any) and the
+      model-tier auto-route read (state.md tier_offset, when not standard) — the user's
+      first look at the plan is now this gate, so treat an objection to
+      either as "spec or plan wrong" routing (below), same as any other
+      gate-2 finding. supply testbed/bay here if config.hw_test is empty. record
       the outcome in state.md immediately; then this is a safe /clear point.
-      routes (4, finding-level, free text can mix them):
+      routes (4, finding-level, free text can mix them; state.md findings_policy
+      pre-selects the default — fix->"just fix the code", waive->waive,
+      stop/none->await your choice):
         approve            -> review_approved: yes, continue to test
         spec or plan wrong -> YOU decide which from the user's note
                               (increment gate2_reroutes): spec-level ->
@@ -477,8 +675,11 @@ pipeline:
       that test ONCE rather than spawning a fix; a genuine failure -> it
       becomes a fix task (increment test_failures) that runs the implement
       loop at escalating effort, then re-run only the failed tests. still red
-      after the last round -> stop and report (the one true post-gate-2 dead
-      end); the user decides. never fake a pass to avoid the halt.
+      after the last round -> per state.md test_fail_policy: `halt` (default)
+      stops and reports (the one true post-gate-2 dead end; the user decides);
+      `proceed` continues to commit but the final report LEADS with the red
+      tests (name + output) so the failure is impossible to miss. never fake a
+      pass to avoid the halt, and never let `proceed` present red as green.
     gate: none
 
   - stage: commit
@@ -496,7 +697,8 @@ pipeline:
         own_commit   -> one SEPARATE final commit ("FW-XXXXX: sdd
                         artifacts for <slug>") after the code commits
         untracked    -> never staged; /sdd:cleanup archives specs/<slug>/
-      never push; open a pr only if the user asks (skill fw-pr).
+      never push. open a pr when state.md pr=open (skill fw-pr) or the user
+      asks; otherwise stop at commit.
     close: >
       harvest learnings before closing: any gate reroute, blocked task,
       waived finding, or vetoed auto-decision without a learning entry gets
@@ -505,5 +707,13 @@ pipeline:
       and the worktree-pointer specs/ACTIVE in the main checkout (first
       path in `git worktree list`) if one exists. report the commit list,
       the branch + worktree path, and anything waived, blocked, or skipped.
+      when a gate was auto-passed by config.autopilot (state.md
+      gate1_auto_approved / gate2_auto_approved yes), the report is the user's
+      FIRST look at what that gate would have shown — so include it: for a
+      skipped gate 1, the plan (task count + titles) and coverage map; for a
+      skipped gate 2, the confirmed findings (fixed vs waived) and the test
+      recommendations. also restate stages_skipped and tier_offset (when not
+      standard). this is the post-commit inspection the unattended run trades
+      the gates for — make it complete enough to review from.
       KEEP the feature worktree — /sdd:cleanup removes worktrees and
       branches after the pr merges.

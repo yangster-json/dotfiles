@@ -7,6 +7,13 @@ phase: research  <!-- research | spec | plan | implement | review | test | commi
 plan_approved: no    <!-- gate 1 — unlocks source edits (enforced by hook) -->
 gate1_auto_approved: no  <!-- yes if config.gate1_skip_if_simple approved this without asking; restated at gate 2 -->
 review_approved: no  <!-- gate 2 -->
+gate2_auto_approved: no  <!-- yes if config.autopilot.gate2=skip approved this without asking; findings surfaced in the final report -->
+autopilot: gate1=ask,gate2=ask  <!-- resolved at intake (the `gates` question), overrides config.autopilot for this run; the gate stages read THIS. default ask,ask = normal two-gate flow -->
+findings_policy: fix   <!-- intake on_findings: fix|waive|stop — disposition for confirmed review findings; used verbatim when gate2 skipped, pre-selects the route when gate2 asks -->
+test_fail_policy: halt <!-- intake on_test_fail: halt|proceed — what to do when tests stay red after config.recovery.test_fix_rounds; proceed commits anyway with red tests led in the report, never faked -->
+pr: none               <!-- intake pr: none|open — open a PR after commit (skill fw-pr) -->
+stages_skipped: none <!-- adaptive (config.adaptive): optional stages skipped for this feature, each with a one-line reason; restated at gate 1. `none` = full graph -->
+tier_offset: standard <!-- auto-route (config.auto_route): feature difficulty read taken at intake — light|standard|heavy + one-line reason — shifts config.models up/down one rung for every spawn; restated at gate 1. `standard` = baseline map unchanged (also the value when auto_route is disabled) -->
 base_ref:            <!-- feature-branch HEAD after the specs snapshot; review/test diff against this -->
 hw_testbed: none     <!-- e.g. fw-comet02 — from pipeline config or gate 2 -->
 hw_bay: none         <!-- e.g. 19 -->

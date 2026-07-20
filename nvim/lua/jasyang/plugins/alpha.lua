@@ -36,18 +36,45 @@ return {
       "  ╚═╝  ╚═══╝╚══════╝ ╚═════╝   ╚═══╝  ╚═╝╚═╝     ╚═╝ ",
       "                                                     ",
     }
-    dashboard.section.footer.val = "Total plugins: " .. require("lazy").stats().count
-    dashboard.section.header.opts.hl = "Question"
+    dashboard.section.footer.val = "⚡ Total plugins: " .. require("lazy").stats().count
+    -- AlphaHeader/AlphaButtons/AlphaShortcut/AlphaFooter come from catppuccin
+    dashboard.section.header.opts.hl = "AlphaHeader"
+    dashboard.section.footer.opts.hl = "AlphaFooter"
     dashboard.section.buttons.val = {
-      dashboard.button("s", " Open last session", "<cmd>AutoSession restore<CR>"),
-      dashboard.button("r", " Find string", ":Telescope live_grep<CR>"),
-      dashboard.button("f", " Find file", ":Telescope find_files<CR>"),
-      dashboard.button("e", " New file", ":enew<CR>"),
-      dashboard.button("b", " Jump to bookmarks", ":Telescope marks<CR>"),
-      dashboard.button("p", " Update plugins", ":Lazy sync<CR>"),
-      dashboard.button("q", " Exit", ":qa<CR>"),
+      dashboard.button("s", "🕘  Open last session", "<cmd>AutoSession restore<CR>"),
+      dashboard.button("r", "🔎  Find string", ":Telescope live_grep<CR>"),
+      dashboard.button("f", "🔍  Find file", ":Telescope find_files<CR>"),
+      dashboard.button("e", "📁  Open file explorer", ":NvimTreeToggle<CR>"),
+      dashboard.button("n", "📄  New file", ":enew<CR>"),
+      dashboard.button("b", "🔖  Jump to bookmarks", ":Telescope marks<CR>"),
+      dashboard.button("p", "🧩  Update plugins", ":Lazy sync<CR>"),
+      dashboard.button("q", "👋  Exit", ":qa<CR>"),
+    }
+    for _, button in ipairs(dashboard.section.buttons.val) do
+      button.opts.hl = "AlphaButtons"
+      button.opts.hl_shortcut = "AlphaShortcut"
+    end
+
+    dashboard.config.layout = {
+      { type = "padding", val = 2 },
+      dashboard.section.header,
+      { type = "padding", val = 2 },
+      dashboard.section.buttons,
+      { type = "padding", val = 1 },
+      dashboard.section.footer,
     }
     alpha.setup(dashboard.config)
+
+    -- update footer once lazy has measured startup time
+    vim.api.nvim_create_autocmd("User", {
+      pattern = "LazyVimStarted",
+      callback = function()
+        local stats = require("lazy").stats()
+        local ms = math.floor(stats.startuptime * 100 + 0.5) / 100
+        dashboard.section.footer.val = "⚡ " .. stats.loaded .. "/" .. stats.count .. " plugins loaded in " .. ms .. "ms"
+        pcall(vim.cmd.AlphaRedraw)
+      end,
+    })
 
     -- Disable folding on alpha buffer
     vim.cmd([[autocmd FileType alpha setlocal nofoldenable]])

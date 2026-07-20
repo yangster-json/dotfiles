@@ -49,9 +49,11 @@ development to run the source in place).
 ```
 .claude-plugin/plugin.json    manifest (name: sdd)
 commands/                     run, quick, status, cleanup
-agents/                       the 12 subagents — MODELS + EFFORT pinned in frontmatter
-bin/                          sdd-git sdd-state sdd-cost sdd-quality sdd-watch
-                              sdd-status sdd-path  (on the Bash PATH while enabled)
+agents/                       the 12 subagents — EFFORT pinned in frontmatter;
+                              MODEL tier defaults there but config.models overrides it
+bin/                          sdd-git sdd-state sdd-cost sdd-quality sdd-status
+                              sdd-path  (on the Bash PATH while enabled;
+                              sdd-watch is an alias of `sdd-status --full`)
 hooks/hooks.json + require-plan-approval.py   gate-1 enforcement (PreToolUse)
 templates/                    state, spec, tasks, research, subspec, learning, base-spec
 workflows/                    research.js, review.js — Workflow fan-out scripts
@@ -74,33 +76,31 @@ invoked as `sdd:sdd-<name>`.
 
 ## persistent data (outside the plugin cache)
 
-Learnings and cost calibration must survive `/plugin update`, so they live
-under the Claude config dir, never in the cache:
+Learnings must survive `/plugin update`, so they live under the Claude config
+dir, never in the cache:
 
 - `<claude-config>/sdd-learnings/<munged-repo>/` — per-project learnings
   (`sdd-git learnings-dir`)
 - `<claude-config>/sdd-learnings/_global/` — cross-project learnings
   (`sdd-git learnings-dir --global`)
-- `<claude-config>/projects/<munged-root>/cost-actuals.json` — as-billed
-  totals for `sdd-cost` calibration
 
 ## status display
 
 There is no persistent statusline (a plugin can't register one). View status
-on demand instead:
+on demand with one command:
 
 - `sdd-status` — the compact one-liner (phase / tasks / gates / hw)
-- `sdd-watch` — the full dashboard; `sdd-watch --loop` for a live tmux pane
+- `sdd-status --full [slug]` — the full dashboard (phase ladder, task table, log)
+- `sdd-status --loop [sec]` — a live dashboard for a tmux side pane
 
-## note: cost calibration
+(`sdd-watch` stays as a thin alias for `sdd-status --full`.)
 
-`sdd-cost` auto-calibrates its dollar estimates against Claude Code's
-as-billed session totals. That total is only exposed to a **statusLine**
-command — which this plugin deliberately does not register. Without a
-statusline caching those totals, `sdd-cost` falls back to its base price
-table (accurate for current model pricing, just not calibrated to your exact
-billing). If you want calibration back, add a minimal cost-caching statusLine
-to your settings, or feed `cost-actuals.json` another way.
+## note: cost estimates
+
+`sdd-cost` reports exact token counts (from the session transcripts) and
+estimates dollars from a built-in price table — accurate for current model
+pricing, but not reconciled against your actual bill. If rates change, update
+the `PRICES` table at the top of `bin/sdd-cost`.
 
 ## migrating from a global `~/.claude/sdd` install
 

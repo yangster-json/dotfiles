@@ -1,76 +1,50 @@
-"""tests for cost's calibration and actuals loading."""
-import json
-import os
-import tempfile
+"""tests for cost's token aggregation and price-table estimate."""
 import unittest
-from unittest import mock
 
 from helpers import load_module
 
 cost = load_module("cost", "bin/sdd-cost")
 
 
-def rec(session, usd_estimate):
-    """a usage record whose est() lands at usd_estimate (output tokens on
-    the sonnet base rate of $15/M)."""
-    return {"session": session, "model": "claude-sonnet-5",
-            "tin": 0, "tout": int(usd_estimate / 15.0 * 1e6),
-            "cw": 0, "cr": 0}
+def rec(model="claude-sonnet-5", tin=0, tout=0, cw=0, cr=0):
+    return {"model": model, "tin": tin, "tout": tout, "cw": cw, "cr": cr}
 
 
-class TestCalibration(unittest.TestCase):
-    def test_median_ratio(self):
-        recs = [rec("s1", 1.0), rec("s2", 1.0), rec("s3", 1.0)]
-        actuals = {"s1": {"usd": 2.0}, "s2": {"usd": 3.0},
-                   "s3": {"usd": 4.0}}
-        factor, n = cost.calibration(recs, actuals)
-        self.assertEqual(n, 3)
-        self.assertAlmostEqual(factor, 3.0, places=1)
+class TestEstimate(unittest.TestCase):
+    def test_sonnet_output_rate(self):
+        # 1M sonnet output tokens at $15/M
+        self.assertAlmostEqual(cost.est(rec(tout=1_000_000)), 15.0, places=2)
 
-    def test_no_actuals_means_factor_one(self):
-        factor, n = cost.calibration([rec("s1", 1.0)], {})
-        self.assertEqual((factor, n), (1.0, 0))
+    def test_opus_input_rate(self):
+        # 1M opus input tokens at $5/M
+        self.assertAlmostEqual(
+            cost.est(rec(model="claude-opus-4-8", tin=1_000_000)), 5.0, places=2)
 
-    def test_tiny_sessions_excluded(self):
-        # sub-$0.10 sessions carry no calibration signal
-        factor, n = cost.calibration([rec("s1", 0.05)],
-                                     {"s1": {"usd": 5.0}})
-        self.assertEqual(n, 0)
+    def test_unknown_model_falls_back_to_default(self):
+        # an unrecognized model uses the sonnet default price
+        self.assertAlmostEqual(
+            cost.est(rec(model="mystery-9", tout=1_000_000)), 15.0, places=2)
 
 
-class TestLoadActuals(unittest.TestCase):
-    def test_merges_legacy_and_current(self):
-        with tempfile.TemporaryDirectory() as proj, \
-                tempfile.TemporaryDirectory() as cfg:
-            legacy = os.path.join(proj, ".claude")
-            os.makedirs(legacy)
-            with open(os.path.join(legacy, ".cost-actuals.json"), "w") as f:
-                json.dump({"old": {"usd": 1.0}, "both": {"usd": 1.0}}, f)
-            with mock.patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": cfg}):
-                cur = cost.st.actuals_path(proj)
-                os.makedirs(os.path.dirname(cur))
-                with open(cur, "w") as f:
-                    json.dump({"new": {"usd": 2.0}, "both": {"usd": 2.0}}, f)
-                data = cost.load_actuals(proj)
-        self.assertEqual(data["old"]["usd"], 1.0)
-        self.assertEqual(data["new"]["usd"], 2.0)
-        self.assertEqual(data["both"]["usd"], 2.0)  # current wins
+class TestAgg(unittest.TestCase):
+    def test_sums_tokens_and_cached_pct(self):
+        # cached = cr / (tin + cw + cr) = 900 / 1000 = 90%
+        t = cost.agg([rec(tin=100, cr=900, tout=50), rec(tout=50)])
+        self.assertEqual(t["tout"], 100)
+        self.assertEqual(t["cr"], 900)
+        self.assertAlmostEqual(t["cached_pct"], 90.0, places=1)
 
-    def test_missing_files_give_empty(self):
-        with tempfile.TemporaryDirectory() as proj, \
-                tempfile.TemporaryDirectory() as cfg:
-            with mock.patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": cfg}):
-                self.assertEqual(cost.load_actuals(proj), {})
+    def test_empty_is_zero(self):
+        t = cost.agg([])
+        self.assertEqual(t["usd"], 0.0)
+        self.assertEqual(t["cached_pct"], 0)
 
 
-class TestActualsPathIsOutsideProject(unittest.TestCase):
-    def test_cache_never_lands_in_repo(self):
-        with tempfile.TemporaryDirectory() as proj, \
-                tempfile.TemporaryDirectory() as cfg:
-            with mock.patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": cfg}):
-                path = cost.st.actuals_path(proj)
-            self.assertTrue(path.startswith(cfg))
-            self.assertFalse(path.startswith(proj))
+class TestFmtTok(unittest.TestCase):
+    def test_scales_by_magnitude(self):
+        self.assertEqual(cost.fmt_tok(500), "500")
+        self.assertEqual(cost.fmt_tok(5000), "5k")
+        self.assertEqual(cost.fmt_tok(2_500_000), "2.5M")
 
 
 if __name__ == "__main__":

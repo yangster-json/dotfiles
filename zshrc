@@ -73,6 +73,30 @@ ZSH_THEME="robbyrussell"
 plugins=(git)
 plugins+=(zsh-vi-mode)
 
+# oh-my-zsh's url-quote-magic / bracketed-paste-magic ZLE widgets mangle pastes
+# under zsh-vi-mode (e.g. capitalizing/reordering characters at the end of a
+# paste) and can conflict with zsh-syntax-highlighting. Disable them.
+DISABLE_MAGIC_FUNCTIONS=true
+
+# zsh-vi-mode's default "nex" readkey engine greedily slurps every byte that
+# follows an ESC within ZVM_ESCAPE_KEYTIMEOUT (0.03s). A paste arrives as one
+# fast burst starting with the bracketed-paste marker ^[[200~, so nex swallows
+# the whole paste before the bracketed-paste widget can match, and the markers
+# leak into the buffer as literal text (e.g. "200~"). The "zle" engine instead
+# uses zsh's native KEYTIMEOUT-based longest-match dispatch, so ^[[200~ binds to
+# bracketed-paste correctly. The zle engine sets KEYTIMEOUT=ZVM_KEYTIMEOUT*100,
+# so keep ZVM_KEYTIMEOUT small to avoid a laggy ESC (0.05 -> 50ms; bump it if
+# arrow keys / escape sequences over a slow link start misbehaving).
+ZVM_READKEY_ENGINE=zle
+ZVM_KEYTIMEOUT=0.05
+
+# always start each new prompt in insert mode (default retains the last mode,
+# which can strand you in normal mode). set from zvm_config, which zvm calls
+# after defining ZVM_MODE_INSERT.
+function zvm_config() {
+  ZVM_LINE_INIT_MODE=$ZVM_MODE_INSERT
+}
+
 source $ZSH/oh-my-zsh.sh
 
 # User configuration
@@ -147,6 +171,11 @@ zvm_after_init_commands+=('source <(fzf --zsh)')
 # apply the Catppuccin Mocha palette on top so its styles override the defaults.
 zvm_after_init_commands+=('source $ZSH_CUSTOM/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh')
 zvm_after_init_commands+=('source $ZSH_CUSTOM/catppuccin/catppuccin_mocha-zsh-syntax-highlighting.zsh')
+# zsh-vi-mode rebuilds the ZLE keymaps on init; re-assert the native
+# bracketed-paste binding in the vi keymaps so paste markers are consumed.
+# (With ZVM_READKEY_ENGINE=zle set above, this binding actually fires.)
+zvm_after_init_commands+=('bindkey -M viins "^[[200~" bracketed-paste')
+zvm_after_init_commands+=('bindkey -M vicmd "^[[200~" bracketed-paste')
 
 export PYENV_ROOT="$HOME/.pyenv"
 [[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"

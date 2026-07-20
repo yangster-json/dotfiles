@@ -35,6 +35,12 @@ planner, combative review.
 
 4. **Implement + verify.** Judge complexity honestly: mechanical
    pattern-following → `sdd:sdd-implementer-lite`, otherwise `sdd:sdd-implementer`.
+   When spawning any `sdd:sdd-<name>` here, route its tier the same way
+   /sdd:run does: the `config.models` key is the agent's file basename (the
+   whole `sdd-<name>`, e.g. `sdd-implementer`). If the pipeline file's
+   `config.models` has that key, pass its value as the spawn's `model`;
+   otherwise pass none and let the agent's frontmatter default stand (effort
+   stays in frontmatter).
    Write the task as a subspec — `specs/<slug>/tasks/Q1.md` from the
    subspec template (full requirement text; the agent reads no other spec
    files) — and record `git status --porcelain` BEFORE spawning. Pass

@@ -9,16 +9,22 @@ export const meta = {
 }
 
 // invoked by /sdd:run's review stage (see pipeline.yaml run_via).
-// args: { slug, base_ref, workdir }
+// args: { slug, base_ref, workdir, models }
 //   slug     — feature slug (specs/<slug>/)
 //   base_ref — ref the feature diff is taken against
 //   workdir  — absolute path of the feature worktree; every agent operates there
+//   models   — optional config.models map (agent short-name -> tier); applied
+//              as a per-agent model override, frontmatter is the fallback
 // round 0 (mechanical stub grep) and gate 2 stay with the orchestrator — the
 // script owns rounds 1-2, withdrawal filtering, the judge, and the
-// test-recommender. models are pinned in the plugin's agents/*.md
-// frontmatter and resolved via agentType (sdd:sdd-*) — never set model here.
+// test-recommender. model tier comes from models[] when it names the agent,
+// else the agent's agents/*.md frontmatter default (resolved via agentType);
+// effort stays pinned in frontmatter.
 
-const { slug, base_ref, workdir } = args
+const { slug, base_ref, workdir, models = {} } = args
+// spread this into an agent()'s opts to route its tier from config.models;
+// no entry -> {} -> the key is absent and the agent's frontmatter model stands
+const modelOf = name => (models[name] ? { model: models[name] } : {})
 const here = `workdir: ${workdir} — run every command from this directory; all paths are relative to it.`
 
 const FINDINGS_SCHEMA = {
@@ -142,7 +148,7 @@ phase('Round 1')
 // it cannot.
 const testRecP = agent(
   `${here}\ninputs: ${JSON.stringify({ slug, base_ref })}`,
-  { agentType: 'sdd:sdd-test-recommender', effort: 'low', label: 'test-recommender', phase: 'Round 1', schema: TESTS_SCHEMA }
+  { agentType: 'sdd:sdd-test-recommender', ...modelOf('sdd-test-recommender'), effort: 'low', label: 'test-recommender', phase: 'Round 1', schema: TESTS_SCHEMA }
 ).catch(() => null)
 
 const STANCES = ['breaker', 'guardian', 'attacker']
@@ -150,7 +156,7 @@ const STANCES = ['breaker', 'guardian', 'attacker']
 const round1 = (await parallel(STANCES.map(s => () =>
   agent(
     `${here}\nround 1 — find.\ninputs: ${JSON.stringify({ stance: s, slug, base_ref })}`,
-    { agentType: 'sdd:sdd-reviewer', effort: 'high', label: `round1:${s}`, phase: 'Round 1', schema: FINDINGS_SCHEMA }
+    { agentType: 'sdd:sdd-reviewer', ...modelOf('sdd-reviewer'), effort: 'high', label: `round1:${s}`, phase: 'Round 1', schema: FINDINGS_SCHEMA }
   // key on the stance we REQUESTED, not the one the model echoes — a
   // capitalization/typo drift would otherwise desync byStance/failures/combat
   ).then(r => (r ? { ...r, stance: s } : null))
@@ -182,7 +188,7 @@ const combat = (await parallel(combatants.map(s => () =>
       own_findings: byStance[s],
       opponent_findings: round1.filter(r => r.stance !== s).flatMap(r => r.findings),
     })}`,
-    { agentType: 'sdd:sdd-reviewer', effort: 'high', label: `combat:${s}`, phase: 'Combat', schema: COMBAT_SCHEMA }
+    { agentType: 'sdd:sdd-reviewer', ...modelOf('sdd-reviewer'), effort: 'high', label: `combat:${s}`, phase: 'Combat', schema: COMBAT_SCHEMA }
   )
 ))).filter(Boolean)
 
@@ -210,7 +216,7 @@ phase('Judge')
 // of aborting the review and discarding all completed round-1/combat work.
 const verdict = await agent(
   `${here}\ninputs: ${JSON.stringify({ slug, base_ref, findings: surviving, rebuttals: debate })}`,
-  { agentType: 'sdd:sdd-review-judge', effort: 'xhigh', label: 'judge', phase: 'Judge', schema: VERDICT_SCHEMA }
+  { agentType: 'sdd:sdd-review-judge', ...modelOf('sdd-review-judge'), effort: 'xhigh', label: 'judge', phase: 'Judge', schema: VERDICT_SCHEMA }
 ).catch(() => null)
 
 // judge died -> hand the surviving findings + debate back so the

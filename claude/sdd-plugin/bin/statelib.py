@@ -1,7 +1,7 @@
 """shared, format-tolerant parsing for sdd state files and paths.
 
 used by the sdd-* CLIs (sdd-git, sdd-state, sdd-cost, sdd-quality,
-sdd-status, sdd-watch). state.md is written by an LLM orchestrator, so
+sdd-status). state.md is written by an LLM orchestrator, so
 nothing here may depend on exact spacing, column order, emphasis, or case —
 parse by structure (headers, anchored keys), never by position.
 
@@ -157,13 +157,6 @@ def munge(root):
     return re.sub(r"[^a-zA-Z0-9]", "-", os.path.abspath(root))
 
 
-def actuals_path(root):
-    """as-billed session cache for a project — lives under the claude config
-    dir, NOT inside the project, so it never dirties a repo."""
-    return os.path.join(config_dir(), "projects", munge(root),
-                        "cost-actuals.json")
-
-
 def learnings_base():
     """root of the sdd learnings store. under the claude config dir but NOT
     inside the plugin cache (wiped on /plugin update) or the old ~/.claude/sdd
@@ -174,9 +167,9 @@ def learnings_base():
 def project_learnings_path(root):
     """this project's sdd learnings directory — under learnings_base(), keyed
     by the project's own identity (munged absolute path), NOT inside the
-    project itself: same never-dirties-a-repo convention as actuals_path, so
-    sdd "connects" a learnings bucket to its repo without ever writing into
-    that repo's working tree."""
+    project itself — the never-dirties-a-repo convention, so sdd "connects" a
+    learnings bucket to its repo without ever writing into that repo's working
+    tree."""
     return os.path.join(learnings_base(), munge(root))
 
 

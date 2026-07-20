@@ -1,16 +1,20 @@
 #!/usr/bin/env python3
-"""sdd-status — one-line progress for the active sdd feature, on demand.
+"""sdd-status — progress for the active sdd feature, on demand.
 
-the compact segment that used to live in the statusline. run it anytime
-(e.g. after closing the tmux `sdd-watch` pane) to see phase, task counts,
-gate flags, and hw target for the active feature under the current directory.
-prints nothing if there is no active feature.
+usage:
+  sdd-status                  one-line summary (phase / tasks / gates / hw)
+  sdd-status --full [slug]    full dashboard (phase ladder, task table, log)
+  sdd-status --loop [sec]     live dashboard, clear + redraw every sec (default 2)
 
-`sdd-watch` renders the full dashboard (and `--loop` for a live pane); this
-is just the terse one-liner. state.md parsing lives in statelib.py.
+--loop implies --full. a positional slug picks a feature other than
+specs/ACTIVE (full/loop only; the one-liner always tracks the active feature).
+prints nothing in one-line mode when there is no active feature. state.md
+parsing lives in statelib.py. `sdd-watch` is a thin alias for
+`sdd-status --full`, kept for the tmux-side-pane workflow.
 """
 import os
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import statelib as st  # noqa: E402
@@ -19,9 +23,12 @@ DIM, BLD, RST = "\033[2m", "\033[1m", "\033[0m"
 GRN, YLW, RED, CYN = "\033[32m", "\033[33m", "\033[31m", "\033[36m"
 SEP = f" {DIM}│{RST} "
 
+PHASES = ["research", "spec", "plan", "implement", "review", "test", "commit"]
+STATUS_COLOR = {"done": GRN, "in_progress": YLW, "blocked": RED, "pending": DIM}
 
-def find_root(start):
-    d = os.path.abspath(start)
+
+def find_root(start=None):
+    d = os.path.abspath(start or os.getcwd())
     while True:
         if os.path.isdir(os.path.join(d, "specs")):
             return d
@@ -31,13 +38,12 @@ def find_root(start):
         d = parent
 
 
-def main():
-    root = find_root(os.getcwd())
-    if not root:
-        return
+# ---- one-line summary -----------------------------------------------------
+
+def render_brief(root):
     state = st.read_state(root)
     if not state:
-        return  # no active sdd feature
+        return None  # no active sdd feature
     _, slug, text = state
 
     phase = st.field(text, "phase", "?")
@@ -64,7 +70,141 @@ def main():
     if testbed and testbed != "none":
         parts.append(f"hw {testbed}/{st.field(text, 'hw_bay')}")
 
-    print(SEP.join(parts))
+    return SEP.join(parts)
+
+
+# ---- full dashboard -------------------------------------------------------
+
+def ladder(phase, plan_ok, review_ok):
+    def gate(flag, label):
+        mark = f"{GRN}✔{RST}" if flag else f"{DIM}─{RST}"
+        return f"{DIM}[{label} {RST}{mark}{DIM}]{RST}"
+
+    cur = PHASES.index(phase) if phase in PHASES else len(PHASES)
+    parts = []
+    for i, p in enumerate(PHASES):
+        if phase == "done" or i < cur:
+            parts.append(f"{GRN}{p} ✔{RST}")
+        elif i == cur:
+            parts.append(f"{BLD}{YLW}▶ {p}{RST}")
+        else:
+            parts.append(f"{DIM}{p}{RST}")
+        if p == "plan":
+            parts.append(gate(plan_ok, "gate1"))
+        if p == "review":
+            parts.append(gate(review_ok, "gate2"))
+    if phase == "done":
+        parts.append(f"{GRN}{BLD}done ✔{RST}")
+    return "  ".join(parts)
+
+
+def clean(lines, limit=None):
+    keep = [l.strip() for l in lines
+            if l.strip() and not l.strip().startswith("<!--")]
+    return keep[-limit:] if limit else keep
+
+
+def render_full(root, slug=None):
+    if slug:
+        resolved = st.resolve_active(root)
+        if resolved and not os.path.isfile(
+                os.path.join(root, "specs", slug, "state.md")):
+            root = resolved[0]  # slug may live in the active worktree
+    else:
+        resolved = st.resolve_active(root)
+        if not resolved:
+            return f"{DIM}no active sdd feature (specs/ACTIVE not found){RST}"
+        root, slug = resolved
+    try:
+        with open(os.path.join(root, "specs", slug, "state.md")) as f:
+            text = f.read()
+    except OSError:
+        return f"{DIM}no state.md for feature '{slug}' under {root}{RST}"
+
+    phase = (st.field(text, "phase", "?").split() or ["?"])[0]
+    jira = st.field(text, "jira", "none")
+    upstream = st.field(text, "upstream", "none")
+    testbed = st.field(text, "hw_testbed", "none")
+    bay = st.field(text, "hw_bay", "")
+    skipped = st.field(text, "stages_skipped", "none")
+    sec = st.sections(text)
+    rows = st.task_rows(text)
+    rule = f"{DIM}{'─' * 78}{RST}"
+
+    out = []
+    hdr = f" {BLD}sdd: {slug}{RST}"
+    if jira != "none":
+        hdr += f"   {DIM}jira{RST} {jira}"
+    if upstream != "none":
+        hdr += f"   {DIM}⇡ {upstream}{RST}"
+    if testbed != "none":
+        hdr += f"   {DIM}hw{RST} {testbed}/{bay}"
+    if skipped and skipped != "none":
+        hdr += f"   {DIM}skipped{RST} {skipped}"
+    out += [hdr, rule,
+            " " + ladder(phase, st.flag(text, "plan_approved"),
+                         st.flag(text, "review_approved")), ""]
+
+    if rows:
+        counts = {}
+        for r in rows:
+            counts[r["status"]] = counts.get(r["status"], 0) + 1
+        summary = " · ".join(
+            f"{STATUS_COLOR.get(s, '')}{counts[s]} {s}{RST}"
+            for s in ["done", "in_progress", "blocked", "pending"] if s in counts)
+        out += [f" {BLD}tasks{RST}  {summary}", rule]
+        for r in rows:
+            c = STATUS_COLOR.get(r["status"], "")
+            title = r["title"][:44] + ("…" if len(r["title"]) > 44 else "")
+            dep = (f"  {DIM}← {r['depends']}{RST}"
+                   if r["depends"] not in ("—", "-", "") else "")
+            cx = {"simple": "sim", "standard": "std"}.get(
+                r["complexity"], r["complexity"][:3])
+            out.append(f"  {r['id']:<4} {title:<46} {DIM}{cx:<4}{RST}"
+                       f" {c}{r['status']}{RST}{dep}")
+        out.append("")
+
+    for name, limit in [("amendments", None), ("waived findings", None),
+                        ("tests run", None), ("log", 5)]:
+        lines = clean(sec.get(name, []), limit)
+        if lines:
+            out.append(f" {BLD}{name}{RST}")
+            out += [f"  {DIM}{l}{RST}" for l in lines]
+            out.append("")
+    return "\n".join(out)
+
+
+def main():
+    args = sys.argv[1:]
+    loop = "--loop" in args
+    full = loop or "--full" in args
+    slug = next((a for a in args
+                 if not a.startswith("-") and not a.replace(".", "").isdigit()),
+                None)
+
+    root = find_root()
+    if not root:
+        # a dashboard call says so out loud; the one-liner stays silent
+        if full:
+            print(f"{DIM}not inside an sdd project (no specs/ directory found){RST}")
+        return
+
+    if loop:
+        i = args.index("--loop")
+        interval = (float(args[i + 1]) if len(args) > i + 1
+                    and args[i + 1].replace(".", "").isdigit() else 2.0)
+        try:
+            while True:
+                print("\033[2J\033[H" + render_full(root, slug))
+                time.sleep(interval)
+        except KeyboardInterrupt:
+            pass
+    elif full:
+        print(render_full(root, slug))
+    else:
+        line = render_brief(root)
+        if line:
+            print(line)
 
 
 if __name__ == "__main__":

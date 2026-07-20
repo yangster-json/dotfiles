@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""sdd cost monitor — per-agent costs and auto-calibrated estimates from
+"""sdd cost monitor — per-agent token usage and price-table estimates from
 claude code transcripts.
 
 usage:
@@ -10,12 +10,8 @@ usage:
   .claude/sdd/cost --loop [sec]      self-refreshing (default 30)
 
 token counts are exact (transcript usage records, deduped by message id).
-dollars start from the PRICES table below and are AUTO-CALIBRATED: the sdd
-statusline caches claude code's as-billed session totals into
-<claude-config>/projects/<munged-root>/cost-actuals.json, and this script
-scales its estimates by the median actual/estimate ratio across those
-sessions. pricing drift corrects itself once a few sessions have run; the
-table is only the starting point.
+dollars are ESTIMATES from the PRICES table below — accurate for current
+model pricing, but not reconciled against your actual bill.
 """
 import glob
 import json
@@ -28,7 +24,6 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import statelib as st  # noqa: E402
 
 # usd per million tokens: input, output, cache_write, cache_read.
-# base rates only — displayed dollars are scaled by the calibration factor.
 PRICES = {
     "opus":   (5.0, 25.0, 6.25, 0.50),
     "fable":  (5.0, 25.0, 6.25, 0.50),
@@ -119,35 +114,6 @@ def agg(recs):
     return t
 
 
-def load_actuals(root):
-    """as-billed totals cached by the statusline. current location is under
-    the claude config dir; the old in-project cache is merged in for
-    continuity with sessions recorded before the move."""
-    data = {}
-    legacy = os.path.join(root, ".claude", ".cost-actuals.json")
-    for path in (legacy, st.actuals_path(root)):
-        try:
-            with open(path) as f:
-                data.update(json.load(f))
-        except (OSError, json.JSONDecodeError):
-            pass
-    return data
-
-
-def calibration(recs, actuals):
-    """median as-billed/estimate ratio over sessions where both are known."""
-    ratios = []
-    for sid, a in actuals.items():
-        actual = (a or {}).get("usd", 0)
-        e = agg([r for r in recs if r["session"] == sid])["usd"]
-        if actual > 0.10 and e > 0.10:
-            ratios.append(actual / e)
-    if not ratios:
-        return 1.0, 0
-    ratios.sort()
-    return ratios[len(ratios) // 2], len(ratios)
-
-
 def agent_chains(entries, session):
     """group sidechain entries into per-agent-invocation chains."""
     byid = {e["uuid"]: e for e in entries
@@ -180,11 +146,11 @@ def fmt_tok(n):
     return f"{n/1e6:.1f}M" if n >= 1e6 else f"{n/1e3:.0f}k" if n >= 1e3 else str(n)
 
 
-def row(label, recs, factor, width=14):
+def row(label, recs, width=14):
     t = agg(recs)
     return (f"  {label:<{width}} in {fmt_tok(t['tin']+t['cw']+t['cr']):>7}"
             f" {DIM}({t['cached_pct']:.0f}% cached){RST}"
-            f"  out {fmt_tok(t['tout']):>6}   {GRN}${t['usd']*factor:.2f}{RST}")
+            f"  out {fmt_tok(t['tout']):>6}   {GRN}${t['usd']:.2f}{RST}")
 
 
 def render(root, n_sessions=0, show_agents=False):
@@ -197,31 +163,21 @@ def render(root, n_sessions=0, show_agents=False):
     if not recs:
         return f"{DIM}transcripts exist but contain no usage records{RST}"
 
-    actuals = load_actuals(root)
-    factor, n_cal = calibration(recs, actuals)
-    cal_note = (f"calibrated ×{factor:.2f} from {n_cal} sessions" if n_cal
-                else "uncalibrated — base price table")
-
     now = datetime.now(timezone.utc)
     latest = max(recs, key=when)["session"]
     cur = [r for r in recs if r["session"] == latest]
     rule = f"{DIM}{'─' * 66}{RST}"
 
-    sess_actual = (actuals.get(latest) or {}).get("usd")
-    total_line = (f"{BLD}{GRN}${sess_actual:.2f}{RST} {DIM}(as billed){RST}"
-                  if sess_actual
-                  else f"{BLD}{GRN}${agg(cur)['usd']*factor:.2f}{RST}")
-
     out = [f" {BLD}sdd cost — {os.path.basename(os.path.abspath(root))}{RST}"
-           f"   {DIM}{cal_note}{RST}", rule,
+           f"   {DIM}estimate from base price table{RST}", rule,
            f" {BLD}latest session{RST}",
-           row("orchestrator", [r for r in cur if not r["side"]], factor),
-           row("subagents", [r for r in cur if r["side"]], factor),
-           f"  {'total':<14} {' ' * 36}{total_line}",
+           row("orchestrator", [r for r in cur if not r["side"]]),
+           row("subagents", [r for r in cur if r["side"]]),
+           f"  {'total':<14} {' ' * 36}{BLD}{GRN}${agg(cur)['usd']:.2f}{RST}",
            "", f" {BLD}by model (latest session){RST}"]
     for m in sorted({r["model"] for r in cur}):
         out.append(row(m.replace("claude-", "")[:14],
-                       [r for r in cur if r["model"] == m], factor))
+                       [r for r in cur if r["model"] == m]))
 
     if show_agents:
         byid, chains = agent_chains(entries, latest)
@@ -240,27 +196,24 @@ def render(root, n_sessions=0, show_agents=False):
             out.append(f"  {i:>2} {DIM}{model:<13}{RST}"
                        f" in {fmt_tok(t['tin']+t['cw']+t['cr']):>7}"
                        f" out {fmt_tok(t['tout']):>6}"
-                       f" {GRN}${t['usd']*factor:>6.2f}{RST}  {DIM}{label}{RST}")
+                       f" {GRN}${t['usd']:>6.2f}{RST}  {DIM}{label}{RST}")
 
     day = [r for r in recs if when(r) > now - timedelta(days=1)]
     week = [r for r in recs if when(r) > now - timedelta(days=7)]
-    out += ["", f" {BLD}windows{RST}   24h {GRN}${agg(day)['usd']*factor:.2f}{RST}"
-                f"   7d {GRN}${agg(week)['usd']*factor:.2f}{RST}"
-                f"   all {GRN}${agg(recs)['usd']*factor:.2f}{RST}"
+    out += ["", f" {BLD}windows{RST}   24h {GRN}${agg(day)['usd']:.2f}{RST}"
+                f"   7d {GRN}${agg(week)['usd']:.2f}{RST}"
+                f"   all {GRN}${agg(recs)['usd']:.2f}{RST}"
                 f"   {DIM}({len({r['session'] for r in recs})} sessions){RST}"]
 
     if n_sessions:
-        out += ["", f" {BLD}recent sessions{RST}"
-                    f"   {DIM}• = as billed (statusline cache){RST}"]
+        out += ["", f" {BLD}recent sessions{RST}"]
         by_start = sorted({r["session"] for r in recs},
                           key=lambda s: max(when(r) for r in recs
                                             if r["session"] == s),
                           reverse=True)
         for s in by_start[:n_sessions]:
             srecs = [r for r in recs if r["session"] == s]
-            a = (actuals.get(s) or {}).get("usd")
-            usd = (f"{GRN}${a:.2f}{RST} •" if a
-                   else f"{GRN}${agg(srecs)['usd']*factor:.2f}{RST}")
+            usd = f"{GRN}${agg(srecs)['usd']:.2f}{RST}"
             out.append(f"  {min(when(r) for r in srecs):%m-%d %H:%M}"
                        f"  {s[:8]}…  {len(srecs):>4} msgs   {usd}")
     return "\n".join(out)
@@ -272,21 +225,15 @@ def brief(root):
     recs = usage_records(entries)
     if not recs:
         return "cost: no transcript data"
-    actuals = load_actuals(root)
-    factor, n_cal = calibration(recs, actuals)
     latest = max(recs, key=when)["session"]
     cur = [r for r in recs if r["session"] == latest]
-    orch = agg([r for r in cur if not r["side"]])["usd"] * factor
-    sub = agg([r for r in cur if r["side"]])["usd"] * factor
+    orch = agg([r for r in cur if not r["side"]])["usd"]
+    sub = agg([r for r in cur if r["side"]])["usd"]
     day = agg([r for r in recs
                if when(r) > datetime.now(timezone.utc) - timedelta(days=1)]
-              )["usd"] * factor
-    sess_actual = (actuals.get(latest) or {}).get("usd")
-    total = f"${sess_actual:.2f} billed" if sess_actual \
-        else f"${orch + sub:.2f} est"
-    cal = f", cal ×{factor:.2f}" if n_cal else ", uncal"
-    return (f"cost: session {total} (orch ${orch:.2f} + agents ${sub:.2f}"
-            f"{cal}) · 24h ${day:.2f}")
+              )["usd"]
+    return (f"cost: session ${orch + sub:.2f} est (orch ${orch:.2f}"
+            f" + agents ${sub:.2f}) · 24h ${day:.2f}")
 
 
 def main():
