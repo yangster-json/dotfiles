@@ -247,6 +247,70 @@ config:
   auto_route:
     enabled: false
 
+  # how much the pipeline writes to state.md's ## log as it runs. the log is
+  # the run's flight recorder — it is what `/sdd:status`, the sdd-status
+  # dashboard, and a human reading back a finished feature actually have.
+  # `sdd-state log` stamps each entry `- YYYY-MM-DD HH:MM`, so many entries
+  # per stage stay ordered and timeable.
+  #   level:
+  #     verbose (default) — log EVERY event in `events` below, one line each,
+  #                         as it happens. a normal feature lands 30-60 lines.
+  #     normal            — stage transitions, gates, task outcomes, findings,
+  #                         tests, commits only (roughly the pre-verbose
+  #                         behavior, ~1 line per stage).
+  # each line is ONE line: `<stage>: <what happened>` plus the numbers that
+  # make it reviewable (counts, ids, durations, cost). never a paragraph, and
+  # never a restatement of something already in spec.md/tasks.md — the log
+  # says what HAPPENED, the artifacts say what was decided.
+  # run.md's "## logging" owns the mechanics; this block sets the dial.
+  logging:
+    level: verbose
+    events:
+      - stage_start          # entering a stage, with what it was handed
+      - agent_dispatch       # a spawn or fan-out: how many, which agents, tier
+      - agent_return         # what came back, as counts (findings, angles, tasks)
+      - artifact_write       # research.md / spec.md / tasks.md / subspecs written
+      - decision             # an auto-decision: adaptive skip, tier read,
+                             # gate1 auto-approve, an (assumption) amendment
+      - task_start           # task id + title + worktree, as it starts
+      - task_verify          # verifier verdict, or the orchestrator's own check
+      - task_retry           # a retry rung, WITH the reason it failed
+      - task_merge           # merged into the feature branch (or conflicted)
+      - task_done            # final status per task
+      - gate                 # gate presented, and the route the user picked
+      - finding              # confirmed / rejected / withdrawn / waived tallies
+      - test_run             # each test invocation and its result
+      - commit               # each logical commit made
+      - stage_end            # leaving a stage, with the cost + context deltas
+                             # and (per config.context) the clear-point note
+      - stop                 # any halt, with exactly what is needed to resume
+
+  # the orchestrator's own context window — the one thing a long run can
+  # exhaust that no subagent budget covers. each subagent holds its own window
+  # that dies with it, so only the orchestrator's fills up, and it only ever
+  # grows: every tool result and stage handoff appends, nothing is evicted
+  # until /clear or auto-compact.
+  #
+  # sdd prefers a CLEAR POINT over compaction. auto-compact replaces the whole
+  # conversation with a lossy summary; a clear point costs nothing, because the
+  # run's state already lives on disk (state.md, spec.md, tasks.md, subspecs)
+  # and `/sdd:run` with no arguments resumes from `phase:`. So at a stage
+  # boundary the cheapest fix is to start a fresh window, not to summarize a
+  # full one. run.md's "## clear points" owns the mechanics.
+  context:
+    announce_clear_points: true  # at each stage_end, say the run is safely
+                                 # resumable — the user cannot take a clear
+                                 # point they were never told about
+    clear_point_at_pct: 75       # occupancy (percent of the window, per
+                                 # `sdd-cost --context`) past which the
+                                 # announcement becomes a recommendation.
+                                 # below it the boundary is just noted.
+    hard_stop_at_pct: 0          # >0 makes the orchestrator STOP at a stage
+                                 # boundary past this figure instead of only
+                                 # recommending — for unattended runs, where
+                                 # nobody is watching to act on the advice.
+                                 # 0 disables (never stop on context alone).
+
   # how hard the pipeline tries to RESCUE a failing task or test before it
   # gives up. a dead end (a blocked task, a still-red test halt) is the only
   # thing that ends a stage without reaching a gate, so this ladder exists to
@@ -483,6 +547,11 @@ pipeline:
       mark it (planned — regenerate after T<n>); the merge step below
       regenerates it from source. implementers and verifiers
       read ONLY their subspec, never spec.md or state.md.
+      ONCE means once for the orchestrator too: after this step spec.md and
+      tasks.md are SPENT — every fact a task needs is in its subspec and every
+      status is in state.md's table. re-reading either before each spawn (even
+      a slice) pays the same tokens once per task in a window that never
+      shrinks. see run.md "### your own window".
       (3) snapshot: `sdd-git snapshot` — commits specs/ (and
       only specs/) on the feature branch as "wip(sdd): specs snapshot" so
       task worktrees cut from it contain the digest and subspecs; record

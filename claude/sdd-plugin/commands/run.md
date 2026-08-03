@@ -125,10 +125,9 @@ instead of duplicating the whole file.
 ## how to execute stages
 
 - Run the pipeline stages in order. Do state.md bookkeeping through
-  `sdd-state`, not hand edits: `state set phase <stage>` plus
-  `state log "<stage> complete · session $X"` as each stage completes
-  (the figure from `sdd-cost --brief` — successive stage lines
-  give per-stage cost deltas), `state set plan_approved yes` /
+  `sdd-state`, not hand edits: `state set phase <stage>`,
+  `state log "<line>"` at every event config.logging names (see
+  "## logging" below), `state set plan_approved yes` /
   `review_approved yes` at the gates, `state task <id> <status>` as tasks
   move. Hand-edit only what the CLI doesn't cover: the initial tasks
   table, amendments, waived findings, tests run, `stages_skipped:`
@@ -228,6 +227,63 @@ auto-routing".
 - You never write code yourself. All source changes go through implementer
   agents; all verdicts come from verifier/judge agents.
 
+### your own window (re-reading is the main leak)
+
+Your context is the only one that accumulates across the whole run — a
+subagent's dies with it. It only grows, so every avoidable re-read is
+permanent. The rule: **an artifact you have already read this session is
+already in your context — do not read it again.** Concretely:
+
+- **`tasks.md` is spent once the subspecs exist.** You read it at plan
+  hand-off and at implement setup to write the subspecs; after that every fact
+  a task needs lives in its subspec, and its status lives in state.md's task
+  table. Do NOT re-read `tasks.md` (or a slice of it) before each implementer
+  spawn — that turns one read into one-per-task. If you need a task's row
+  mid-implement, it is in the state.md you are already updating.
+- **`spec.md` is read ONCE, in full, at implement setup**, to write the
+  subspecs. Reading it back in slices (offset/limit) at later stages is the
+  same tokens paid twice — the requirement text you need is already copied
+  into the subspec. The exception is a spec AMENDMENT: re-read only the
+  section you are amending.
+- **`pipeline.yaml` is read once, at the very start.** It does not change
+  mid-run; re-reading it to re-check a config value costs more than
+  remembering the value.
+- Reach for `offset`/`limit` when you need part of a file you have NOT read,
+  not to re-fetch part of one you have.
+
+## clear points (context, not compaction)
+
+Your window fills as the run proceeds and nothing evicts it until `/clear` or
+auto-compact. sdd prefers a **clear point**: the run's state is already on disk
+(state.md, spec.md, tasks.md, subspecs), so `/sdd:run` with no arguments
+resumes from `phase:` and loses nothing. Auto-compact, by contrast, replaces
+the conversation with a lossy summary. A clear point is strictly better —
+but only the user can take one, so your job is to make it visible.
+
+- **You cannot compact or clear yourself.** No tool does it: `/clear` and
+  `/compact` are user-typed commands, and no hook can trigger them. Never
+  claim to have compacted, and never spend a turn trying.
+- **Measure at every `stage_end`**, with `sdd-cost --context` (one line:
+  occupancy, window, peak, requests). Include its figure in the stage_end log
+  line next to the cost delta, so consecutive lines show context growth per
+  stage the same way they show spend.
+- **Announce the boundary** when `config.context.announce_clear_points`: on
+  leaving a stage, state in one line that the run is safely resumable — the
+  phase it would resume from, and that `/clear` then `/sdd:run` continues it.
+  Below `clear_point_at_pct` that is a note, not a suggestion; keep it to one
+  line and move on.
+- **Recommend it** once occupancy is at or past `config.context.clear_point_at_pct`
+  (default 75): say plainly that a clear point is advised here, give the
+  occupancy figure, and continue working. Do not stop, do not ask — a gate is
+  the only place you take input, and context pressure is not a gate.
+- **Stop only if `config.context.hard_stop_at_pct` is >0 and occupancy is past
+  it.** Then finish the current stage, log a `stop` event naming the resume
+  phase, and end the turn with the resume instruction. This exists for
+  unattended runs, where nobody is reading the recommendation.
+- A stage boundary is the ONLY safe clear point: mid-stage, unmerged task
+  worktrees and un-recorded verdicts live only in your context. Never suggest
+  one between an implementer spawn and its merge.
+
 ## learnings (don't repeat past mistakes)
 
 Two scopes, same file shape (template: project `specs/templates/learning.md`
@@ -276,6 +332,49 @@ if present, else `$(sdd-path templates/learning.md)`):
   IDs, internal paths, proprietary logic) before writing one there — never
   let project specifics leak into a "general" lesson. Phrase "how to
   avoid" as a check the next run can actually apply.
+
+## logging (config.logging)
+
+state.md's `## log` is the run's flight recorder: after a `/clear`, after a
+crash, and for the human reading a finished feature, it is the only record of
+what actually happened. `sdd-state log` stamps `- YYYY-MM-DD HH:MM`, so many
+entries per stage stay ordered and timeable.
+
+- **Log as you go, not at the end.** Write the line at the moment the event
+  happens — never batch a stage's events into one summary afterwards, and
+  never reconstruct them later from memory. An interrupted run must leave a
+  log that explains where it got to.
+- **What to log:** every event in `config.logging.events` when
+  `config.logging.level` is `verbose` (the default); only the stage
+  transitions, gates, task outcomes, findings, tests, and commits when it is
+  `normal`. On a fully unattended run (both gates skipped) the log IS the
+  user's only window into the middle of the pipeline — treat verbose as
+  mandatory there.
+- **Shape:** one line, `<stage>: <what happened>`, carrying the numbers that
+  make it reviewable — ids, counts, verdicts, effort/tier when it changed, and
+  on stage_end both the `sdd-cost --brief` figure and the `sdd-cost --context`
+  occupancy, so consecutive lines give per-stage cost AND context deltas. State
+  what HAPPENED; the artifacts already hold what was DECIDED, so never paste
+  spec or task text into the log.
+- **Always log the why, not just the what,** for anything that went sideways:
+  a retry line says what failed, a blocked task says what was still wrong on
+  the last attempt, a reroute says which route and why, a waived finding says
+  on whose call. These are exactly the lines someone reads back later.
+- **Examples** (verbose, one stage):
+
+      research: 3 scouts dispatched — 2 enum (haiku), 1 deep (sonnet)
+      research: scout 2/3 returned — 4 findings, 1 open question
+      research: research.md written — 61 lines, 3 conventions, 2 risks
+      research: complete · 1m40s · session $0.42 · ctx 118k/1.0M (12%)
+      implement: T3 start — subspec 41 lines, worktree sdd/led-blink-T3
+      implement: T3 verify FAIL — new test never ran red; retry 1/3 at effort high
+      implement: T3 verify PASS — 2 requirements, scope clean
+      implement: T3 merged --no-ff into sdd/led-blink
+
+- **Do not** log secrets, full file contents, agent prompts, or whole agent
+  returns. A line that would not fit on one terminal row is too long.
+- The counters in `## metrics` are not a substitute: bump them AND log the
+  event. `sdd-quality` aggregates the counters; the log is what explains them.
 
 ## gates are context-reset points
 

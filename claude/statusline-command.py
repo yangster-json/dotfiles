@@ -3,11 +3,17 @@
 
 Reads the status-line JSON on stdin and prints a single Catppuccin Mocha line.
 Schema: https://code.claude.com/docs/en/statusline
+
+It also caches the cost block to <config>/statusline-cache/<session>.json so
+tools outside the status line can show the same as-billed number (sdd-status
+reads it — see sdd-plugin/bin/sdd-cost's billed()).
 """
 
 import json
+import os
 import subprocess
 import sys
+import time
 
 
 def rgb(red, green, blue):
@@ -125,11 +131,70 @@ def build_line(data):
     return "  " + SEP.join(parts)
 
 
+CACHE_DIR = os.path.join(
+    os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude"),
+    "statusline-cache")
+CACHE_TTL_DAYS = 14
+
+
+def prune(directory, days=CACHE_TTL_DAYS):
+    for name in os.listdir(directory):
+        path = os.path.join(directory, name)
+        try:
+            if name.endswith(".json") and \
+                    os.path.getmtime(path) < time.time() - days * 86400:
+                os.unlink(path)
+        except OSError:
+            pass
+
+
+def cache_cost(data):
+    """Persist the as-billed figures Claude Code hands us.
+
+    total_cost_usd is the real billed number; anything reading a transcript can
+    only re-price it from a copy of Anthropic's price table. One file per
+    session, written atomically, so two live sessions never race.
+    """
+    session = data.get("session_id") or ""
+    if not session or "/" in session or session.startswith("."):
+        return
+    cost = data.get("cost") or {}
+    context = data.get("context_window") or {}
+    workspace = data.get("workspace") or {}
+    path = os.path.join(CACHE_DIR, f"{session}.json")
+    first = not os.path.exists(path)
+    os.makedirs(CACHE_DIR, exist_ok=True)
+    tmp = f"{path}.{os.getpid()}.tmp"
+    with open(tmp, "w") as f:
+        json.dump({
+            "session_id": session,
+            "cwd": workspace.get("current_dir") or data.get("cwd") or "",
+            "project_dir": workspace.get("project_dir") or "",
+            "model": (data.get("model") or {}).get("display_name") or "",
+            "total_cost_usd": float(cost.get("total_cost_usd") or 0),
+            "total_duration_ms": cost.get("total_duration_ms") or 0,
+            "total_api_duration_ms": cost.get("total_api_duration_ms") or 0,
+            "lines_added": cost.get("total_lines_added") or 0,
+            "lines_removed": cost.get("total_lines_removed") or 0,
+            "total_input_tokens": context.get("total_input_tokens") or 0,
+            "total_output_tokens": context.get("total_output_tokens") or 0,
+            "used_percentage": context.get("used_percentage") or 0,
+            "updated_at": time.time(),
+        }, f)
+    os.replace(tmp, path)      # atomic — a reader never sees half a file
+    if first:
+        prune(CACHE_DIR)       # once per session, not once per render
+
+
 def main():
     try:
         data = json.load(sys.stdin)
     except Exception:
         data = {}
+    try:
+        cache_cost(data)
+    except Exception:
+        pass                   # the line matters; the cache does not
     sys.stdout.write(build_line(data) + "\n")
 
 

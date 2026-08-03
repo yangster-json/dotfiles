@@ -51,4 +51,7 @@ merge_conflicts: 0
 <!-- filled by the test stage: test, where (x86 / testbed+bay), result -->
 
 ## log
-- <YYYY-MM-DD> feature initialized
+<!-- the run's flight recorder — appended via `sdd-state log` at every event
+     config.logging names, one line each, stamped `YYYY-MM-DD HH:MM`. written
+     as things happen, never batched at the end. see run.md's "## logging". -->
+- <YYYY-MM-DD HH:MM> feature initialized

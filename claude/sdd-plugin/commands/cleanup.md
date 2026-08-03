@@ -1,6 +1,6 @@
 ---
 description: clean up a finished sdd feature — remove its worktrees and branches, harvest learnings, merge the spec into the living base, clear pointers. run after the pr merges.
-argument-hint: [feature-slug] [delete] — no slug: menu of cleanup candidates
+argument-hint: "[feature-slug] [delete] — no slug: menu of cleanup candidates"
 ---
 
 Clean up the SDD feature: $ARGUMENTS

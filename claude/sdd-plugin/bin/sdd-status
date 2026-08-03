@@ -3,28 +3,271 @@
 
 usage:
   sdd-status                  one-line summary (phase / tasks / gates / hw)
-  sdd-status --full [slug]    full dashboard (phase ladder, task table, log)
-  sdd-status --loop [sec]     live dashboard, clear + redraw every sec (default 2)
+  sdd-status --full [slug]    full dashboard (ladder, tasks, metrics, git, log)
+                              — through $PAGER when it is taller than the
+                              window, so it scrolls (--no-pager to just print)
+  sdd-status --loop [sec]     live animated dashboard; sec (default 2) is how
+                              often the expensive data (git, artifacts) is
+                              re-read — state.md is re-read every frame
+  sdd-status --logs [slug]    the ENTIRE log, wrapped, through $PAGER so it
+                              scrolls (add --loop to start the live dashboard
+                              in its expanded, scrollable log view)
+  sdd-status --show [name]    one artifact through $PAGER — state.md by
+                              default, or the first whose name matches `name`
+                              (spec, tasks, research, T3, digest ...)
+
+dashboard flags (--full / --loop):
+  --cost          add the cost line AND the context gauge (throttled in --loop
+                  to one refresh per 30s). the session figure is claude code's
+                  own as-billed total when a statusline has cached it, else a
+                  price-table estimate; the section header says which
+  --context       just the context gauge: how full the orchestrator's window
+                  is, and whether to take a clear point
+  --log N         log lines to show on the dashboard (default 8, 0 = all)
+  --width N       force the layout width instead of detecting the terminal
+  --no-color      plain output (NO_COLOR in the environment does the same)
+  --no-anim       --loop without the animation: one static redraw per interval
+  --no-pager      --logs / --show / a too-tall --full straight to stdout
+
+keys, while --loop runs on a terminal:
+  l         expand / collapse the log — expanded fills the pane and scrolls
+  v         expand / collapse the artifact viewer: state.md, research.md,
+            spec.md, tasks.md, every task subspec, the standards digest
+  n / p     next / previous artifact (in the v pane; tab also works)
+  j / k     scroll — dashboard/document: down / up, log: newer / older
+            (arrows too)
+  space / b page down / up             g / G  top-or-oldest / end-or-newest
+  + / -     more / fewer log lines on the dashboard
+  c         toggle the cost line       x      toggle the context gauge
+  q         quit
+
+the header block (feature, phase ladder, gates) stays put in every pane, so an
+expanded log or document never loses the run's context. in --loop the rest is
+clipped to the window and scrolls with the same keys when the dashboard is
+taller than the terminal — a short pane shows `1-14 of 39 · ↓ 25 · j/k scroll`
+rather than losing the top of the frame.
 
 --loop implies --full. a positional slug picks a feature other than
-specs/ACTIVE (full/loop only; the one-liner always tracks the active feature).
-prints nothing in one-line mode when there is no active feature. state.md
-parsing lives in statelib.py. `sdd-watch` is a thin alias for
+specs/ACTIVE (full/loop/logs only; the one-liner always tracks the active
+feature). prints nothing in one-line mode when there is no active feature.
+state.md parsing lives in statelib.py. `sdd-watch` is a thin alias for
 `sdd-status --full`, kept for the tmux-side-pane workflow.
+
+in --loop the motion is load-bearing, not decoration: a fast spinner means the
+run is moving, the slow pulse means it is idle (parked at a gate or stalled),
+task rows and log lines flash when they actually change, and everything stops
+when the phase reaches done. --full is always a still frame.
+
+the dashboard reads state.md, the feature's artifacts, and `git` — it never
+writes anything, so it is safe to leave running beside a live /sdd:run.
 """
 import os
+import re
+import shutil
+import subprocess
 import sys
+import textwrap
 import time
+from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import statelib as st  # noqa: E402
 
-DIM, BLD, RST = "\033[2m", "\033[1m", "\033[0m"
-GRN, YLW, RED, CYN = "\033[32m", "\033[33m", "\033[31m", "\033[36m"
-SEP = f" {DIM}│{RST} "
+HERE = os.path.dirname(os.path.abspath(__file__))
+
+DIM = BLD = RST = GRN = YLW = RED = CYN = MAG = ""
+SEP = ""
 
 PHASES = ["research", "spec", "plan", "implement", "review", "test", "commit"]
+SHORT = {"research": "res", "spec": "spec", "plan": "plan",
+         "implement": "impl", "review": "revw", "test": "test",
+         "commit": "cmit"}
 STATUS_COLOR = {"done": GRN, "in_progress": YLW, "blocked": RED, "pending": DIM}
+STATUS_GLYPH = {"done": "✔", "in_progress": "▶", "blocked": "✗", "pending": "·"}
+
+# ## metrics counters -> the short label the dashboard shows. `bad` counters are
+# colored when non-zero — they are the ones that mean the pipeline struggled.
+METRIC_LABEL = [
+    ("verify_retries", "retries", True),
+    ("tasks_blocked", "blocked", True),
+    ("ambiguities", "assumptions", False),
+    ("file_list_fixes", "file-fixes", False),
+    ("findings_confirmed", "confirmed", False),
+    ("findings_rejected", "rejected", False),
+    ("findings_waived", "waived", True),
+    ("gate1_reroutes", "g1-reroutes", True),
+    ("gate2_reroutes", "g2-reroutes", True),
+    ("test_failures", "test-fails", True),
+    ("merge_conflicts", "conflicts", True),
+]
+
+# state.md is stale for this long, in a phase that should be moving, before the
+# dashboard says so out loud
+STALL_SECONDS = 600
+ANSI = re.compile(r"\033\[[0-9;]*m")
+# `- 2026-07-31 14:32 msg`; the time is optional, so logs written before
+# sdd-state started stamping it still render with a dimmed date
+LOG_STAMP = re.compile(r"^-\s*(\d{4}-\d{2}-\d{2}(?:\s+\d{2}:\d{2}(?::\d{2})?)?)"
+                       r"\s+(.*)$")
+
+FPS = 8  # --loop animation frames per second
+
+
+class Anim:
+    """animation state for --loop.
+
+    every glyph is single-column (no emoji — `vis()` counts columns, and a
+    double-width glyph would break every width calculation in this file).
+    the motion encodes state rather than decorating it: SPIN means the run is
+    moving, WAIT means it is parked, and a change in state.md flashes the row
+    that changed for FLASH seconds.
+    """
+    SPIN = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"   # working
+    WAIT = "◜◠◝◞◡◟"           # idle: parked at a gate, or stalled
+    SPARK = "✦✧✷✧"            # done
+    FLASH = 3.0               # seconds a just-changed row stays marked
+
+    def __init__(self, enabled=True, frame=0):
+        self.enabled = enabled
+        self.frame = frame
+        self.statuses = None   # None until primed by the first note()
+        self.log_count = None
+        self.changed = {}      # task id -> when its status last changed
+        self.log_at = 0.0
+        self.log_new = 0
+        self.now = 0.0
+
+    def tick(self, n=1):
+        self.frame += n
+
+    def pick(self, seq, every=1):
+        """the glyph for this frame — frame 0 when animation is off, so a
+        still frame is deterministic."""
+        if not self.enabled:
+            return seq[0]
+        return seq[(self.frame // max(1, every)) % len(seq)]
+
+    def note(self, rows, log_count, now=None):
+        """record what state.md says now, so the next frame can tell what
+        changed. the FIRST call only primes — nothing flashes at startup."""
+        self.now = time.monotonic() if now is None else now
+        cur = {r["id"]: r["status"] for r in rows}
+        if self.statuses is not None:
+            for tid, status in cur.items():
+                # a brand-new row (a gate-2 fix task) counts as a change too
+                if self.statuses.get(tid) != status:
+                    self.changed[tid] = self.now
+        self.statuses = cur
+        if self.log_count is not None and log_count > self.log_count:
+            self.log_at = self.now
+            self.log_new = log_count - self.log_count
+        self.log_count = log_count
+
+    def fresh(self, tid):
+        at = self.changed.get(tid)
+        return bool(self.enabled and at and self.now - at < self.FLASH)
+
+    def new_log_lines(self):
+        """how many log entries arrived recently enough to still flash."""
+        if self.enabled and self.log_at and self.now - self.log_at < self.FLASH:
+            return self.log_new
+        return 0
+
+    def phase_glyph(self, idle):
+        """the marker on the phase the pipeline is sitting in."""
+        if not self.enabled:
+            return "▶"
+        return self.pick(self.WAIT, every=4) if idle else self.pick(self.SPIN)
+
+    def task_glyph(self, status, active=True):
+        """in_progress spins only while the run itself is moving — a parked or
+        finished pipeline showing a spinning task would be a lie."""
+        if status == "in_progress" and self.enabled and active:
+            return self.pick(self.SPIN)
+        return STATUS_GLYPH.get(status, "·")
+
+
+class View:
+    """dashboard options, bundled so render_full keeps a short signature.
+
+    data_age throttles the expensive lookups (git, artifact stats) — the
+    animation runs at FPS while those refresh once per --loop interval.
+    """
+    def __init__(self, width=None, log_limit=8, want_cost=False, anim=None,
+                 data_age=0, cost_age=0, pane="dash", height=0, doc=0,
+                 want_ctx=False):
+        self.width = width
+        self.log_limit = log_limit
+        self.want_cost = want_cost
+        self.want_ctx = want_ctx
+        self.anim = anim or Anim(enabled=False)
+        self.data_age = data_age
+        self.cost_age = cost_age
+        self.height = height
+        # which full-pane view is up: the dashboard, the expanded log, or a
+        # document (state.md / spec.md / tasks.md / research.md / a subspec).
+        # only one scrolls at a time, so offset/page are shared — switching
+        # panes resets them. offset 0 is the newest log entry / the top of a
+        # document; page is set by the renderer so a keypress moves by exactly
+        # what is on screen.
+        self.pane = pane
+        self.offset = 0
+        self.page = 10
+        self.doc = doc
+
+
+_memo = {}
+
+
+def cached(key, max_age, fn):
+    """value memoized for max_age seconds — keeps a 8 fps redraw from
+    shelling out to git on every frame. max_age 0 always recomputes."""
+    hit = _memo.get(key)
+    if hit and max_age and time.monotonic() - hit[0] < max_age:
+        return hit[1]
+    val = fn()
+    _memo[key] = (time.monotonic(), val)
+    return val
+
+
+def paint(body):
+    """a frame that does NOT flicker: home the cursor, erase each line as it
+    is rewritten, then erase whatever the previous frame left below. the
+    `\\033[2J` full clear this replaced blanked the pane between every frame,
+    which is invisible at 0.5 fps and strobes at 8."""
+    lines = body.splitlines()
+    return "\033[H" + "\n".join(f"{l}\033[K" for l in lines) + "\033[J"
+
+
+def frame(body, foot, height, width):
+    """one paintable frame: the body clipped to the window, footer on the
+    last row.
+
+    fit() already keeps the dashboard inside the window — this is the backstop
+    for a window too short for even the pinned header, which would otherwise
+    scroll the frame out from under the cursor `paint()` homes.
+    """
+    rows = body.splitlines()[:max(1, height - 1)] if height else body.splitlines()
+    return paint("\n".join(rows + [trunc_ansi(foot, width)]))
+
+
+def use_color(on):
+    """set the palette once, up front — everything else interpolates it."""
+    global DIM, BLD, RST, GRN, YLW, RED, CYN, MAG, SEP, STATUS_COLOR
+    codes = ["\033[2m", "\033[1m", "\033[0m", "\033[32m", "\033[33m",
+             "\033[31m", "\033[36m", "\033[35m"]
+    DIM, BLD, RST, GRN, YLW, RED, CYN, MAG = codes if on else [""] * 8
+    SEP = f" {DIM}│{RST} "
+    STATUS_COLOR = {"done": GRN, "in_progress": YLW, "blocked": RED,
+                    "pending": DIM}
+
+
+use_color(False)  # importable default; main() re-applies it from the flags
+
+
+def vis(s):
+    """printable width — color codes don't occupy columns."""
+    return len(ANSI.sub("", s))
 
 
 def find_root(start=None):
@@ -38,13 +281,260 @@ def find_root(start=None):
         d = parent
 
 
+# ---- small formatting helpers ---------------------------------------------
+
+def term_width(default=80):
+    return max(52, min(shutil.get_terminal_size((default, 24)).columns, 120))
+
+
+def plural(n, word, many=None):
+    """`1 line` / `2 lines` — the counts land in headers a human reads."""
+    return f"{n} {word}" if n == 1 else f"{n} {many or word + 's'}"
+
+
+def ago(seconds):
+    """compact age: 40s, 12m, 3.4h, 2d."""
+    if seconds < 60:
+        return f"{int(seconds)}s"
+    if seconds < 3600:
+        return f"{int(seconds / 60)}m"
+    if seconds < 86400:
+        return f"{seconds / 3600:.1f}h"
+    return f"{int(seconds / 86400)}d"
+
+
+def mtime_age(path):
+    try:
+        return time.time() - os.path.getmtime(path)
+    except OSError:
+        return None
+
+
+def trunc(s, n):
+    return s if len(s) <= n else s[: max(1, n - 1)] + "…"
+
+
+def titled(left, right, width, char="━", anim=None, active=False):
+    """`━━ left ━━━━━━━━━━━ right ━━` — the dashboard's top rule.
+
+    while the run is active a single bright cell sweeps along the rule: the
+    one part of the frame that moves even when nothing in state.md does, so a
+    glance at the pane tells you the dashboard itself is still live.
+    """
+    head = f"{DIM}{char * 2}{RST} {left} "
+    tail = f" {right} {DIM}{char * 2}{RST}" if right else f" {DIM}{char * 2}{RST}"
+    fill = max(1, width - vis(head) - vis(tail))
+    if anim and anim.enabled and active and fill > 3:
+        i = (anim.frame * 2) % fill
+        bar_ = (f"{DIM}{char * i}{RST}{CYN}{char}{RST}"
+                f"{DIM}{char * (fill - i - 1)}{RST}")
+    else:
+        bar_ = f"{DIM}{char * fill}{RST}"
+    return head + bar_ + tail
+
+
+def section(label, note="", width=80):
+    """` tasks  note ────────────────` — a ruled section header. the note is
+    clipped, then dropped, before the rule is allowed to overflow."""
+    base = f" {BLD}{label}{RST}"
+    room = width - vis(base) - 8  # keep at least a short rule
+    if note and room >= 10:
+        base += f"  {DIM}{trunc(note, room)}{RST}"
+    return base + f" {DIM}{'─' * max(1, width - vis(base) - 2)}{RST}"
+
+
+def kv(pairs):
+    """`label value` segments, labels dim — the dense-line building block."""
+    return [f"{DIM}{k}{RST} {v}" for k, v in pairs if v not in (None, "")]
+
+
+def pack(segs, width, indent="  ", sep=" · "):
+    """greedily fill lines of at most `width` printable columns. every dense
+    line goes through here so a narrow tmux pane never wraps mid-segment."""
+    lines, cur = [], ""
+    for s in segs:
+        if cur and vis(indent + cur + sep + s) > width:
+            lines.append(indent + cur)
+            cur = s
+        else:
+            cur = cur + sep + s if cur else s
+    if cur:
+        lines.append(indent + cur)
+    return lines
+
+
+def wrap(lines, width, indent="  "):
+    out = []
+    for line in lines:
+        out += textwrap.wrap(line, width=max(20, width - len(indent) - 1),
+                             initial_indent=indent,
+                             subsequent_indent=indent + "  ") or [indent]
+    return out
+
+
+def bar(counts, total, width=18, anim=None):
+    """proportional task gauge — done / in_progress / blocked / pending.
+
+    animated: a bright cell sweeps through the in-progress run and a faint one
+    marches through the pending tail, so the gauge reads as work flowing
+    rather than a static ratio. each segment keeps its own glyph either way —
+    a pulse that cycled through ▒ and ░ would be indistinguishable from the
+    blocked and pending cells with color off.
+    """
+    if not total:
+        return ""
+    live = anim and anim.enabled
+    segs, used = [], 0
+    order = [("done", "█", GRN), ("in_progress", "▓", YLW),
+             ("blocked", "▒", RED)]
+    for key, glyph, color in order:
+        n = counts.get(key, 0)
+        cells = int(round(width * n / total)) if n else 0
+        cells = min(cells, width - used)
+        if n and not cells:
+            cells = 1 if used < width else 0
+        used += cells
+        if cells:
+            if key == "in_progress" and live:
+                i = (anim.frame // 2) % cells
+                run = f"{glyph * i}█{glyph * (cells - i - 1)}"
+                segs.append(f"{color}{run}{RST}")
+                continue
+            segs.append(f"{color}{glyph * cells}{RST}")
+    rest = width - used
+    if rest > 0:
+        if live and rest > 1:
+            i = (anim.frame // 2) % rest
+            segs.append(f"{DIM}{'░' * i}▒{'░' * (rest - i - 1)}{RST}")
+        else:
+            segs.append(f"{DIM}{'░' * rest}{RST}")
+    return "".join(segs)
+
+
+def git(root, *args):
+    """git output, or None when the command fails / git is unavailable."""
+    try:
+        p = subprocess.run(["git", "-C", root, *args], text=True,
+                           capture_output=True, timeout=3)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return p.stdout.strip() if p.returncode == 0 else None
+
+
+_cost = {"at": 0.0, "parts": None}
+_ctx = {"at": 0.0, "data": None}
+
+
+def _sdd_cost():
+    from importlib.machinery import SourceFileLoader
+    import importlib.util
+    loader = SourceFileLoader("sdd_cost", os.path.join(HERE, "sdd-cost"))
+    spec = importlib.util.spec_from_loader("sdd_cost", loader)
+    mod = importlib.util.module_from_spec(spec)
+    loader.exec_module(mod)
+    return mod
+
+
+def cost_data(root, max_age=0):
+    """sdd-cost's numbers, reused in-process. cached for max_age seconds so
+    --loop doesn't re-parse every transcript on every redraw."""
+    if _cost["parts"] and time.time() - _cost["at"] < max_age:
+        return _cost["parts"]
+    try:
+        parts = _sdd_cost().cost_parts(root)
+    except Exception:  # a dashboard never dies over its cost line
+        parts = None
+    _cost.update(at=time.time(), parts=parts)
+    return parts
+
+
+def cost_segs(root, max_age=0):
+    """the cost line as segments, so a narrow pane can pack them, plus the
+    note that says where the money figure came from.
+
+    the session total is claude code's own as-billed number whenever the
+    statusline has cached one; the orch/agents split is always an estimate,
+    because claude code bills a session and not the agents inside it.
+    """
+    p = cost_data(root, max_age)
+    if not p:
+        return [], "unavailable"
+    if p.get("session") is None:
+        return [], "no transcript data for this project"
+    tag = f" {DIM}est{RST}" if p["billed"] else ""
+    # a cache nobody is writing any more means that session ended — a segment,
+    # not a note, because section() clips a note and this must not vanish
+    stale = (p["billed"] and p["age"] and p["age"] > 300)
+    segs = kv([("session", f"{BLD}${p['session']:.2f}{RST}"),
+               ("orch", f"${p['orch']:.2f}{tag}" if p["orch"] else None),
+               ("agents", f"${p['agents']:.2f}{tag}" if p["agents"] else None),
+               ("24h", f"${p['day']:.2f}"),
+               ("updated", f"{YLW}{ago(p['age'])} ago{RST}" if stale else None)])
+    note = ("as billed by claude code (statusline cache)" if p["billed"]
+            else "price-table estimate — no statusline cache for this project")
+    return segs, note
+
+
+def context_data(root, max_age=0):
+    """sdd-cost's live context reading, same in-process reuse and throttle."""
+    if _ctx["data"] and time.time() - _ctx["at"] < max_age:
+        return _ctx["data"]
+    try:
+        data = _sdd_cost().context_usage(root)
+    except Exception:  # a dashboard never dies over its context gauge
+        data = None
+    _ctx.update(at=time.time(), data=data)
+    return data
+
+
+def meter(pct, width=24):
+    """a filled gauge for one ratio — green below half, yellow approaching the
+    clear-point threshold, red past it."""
+    fill = max(0, min(width, int(round(width * pct / 100))))
+    col = RED if pct >= 75 else YLW if pct >= 50 else GRN
+    return f"{col}{'█' * fill}{RST}{DIM}{'░' * (width - fill)}{RST}"
+
+
+def context_segs(root, max_age=0):
+    """the context gauge line(s): occupancy, headroom, and what to do about it.
+
+    the advice is the point — a bare percentage does not tell you that sdd runs
+    are resumable, so past the threshold this names the clear point explicitly.
+    """
+    c = context_data(root, max_age)
+    if not c:
+        return [], ""
+    pct = c["pct"]
+    col = RED if pct >= 75 else YLW if pct >= 50 else GRN
+    segs = [f"{meter(pct)} {col}{pct:.0f}%{RST}",
+            *kv([("used", f"{fmt_tokens(c['used'])} of "
+                          f"{fmt_tokens(c['window'])}"),
+                 ("requests", str(c["requests"])),
+                 ("resets", str(c["resets"]) if c["resets"] else None)])]
+    if pct >= 75:
+        note = "clear point advised — /sdd:run resumes from state.md"
+    elif pct >= 50:
+        note = "past half; plan a clear point at the next stage boundary"
+    else:
+        note = "healthy"
+    # never send someone to clear a window we only guessed the size of
+    if c.get("assumed"):
+        note += " (window size assumed)"
+    return segs, note
+
+
+def fmt_tokens(n):
+    return (f"{n / 1e6:.1f}M" if n >= 1e6
+            else f"{n / 1e3:.0f}k" if n >= 1e3 else str(n))
+
+
 # ---- one-line summary -----------------------------------------------------
 
 def render_brief(root):
     state = st.read_state(root)
     if not state:
         return None  # no active sdd feature
-    _, slug, text = state
+    sroot, slug, text = state
 
     phase = st.field(text, "phase", "?")
     parts = [f"{BLD}sdd:{slug}{RST} ▸ {CYN}{phase}{RST}"]
@@ -53,49 +543,80 @@ def render_brief(root):
     if rows:
         done = sum(1 for r in rows if r["status"] == "done")
         blocked = sum(1 for r in rows if r["status"] == "blocked")
+        running = [r["id"] for r in rows if r["status"] == "in_progress"]
         seg = f"tasks {GRN}{done}{RST}/{len(rows)}"
+        if running:
+            seg += f" ({YLW}{','.join(running)}{RST})"
         if blocked:
             seg += f" ({RED}{blocked} blocked{RST})"
         parts.append(seg)
 
-    def gate(flag):
-        return f"{GRN}✔{RST}" if flag else f"{DIM}─{RST}"
+    def gate(flag, auto):
+        if not flag:
+            return f"{DIM}─{RST}"
+        return f"{YLW}✔{RST}" if auto else f"{GRN}✔{RST}"
 
-    parts.append(
-        f"gates plan {gate(st.flag(text, 'plan_approved'))} "
-        f"review {gate(st.flag(text, 'review_approved'))}"
-    )
+    g1 = gate(st.flag(text, "plan_approved"),
+              st.flag(text, "gate1_auto_approved"))
+    g2 = gate(st.flag(text, "review_approved"),
+              st.flag(text, "gate2_auto_approved"))
+    parts.append(f"gates plan {g1} review {g2}")
+
+    tier = (st.field(text, "tier_offset", "standard").split()
+            or ["standard"])[0]
+    if tier != "standard":
+        parts.append(f"tier {MAG}{tier}{RST}")
 
     testbed = st.field(text, "hw_testbed")
     if testbed and testbed != "none":
         parts.append(f"hw {testbed}/{st.field(text, 'hw_bay')}")
+
+    age = mtime_age(os.path.join(sroot, "specs", slug, "state.md"))
+    if age is not None:
+        stale = age > STALL_SECONDS and phase != "done"
+        parts.append(f"{YLW if stale else DIM}{ago(age)} ago{RST}")
 
     return SEP.join(parts)
 
 
 # ---- full dashboard -------------------------------------------------------
 
-def ladder(phase, plan_ok, review_ok):
-    def gate(flag, label):
-        mark = f"{GRN}✔{RST}" if flag else f"{DIM}─{RST}"
+def ladder(text, phase, width, anim=None, idle=False):
+    """phase ladder with the two gates inline. gates show WHO passed them:
+    green ✔ = human, yellow ✔auto = autopilot / gate1_skip_if_simple. the
+    current phase carries the spinner (or the idle pulse when parked)."""
+    anim = anim or Anim(enabled=False)
+    compact = width < 92
+
+    def gate(flag, auto, label):
+        if flag:
+            mark = f"{YLW}✔auto{RST}" if auto else f"{GRN}✔{RST}"
+        else:
+            mark = f"{DIM}─{RST}"
         return f"{DIM}[{label} {RST}{mark}{DIM}]{RST}"
 
     cur = PHASES.index(phase) if phase in PHASES else len(PHASES)
     parts = []
     for i, p in enumerate(PHASES):
+        name = SHORT[p] if compact else p
         if phase == "done" or i < cur:
-            parts.append(f"{GRN}{p} ✔{RST}")
+            parts.append(f"{GRN}{name} ✔{RST}")
         elif i == cur:
-            parts.append(f"{BLD}{YLW}▶ {p}{RST}")
+            parts.append(f"{BLD}{YLW}{anim.phase_glyph(idle)} {name}{RST}")
         else:
-            parts.append(f"{DIM}{p}{RST}")
+            parts.append(f"{DIM}{name}{RST}")
         if p == "plan":
-            parts.append(gate(plan_ok, "gate1"))
+            parts.append(gate(st.flag(text, "plan_approved"),
+                              st.flag(text, "gate1_auto_approved"),
+                              "g1" if compact else "gate1"))
         if p == "review":
-            parts.append(gate(review_ok, "gate2"))
+            parts.append(gate(st.flag(text, "review_approved"),
+                              st.flag(text, "gate2_auto_approved"),
+                              "g2" if compact else "gate2"))
     if phase == "done":
-        parts.append(f"{GRN}{BLD}done ✔{RST}")
-    return "  ".join(parts)
+        s = anim.pick(Anim.SPARK, every=3)
+        parts.append(f"{GRN}{BLD}{s} done ✔ {s}{RST}")
+    return pack(parts, width, sep="  ")
 
 
 def clean(lines, limit=None):
@@ -104,7 +625,155 @@ def clean(lines, limit=None):
     return keep[-limit:] if limit else keep
 
 
-def render_full(root, slug=None):
+def policy_segs(text):
+    """the run's own configuration — autopilot, the intake policies, the
+    auto-route read. all of it decides what the pipeline will do next, and
+    none of it was visible on the dashboard before."""
+    auto = st.field(text, "autopilot", "gate1=ask,gate2=ask").replace(" ", "")
+    g1 = "skip" if "gate1=skip" in auto else "ask"
+    g2 = "skip" if "gate2=skip" in auto else "ask"
+
+    def mark(v):
+        return f"{YLW}{v}{RST}" if v == "skip" else v
+
+    tier = (st.field(text, "tier_offset", "standard").split() or ["standard"])[0]
+    pairs = [
+        ("gates", f"{mark(g1)}/{mark(g2)}"),
+        ("findings", st.field(text, "findings_policy", "fix")),
+        ("test-fail", st.field(text, "test_fail_policy", "halt")),
+        ("pr", st.field(text, "pr", "none")),
+    ]
+    if tier != "standard":
+        pairs.append(("tier", f"{MAG}{tier}{RST}"))
+    return kv(pairs)
+
+
+def git_segs(root, text):
+    """branch, how far the feature branch has moved, and how many of those
+    commits are still the implement stage's wip(sdd) placeholders."""
+    branch = git(root, "rev-parse", "--abbrev-ref", "HEAD")
+    if branch is None:
+        return []
+    base = st.field(text, "base_ref") or st.field(text, "upstream")
+    pairs = [("branch", branch)]
+    if base and base != "none":
+        subjects = git(root, "log", "--format=%s", f"{base}..HEAD")
+        if subjects is not None:
+            lines = [l for l in subjects.splitlines() if l.strip()]
+            wip = sum(1 for l in lines if l.startswith("wip(sdd)"))
+            pairs.append(("ahead", f"{len(lines)}" + (
+                f" {DIM}({wip} wip){RST}" if wip else "")))
+        pairs.append(("base", trunc(base, 22)))
+    dirty = git(root, "status", "--porcelain")
+    if dirty is not None:
+        n = len([l for l in dirty.splitlines() if l.strip()])
+        pairs.append(("dirty", f"{YLW}{n} files{RST}" if n else "clean"))
+    return kv(pairs)
+
+
+def artifact_segs(root, slug):
+    """what the pipeline has actually produced on disk, with each file's age —
+    a cheap per-stage timeline that state.md's day-resolution log cannot give."""
+    fdir = os.path.join(root, "specs", slug)
+    items = []
+    for name in ("research.md", "spec.md", "tasks.md"):
+        path = os.path.join(fdir, name)
+        age = mtime_age(path)
+        if age is None:
+            items.append((name.replace(".md", ""), f"{DIM}─{RST}"))
+            continue
+        try:
+            with open(path) as f:
+                n = sum(1 for _ in f)
+        except OSError:
+            n = 0
+        items.append((name.replace(".md", ""), f"{n}L {DIM}{ago(age)}{RST}"))
+    subs = os.path.join(fdir, "tasks")
+    n_sub = len([f for f in os.listdir(subs)
+                 if f.endswith(".md")]) if os.path.isdir(subs) else 0
+    items.append(("subspecs", str(n_sub) if n_sub else f"{DIM}─{RST}"))
+    digest = os.path.join(root, "specs", "standards-digest.md")
+    items.append(("digest",
+                  f"{GRN}✔{RST}" if os.path.isfile(digest) else f"{DIM}─{RST}"))
+    return kv(items)
+
+
+def metric_segs(text):
+    """non-zero ## metrics counters — parsed by statelib all along, never
+    shown until now. the ones that mean the pipeline struggled are colored."""
+    m = st.metrics(text)
+    return kv([(label, f"{YLW}{m[key]}{RST}" if bad else str(m[key]))
+               for key, label, bad in METRIC_LABEL if m.get(key)])
+
+
+def log_lines(lines, width, mark_last=0, wrap_long=False):
+    """log entries with the date prefix dimmed away from the message.
+
+    mark_last flashes the N newest entries (they arrived since the last
+    frame). wrap_long wraps instead of clipping — the expanded view has the
+    room, the dashboard's fixed-height section does not.
+    """
+    out = []
+    # more new entries than the window holds must not mark the whole window
+    first_marked = len(lines) - min(mark_last, len(lines))
+    for i, line in enumerate(lines):
+        m = LOG_STAMP.match(line)
+        date, msg = (m.group(1), m.group(2)) if m else ("", line.lstrip("- "))
+        new = mark_last and i >= first_marked
+        lead = f"{GRN}▸{RST} " if new else "  "
+        stamp = f"{DIM}{date}{RST} " if date else ""
+        avail = width - vis(lead) - vis(stamp) - 1
+        if wrap_long:
+            chunks = textwrap.wrap(msg, width=max(20, avail)) or [""]
+            out.append(f"{lead}{stamp}{chunks[0]}")
+            pad = " " * (vis(lead) + vis(stamp))
+            out += [f"{pad}{DIM}{c}{RST}" for c in chunks[1:]]
+        else:
+            out.append(f"{lead}{stamp}{trunc(msg, max(8, avail))}")
+    return out
+
+
+def fit(lines, view, used):
+    """the dashboard body clipped to the window, scrollable when it is taller.
+
+    a window shorter than the dashboard used to scroll its own top away, and
+    then `\\033[H` painted the next frame down the middle of the old one. the
+    header block stays pinned, the rest windows, and one line says what is
+    hidden. no height (a `--full` still frame) means no clipping — the
+    terminal's scrollback is the right answer there.
+    """
+    lines = list(lines)
+    while lines and not lines[-1].strip():
+        lines.pop()
+    room = (view.height or 0) - used - 1        # the footer takes a row
+    if not view.height or len(lines) <= room:
+        view.page, view.offset = max(1, room), 0
+        return lines
+    avail = max(1, room - 1)                    # ...and the marker takes one
+    view.page = avail
+    view.offset = max(0, min(view.offset, len(lines) - avail))
+    shown = lines[view.offset:view.offset + avail]
+    below = len(lines) - view.offset - len(shown)
+    where = [f"{view.offset + 1}-{view.offset + len(shown)} of {len(lines)}"]
+    if view.offset:
+        where.append(f"↑ {view.offset}")
+    if below:
+        where.append(f"↓ {below}")
+    return shown + [f"  {DIM}{' · '.join(where)} · j/k scroll{RST}"]
+
+
+def log_window(lines, page, offset):
+    """the slice of the log to show: offset 0 is the newest entries, larger
+    offsets scroll back into history. returns (slice, offset actually used)."""
+    if page <= 0 or page >= len(lines):
+        return lines, 0
+    offset = max(0, min(offset, len(lines) - page))
+    end = len(lines) - offset
+    return lines[end - page:end], offset
+
+
+def locate(root, slug=None):
+    """(root, slug, state text) for the feature to show, or (None, None, msg)."""
     if slug:
         resolved = st.resolve_active(root)
         if resolved and not os.path.isfile(
@@ -113,98 +782,550 @@ def render_full(root, slug=None):
     else:
         resolved = st.resolve_active(root)
         if not resolved:
-            return f"{DIM}no active sdd feature (specs/ACTIVE not found){RST}"
+            return None, None, (f"{DIM}no active sdd feature "
+                                f"(specs/ACTIVE not found){RST}")
         root, slug = resolved
     try:
         with open(os.path.join(root, "specs", slug, "state.md")) as f:
-            text = f.read()
+            return root, slug, f.read()
     except OSError:
-        return f"{DIM}no state.md for feature '{slug}' under {root}{RST}"
+        return None, None, f"{DIM}no state.md for feature '{slug}' under {root}{RST}"
 
+
+def render_logs(root, slug=None, width=None):
+    """the whole log, oldest first, wrapped — for a pager or the terminal's
+    own scrollback. no dashboard, no truncation, nothing to scroll past."""
+    root, slug, text = locate(root, slug)
+    if root is None:
+        return text
+    W = width or term_width()
+    lines = clean(st.sections(text).get("log", []))
+    head = titled(f"{BLD}sdd: {slug}{RST}  {DIM}log{RST}",
+                  f"{DIM}{plural(len(lines), 'entry', 'entries')}{RST}", W)
+    if not lines:
+        return head + f"\n  {DIM}the log is empty{RST}"
+    return "\n".join([head] + log_lines(lines, W, wrap_long=True))
+
+
+def render_show(root, slug=None, width=None, want=None):
+    """one artifact in full, for a pager — the CLI twin of the `v` pane.
+    `want` matches a document name loosely (spec, tasks, T3, state); with no
+    match it lists what there is instead of guessing."""
+    root, slug, text = locate(root, slug)
+    if root is None:
+        return text
+    W = width or term_width()
+    docs = documents(root, slug)
+    if not docs:
+        return f"{DIM}no artifacts written for '{slug}' yet{RST}"
+    if want:
+        hits = [d for d in docs if want.lower() in d[0].lower()]
+        if not hits:
+            names = ", ".join(n for n, _ in docs)
+            return (f"{DIM}no artifact matching {want!r} — "
+                    f"available: {names}{RST}")
+        docs = hits[:1]
+    else:
+        docs = docs[:1]  # state.md
+    name, path = docs[0]
+    try:
+        with open(path) as f:
+            body = doc_lines(f.read(), W)
+    except OSError as exc:
+        return f"{DIM}unreadable {name}: {exc}{RST}"
+    head = titled(f"{BLD}sdd: {slug}{RST}  {DIM}{name}{RST}",
+                  f"{DIM}{plural(len(body), 'line')}{RST}", W)
+    return "\n".join([head] + body)
+
+
+def render_full(root, slug=None, view=None):
+    view = view or View()
+    root, slug, text = locate(root, slug)
+    if root is None:
+        return text
+    state_path = os.path.join(root, "specs", slug, "state.md")
+    anim = view.anim
+    W = view.width or term_width()
     phase = (st.field(text, "phase", "?").split() or ["?"])[0]
     jira = st.field(text, "jira", "none")
     upstream = st.field(text, "upstream", "none")
     testbed = st.field(text, "hw_testbed", "none")
     bay = st.field(text, "hw_bay", "")
-    skipped = st.field(text, "stages_skipped", "none")
     sec = st.sections(text)
     rows = st.task_rows(text)
-    rule = f"{DIM}{'─' * 78}{RST}"
+    age = mtime_age(state_path)
+
+    all_log = clean(sec.get("log", []))
+    anim.note(rows, len(all_log))
+    # idle == state.md has gone quiet long enough to warn about; the spinner
+    # switches to the slow pulse at exactly the same threshold, so motion and
+    # the warning never disagree
+    idle = age is not None and age > STALL_SECONDS and phase != "done"
+    moving = not idle and phase != "done"   # gates every spinner in the frame
 
     out = []
-    hdr = f" {BLD}sdd: {slug}{RST}"
-    if jira != "none":
-        hdr += f"   {DIM}jira{RST} {jira}"
-    if upstream != "none":
-        hdr += f"   {DIM}⇡ {upstream}{RST}"
-    if testbed != "none":
-        hdr += f"   {DIM}hw{RST} {testbed}/{bay}"
+    right = (f"{YLW if idle else DIM}{ago(age)} ago{RST}") if age is not None else ""
+    out.append(titled(f"{BLD}sdd: {slug}{RST}", right, W, anim=anim,
+                      active=moving))
+
+    out += pack(kv([("jira", jira if jira != "none" else None),
+                    ("⇡", upstream if upstream != "none" else None),
+                    ("hw", f"{testbed}/{bay}" if testbed != "none" else None),
+                    ("created", st.field(text, "created") or None)]), W)
+    out += [""] + ladder(text, phase, W, anim=anim, idle=idle) + [""]
+
+    if idle:
+        out += [f"  {YLW}⚠{RST} {DIM}no state.md update in {ago(age)} — "
+                f"waiting at a gate, or stalled{RST}", ""]
+
+    # a full-pane view keeps the header block (so you never lose track of which
+    # feature and phase you are looking at) and replaces everything below it
+    if view.pane == "log":
+        out += expanded_log(all_log, view, W, len(out))
+        return "\n".join(l.rstrip() for l in out)
+    if view.pane == "doc":
+        out += render_doc(root, slug, view, W, len(out))
+        return "\n".join(l.rstrip() for l in out)
+
+    # everything below the header scrolls as one body when the window is too
+    # short to hold it (fit() windows it; --full leaves it whole)
+    body = []
+    body.append(section("run", "policies for this feature", W))
+    body += pack(policy_segs(text), W)
+    skipped = st.field(text, "stages_skipped", "none")
     if skipped and skipped != "none":
-        hdr += f"   {DIM}skipped{RST} {skipped}"
-    out += [hdr, rule,
-            " " + ladder(phase, st.flag(text, "plan_approved"),
-                         st.flag(text, "review_approved")), ""]
+        body += wrap([f"skipped: {skipped}"], W)
+    body.append("")
 
     if rows:
         counts = {}
         for r in rows:
             counts[r["status"]] = counts.get(r["status"], 0) + 1
-        summary = " · ".join(
-            f"{STATUS_COLOR.get(s, '')}{counts[s]} {s}{RST}"
-            for s in ["done", "in_progress", "blocked", "pending"] if s in counts)
-        out += [f" {BLD}tasks{RST}  {summary}", rule]
+        done = counts.get("done", 0)
+        segs = [f"{STATUS_COLOR.get(s, '')}{counts[s]} {s}{RST}"
+                for s in ["done", "in_progress", "blocked", "pending"]
+                if s in counts]
+        body.append(section("tasks", f"{done}/{len(rows)} done", W))
+        gauge = bar(counts, len(rows), anim=anim if moving else None)
+        head = f"  {gauge}  " + " · ".join(segs)
+        body += [head] if vis(head) <= W else [f"  {gauge}"] + pack(segs, W)
+        # glyph+id (7) + complexity (5) + status (12) + dep/parallel room
+        tw = max(14, W - 36)
         for r in rows:
             c = STATUS_COLOR.get(r["status"], "")
-            title = r["title"][:44] + ("…" if len(r["title"]) > 44 else "")
-            dep = (f"  {DIM}← {r['depends']}{RST}"
-                   if r["depends"] not in ("—", "-", "") else "")
+            glyph = anim.task_glyph(r["status"], active=moving)
+            suffix = ""
+            if r["depends"] not in ("—", "-", ""):
+                suffix += f" {DIM}← {r['depends']}{RST}"
+            if r["parallel"].lower().startswith(("y", "true")):
+                suffix += f" {DIM}∥{RST}"
+            # a row that changed since the last frame says so, briefly
+            if anim.fresh(r["id"]):
+                suffix += f" {GRN}✦ just now{RST}"
             cx = {"simple": "sim", "standard": "std"}.get(
                 r["complexity"], r["complexity"][:3])
-            out.append(f"  {r['id']:<4} {title:<46} {DIM}{cx:<4}{RST}"
-                       f" {c}{r['status']}{RST}{dep}")
-        out.append("")
+            # pad the status column only when something follows it, so rows
+            # never carry trailing whitespace
+            status = f"{r['status']:<11}" if suffix else r["status"]
+            body.append(f"  {c}{glyph}{RST} {r['id']:<4}"
+                        f"{trunc(r['title'], tw):<{tw}} "
+                        f"{DIM}{cx:<4}{RST} {c}{status}{RST}{suffix}")
+        body.append("")
+
+    msegs = metric_segs(text)
+    if msegs:
+        body += [section("metrics", "pipeline friction so far", W)]
+        body += pack(msegs, W) + [""]
+
+    # git and the artifact stats are the only lookups that touch anything but
+    # state.md, so they refresh on the --loop interval, not per frame
+    gsegs = cached(("git", root), view.data_age, lambda: git_segs(root, text))
+    if gsegs:
+        body += [section("git", os.path.basename(root), W)]
+        body += pack(gsegs, W) + [""]
+
+    asegs = cached(("art", root, slug), view.data_age,
+                   lambda: artifact_segs(root, slug))
+    body += [section("artifacts", width=W)] + pack(asegs, W)
+    body.append("")
 
     for name, limit in [("amendments", None), ("waived findings", None),
-                        ("tests run", None), ("log", 5)]:
+                        ("tests run", None)]:
         lines = clean(sec.get(name, []), limit)
         if lines:
-            out.append(f" {BLD}{name}{RST}")
-            out += [f"  {DIM}{l}{RST}" for l in lines]
+            note = ""
+            if name == "amendments":
+                n = sum(1 for l in lines if "(assumption)" in l)
+                note = f"{n} assumption(s) to veto at a gate" if n else ""
+            body.append(section(name, note, W))
+            body += [f"{DIM}{l}{RST}" for l in wrap(lines, W)]
+            body.append("")
+
+    limit = view.log_limit
+    lines = all_log if limit == 0 else all_log[-limit:]
+    if lines:
+        note = (f"last {len(lines)} of {len(all_log)}"
+                if limit and len(all_log) > len(lines)
+                else f"{len(all_log)} entries")
+        body += [section("log", note, W)]
+        body += log_lines(lines, W, mark_last=anim.new_log_lines()) + [""]
+
+    # context before cost: a full window stops the run, a big bill only informs
+    if view.want_ctx:
+        csegs, note = context_segs(root, view.cost_age)
+        if csegs:
+            body += [section("context", note, W)] + pack(csegs, W) + [""]
+
+    if view.want_cost:
+        msegs, note = cost_segs(root, view.cost_age)
+        body += [section("cost", note, W)]
+        body += (pack(msegs, W) if msegs else [f"  {DIM}nothing to price{RST}"])
+        body.append("")
+
+    out += fit(body, view, len(out))
+    return "\n".join(l.rstrip() for l in out).rstrip("\n")
+
+
+def documents(root, slug):
+    """the feature's artifacts, in pipeline order, that actually exist.
+
+    this is what `v` cycles: the raw state.md, then each stage's output, then
+    the per-task subspecs the implementers were handed, then the shared
+    standards digest.
+    """
+    fdir = os.path.join(root, "specs", slug)
+    out = []
+    for name in ("state.md", "research.md", "spec.md", "tasks.md"):
+        path = os.path.join(fdir, name)
+        if os.path.isfile(path):
+            out.append((name, path))
+    subs = os.path.join(fdir, "tasks")
+    if os.path.isdir(subs):
+        for name in sorted(os.listdir(subs)):
+            if name.endswith(".md"):
+                out.append((f"tasks/{name}", os.path.join(subs, name)))
+    digest = os.path.join(root, "specs", "standards-digest.md")
+    if os.path.isfile(digest):
+        out.append(("standards-digest.md", digest))
+    return out
+
+
+def doc_lines(text, width):
+    """markdown rendered just enough to skim: headings bold, table rules and
+    html comments dimmed, everything wrapped so nothing spills the pane."""
+    out = []
+    fence = False
+    for raw in text.splitlines():
+        line = raw.rstrip()
+        if line.lstrip().startswith("```"):
+            fence = not fence
+            out.append(f"  {DIM}{trunc(line, width - 3)}{RST}")
+            continue
+        if not line:
             out.append("")
-    return "\n".join(out)
+            continue
+        body = trunc(line, width - 3) if fence else None
+        if body is not None:
+            out.append(f"  {body}")
+            continue
+        if line.startswith("#"):
+            out.append(f"  {BLD}{CYN}{trunc(line, width - 3)}{RST}")
+        elif line.lstrip().startswith("<!--") or line.rstrip().endswith("-->"):
+            out.append(f"  {DIM}{trunc(line, width - 3)}{RST}")
+        elif line.lstrip().startswith("|"):
+            # tables are column-aligned already — clip, never wrap
+            out.append(f"  {trunc(line, width - 3)}")
+        else:
+            chunks = textwrap.wrap(line, width=max(20, width - 3),
+                                   subsequent_indent="  ") or [""]
+            out += [f"  {c}" for c in chunks]
+    return out
+
+
+def render_doc(root, slug, view, width, used):
+    """one artifact, scrollable — `v` in --loop, `--show` on the CLI."""
+    docs = documents(root, slug)
+    if not docs:
+        return [section("view", "no artifacts yet", width),
+                f"  {DIM}nothing written for this feature yet{RST}"]
+    view.doc %= len(docs)
+    name, path = docs[view.doc]
+    try:
+        with open(path) as f:
+            body = doc_lines(f.read(), width)
+    except OSError as exc:
+        return [section("view", name, width), f"  {DIM}unreadable: {exc}{RST}"]
+
+    avail = max(3, (view.height or 24) - used - 2)
+    view.page = avail
+    view.offset = max(0, min(view.offset, max(0, len(body) - avail)))
+    shown = body[view.offset:view.offset + avail]
+    at = (f"{view.offset + 1}-{view.offset + len(shown)} of {len(body)}"
+          if len(body) > avail else plural(len(body), "line"))
+    note = f"{view.doc + 1}/{len(docs)} · {at} · n/p switch"
+    return [section(f"view {name}", note, width)] + shown
+
+
+def expanded_log(all_log, view, width, used):
+    """the log, blown up to fill the pane and scrollable — `l` in --loop.
+
+    windows by ENTRY, renders wrapped, then trims rendered rows to the space
+    available, so one keypress always moves by something the user can see.
+    """
+    avail = max(3, (view.height or 24) - used - 2)
+    view.page = avail
+    if not all_log:
+        return [section("log", "empty", width),
+                f"  {DIM}nothing logged yet{RST}"]
+    window, offset = log_window(all_log, avail, view.offset)
+    view.offset = offset  # clamped — keeps the key handler in range
+    # scrolled back, the window holds no new entries — nothing to flash
+    fresh = view.anim.new_log_lines() if offset == 0 else 0
+    rows = log_lines(window, width, mark_last=fresh, wrap_long=True)
+    rows = rows[-avail:] if offset == 0 else rows[:avail]
+    first = len(all_log) - offset - len(window) + 1
+    note = (f"{first}-{first + len(window) - 1} of {len(all_log)}"
+            + (f" · {offset} back" if offset else " · newest"))
+    return [section("log", note, width)] + rows
+
+
+class Keys:
+    """non-blocking single-key reads while --loop runs.
+
+    cbreak mode, restored on the way out (including on ^C) so a quit never
+    leaves the terminal without echo. a no-op when stdin is not a tty, which
+    is what makes `sdd-status --loop | tee` still work.
+    """
+    # escape sequences folded onto the plain keys they mirror, so the handler
+    # only ever sees one alphabet
+    ESCAPES = {"A": "k", "B": "j",          # up / down
+               "5~": " ", "6~": "b",        # page up / page down
+               "H": "g", "1~": "g",         # home -> oldest
+               "F": "G", "4~": "G"}         # end  -> newest
+    SEQ = re.compile(r"\033\[([0-9;]*)([A-Za-z~])")
+
+    def __init__(self):
+        self.fd = None
+
+    def __enter__(self):
+        try:
+            if not sys.stdin.isatty():
+                return self
+            import termios
+            import tty
+            self.termios, self.fd = termios, sys.stdin.fileno()
+            self.saved = termios.tcgetattr(self.fd)
+            tty.setcbreak(self.fd)
+        except Exception:  # no tty, no termios — the loop just isn't keyed
+            self.fd = None
+        return self
+
+    def __exit__(self, *exc):
+        if self.fd is not None:
+            self.termios.tcsetattr(self.fd, self.termios.TCSADRAIN, self.saved)
+
+    def pressed(self):
+        """keys hit since the last call; arrow / page keys normalized.
+
+        reads the fd directly rather than sys.stdin: a buffered text read
+        pulls the whole pending chunk into python's buffer, after which
+        select() reports the fd empty and every key but the first is stranded
+        there until more input arrives.
+        """
+        import select
+        data = b""
+        while self.fd is not None and select.select([self.fd], [], [], 0)[0]:
+            try:
+                chunk = os.read(self.fd, 1024)
+            except OSError:
+                break
+            if not chunk:
+                break
+            data += chunk
+        return self.decode(data)
+
+    @classmethod
+    def decode(cls, data):
+        """raw tty bytes -> key list. pure, so it is testable without a tty."""
+        s = data.decode("utf-8", "replace")
+        s = cls.SEQ.sub(lambda m: cls.ESCAPES.get(m.group(1) + m.group(2), ""), s)
+        return [c for c in s if c and c != "\033"]
+
+
+KEYHELP = "l=log v=view n/p=doc j/k=scroll g/G=ends ±=lines c=cost x=ctx q=quit"
+
+# flags that consume the next argument — their value is never the slug
+VALUE_FLAGS = ("--log", "--width", "--loop", "--show")
+
+
+def run_loop(root, slug, view, interval, keyed=True):
+    """the live dashboard. redraws at FPS for the animation while the costly
+    lookups refresh once per `interval`; keys scroll and expand the log."""
+    anim = view.anim
+    tick = min(1.0 / FPS, interval) if anim.enabled else interval
+    with Keys() as keys:
+        if sys.stdout.isatty():
+            sys.stdout.write("\033[?25l")  # hide the cursor for the redraws
+        try:
+            while True:
+                view.height = shutil.get_terminal_size((80, 24)).lines
+                body = render_full(root, slug, view)
+                spin = (f"{GRN}{anim.pick(Anim.SPIN)}{RST} live"
+                        if anim.enabled else "⟳")
+                foot = (f" {spin} {DIM}· {datetime.now():%H:%M:%S} · "
+                        f"{interval:g}s · "
+                        f"{KEYHELP if keyed and keys.fd is not None else '^C to exit'}"
+                        f"{RST}")
+                W = view.width or term_width()
+                sys.stdout.write(frame(body, foot, view.height, W))
+                sys.stdout.flush()
+                time.sleep(tick)
+                anim.tick()
+                if keys.fd is not None and handle_keys(keys.pressed(), view):
+                    return
+        except KeyboardInterrupt:
+            pass
+        finally:
+            if sys.stdout.isatty():
+                sys.stdout.write("\033[?25h\n")  # cursor back, land on a new line
+                sys.stdout.flush()
+
+
+def handle_keys(pressed, view):
+    """apply the keys hit this frame. returns True to quit.
+
+    j/k/space/b/g/G scroll whatever is up — the dashboard itself when it is
+    taller than the window, or the expanded log / document pane. in the log
+    pane they walk history (offset 0 == newest); everywhere else they walk
+    lines (offset 0 == the top).
+    """
+    def show(pane):
+        view.pane = "dash" if view.pane == pane else pane
+        view.offset = 0
+
+    for k in pressed:
+        if k in ("q", "Q", "\003"):
+            return True
+        elif k in ("l", "L"):
+            show("log")
+        elif k in ("v", "V"):
+            show("doc")
+        elif k in ("n", "\t") and view.pane == "doc":
+            view.doc, view.offset = view.doc + 1, 0
+        elif k == "p" and view.pane == "doc":
+            view.doc, view.offset = view.doc - 1, 0
+        elif k == "j":
+            # log: toward the newest. dashboard / doc: further down.
+            view.offset = (max(0, view.offset - 1) if view.pane == "log"
+                           else view.offset + 1)
+        elif k == "k":
+            view.offset = (view.offset + 1 if view.pane == "log"
+                           else max(0, view.offset - 1))
+        elif k == " ":
+            view.offset += view.page
+        elif k == "b":
+            view.offset = max(0, view.offset - view.page)
+        elif k == "G":                      # newest log entry / bottom
+            view.offset = 0 if view.pane == "log" else 10 ** 6
+        elif k == "g":                      # oldest / top — renderer clamps
+            view.offset = 10 ** 6 if view.pane == "log" else 0
+        elif k in ("+", "="):
+            view.log_limit = min(60, (view.log_limit or 1) + 2)
+        elif k == "-":
+            view.log_limit = max(1, view.log_limit - 2)
+        elif k in ("c", "C"):
+            view.want_cost = not view.want_cost
+        elif k in ("x", "X"):
+            view.want_ctx = not view.want_ctx
+    return False
+
+
+def trunc_ansi(s, width):
+    """clip a colored string to width, keeping the reset on the end."""
+    return s if vis(s) <= width else ANSI.sub("", s)[:width - 1] + "…" + RST
 
 
 def main():
     args = sys.argv[1:]
     loop = "--loop" in args
+    logs = "--logs" in args
     full = loop or "--full" in args
-    slug = next((a for a in args
-                 if not a.startswith("-") and not a.replace(".", "").isdigit()),
-                None)
+
+    def flag_int(name, default):
+        if name not in args:
+            return default
+        i = args.index(name)
+        nxt = args[i + 1] if len(args) > i + 1 else ""
+        return int(nxt) if nxt.isdigit() else default
+
+    # the slug is the first bare word that is not some flag's VALUE — without
+    # the predecessor check, `--show spec` reads "spec" as the feature slug
+    slug = next((a for i, a in enumerate(args)
+                 if not a.startswith("-")
+                 and not (i and args[i - 1] in VALUE_FLAGS)), None)
+    use_color(not ("--no-color" in args or os.environ.get("NO_COLOR")))
+    width = flag_int("--width", 0) or None
 
     root = find_root()
     if not root:
         # a dashboard call says so out loud; the one-liner stays silent
-        if full:
+        if full or logs:
             print(f"{DIM}not inside an sdd project (no specs/ directory found){RST}")
         return
 
+    show = "--show" in args
+    if show and not loop:
+        i = args.index("--show")
+        want = (args[i + 1] if len(args) > i + 1
+                and not args[i + 1].startswith("-") else None)
+        page(render_show(root, slug, width, want), "--no-pager" in args)
+        return
+    if logs and not loop:
+        page(render_logs(root, slug, width), "--no-pager" in args)
+        return
+
+    # --cost implies the context gauge: they read the same transcripts on the
+    # same throttle, and context pressure is the more actionable of the two
+    view = View(width=width, log_limit=flag_int("--log", 8),
+                want_cost="--cost" in args,
+                want_ctx="--cost" in args or "--context" in args,
+                pane="log" if logs else "doc" if show else "dash")
+
     if loop:
+        interval = 2.0
         i = args.index("--loop")
-        interval = (float(args[i + 1]) if len(args) > i + 1
-                    and args[i + 1].replace(".", "").isdigit() else 2.0)
-        try:
-            while True:
-                print("\033[2J\033[H" + render_full(root, slug))
-                time.sleep(interval)
-        except KeyboardInterrupt:
-            pass
+        if len(args) > i + 1 and args[i + 1].replace(".", "").isdigit():
+            interval = float(args[i + 1])
+        view.anim = Anim(enabled=not ("--no-anim" in args)
+                         and sys.stdout.isatty())
+        view.data_age, view.cost_age = interval, 30
+        run_loop(root, slug, view, interval)
     elif full:
-        print(render_full(root, slug))
+        out = render_full(root, slug, view)
+        # a still frame taller than the window is only readable in a pager;
+        # one that fits is printed as before, so sdd-watch keeps working the
+        # same way in a tmux side pane
+        rows = shutil.get_terminal_size((80, 24)).lines
+        page(out, "--no-pager" in args or len(out.splitlines()) < rows)
     else:
         line = render_brief(root)
         if line:
             print(line)
+
+
+def page(text, no_pager=False):
+    """hand long output to $PAGER so it can be scrolled — the point of
+    --logs. falls back to a plain print whenever paging isn't possible."""
+    if no_pager or not sys.stdout.isatty():
+        print(text)
+        return
+    import shlex
+    cmd = shlex.split(os.environ.get("PAGER") or "less -RFX")
+    try:
+        p = subprocess.Popen(cmd, stdin=subprocess.PIPE, text=True)
+        p.communicate(text)
+    except (OSError, BrokenPipeError, KeyboardInterrupt):
+        print(text)
 
 
 if __name__ == "__main__":

@@ -2,6 +2,12 @@
 # sdd-watch — thin alias. the two renderers were collapsed into sdd-status;
 # this forwards to `sdd-status --full` so the documented tmux-side-pane usage
 # (sdd-watch, sdd-watch --loop [sec], sdd-watch <slug>) still works unchanged.
+# every sdd-status dashboard flag passes through too: --cost, --context,
+# --log N, --width N, --no-color, --no-anim, --logs (see sdd-status's
+# docstring). `sdd-watch --loop` is the animated pane: l expands the log, v the
+# artifacts, and j/k scroll whatever is up — including the dashboard itself
+# when the pane is shorter than it. plain `sdd-watch` in a short pane goes
+# through $PAGER so it scrolls; --no-pager prints it instead.
 import os
 import sys
 

@@ -18,7 +18,10 @@ usage:
         are refused, listing the known ones — typos must not create rows.
   task  set the status cell of one row in the `## tasks` table (id matched
         case-insensitively, any column order/aliases statelib accepts).
-  log   append `- YYYY-MM-DD <message>` to the `## log` section.
+  log   append `- YYYY-MM-DD HH:MM <message>` to the `## log` section.
+        called many times per stage (see pipeline.yaml's config.logging), so
+        the stamp carries the time — entries within one run must be orderable
+        and timeable, which a bare date cannot do.
 
 the active feature resolves exactly like the other tools: specs/ACTIVE
 under --root (default cwd), following one `worktree:` pointer. edits are
@@ -151,7 +154,9 @@ def cmd_task(path, text, task_id, status):
 
 
 def cmd_log(path, text, message):
-    entry = f"- {time.strftime('%Y-%m-%d')} {message}\n"
+    # HH:MM as well as the date: the log is now written many times per stage,
+    # and a day-resolution stamp cannot order (or time) entries within a run
+    entry = f"- {time.strftime('%Y-%m-%d %H:%M')} {message}\n"
     lines = text.splitlines(keepends=True)
     in_log, end = False, None
     for i, line in enumerate(lines):

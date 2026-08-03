@@ -21,7 +21,13 @@ export const meta = {
 // else the agent's agents/*.md frontmatter default (resolved via agentType);
 // effort stays pinned in frontmatter.
 
-const { slug, base_ref, workdir, models = {} } = args
+// same args-may-arrive-stringified guard as workflows/research.js
+// ref: sdd-learnings/_global/research-workflow-args-stringified.md
+const input = typeof args === 'string' ? JSON.parse(args) : args
+const { slug, base_ref, workdir, models = {} } = input || {}
+if (!slug || !workdir) {
+  throw new Error(`sdd-review: args needs slug and workdir, got ${JSON.stringify(input)}`)
+}
 // spread this into an agent()'s opts to route its tier from config.models;
 // no entry -> {} -> the key is absent and the agent's frontmatter model stands
 const modelOf = name => (models[name] ? { model: models[name] } : {})

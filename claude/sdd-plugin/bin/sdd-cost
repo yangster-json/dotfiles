@@ -7,11 +7,19 @@ usage:
   .claude/sdd/cost --agents          per-agent cost table, latest session
   .claude/sdd/cost --sessions N      recent sessions table
   .claude/sdd/cost --brief           one line (used by /sdd:run at gates)
+  .claude/sdd/cost --context         one line: live context occupancy
   .claude/sdd/cost --loop [sec]      self-refreshing (default 30)
 
-token counts are exact (transcript usage records, deduped by message id).
-dollars are ESTIMATES from the PRICES table below — accurate for current
-model pricing, but not reconciled against your actual bill.
+token counts are exact (transcript usage records, deduped by message id) and
+cover the whole session — the orchestrator's own turns plus every subagent,
+which each keep a separate <session>/subagents/agent-<id>.jsonl transcript.
+
+session dollars are AS BILLED whenever the statusline has cached claude code's
+own `cost.total_cost_usd` (<config>/statusline-cache/<session>.json — written
+by statusline-command.py; see billed()). without that cache they fall back to
+ESTIMATES from the PRICES table below, which track current pricing but are not
+reconciled against your bill. the per-agent table is always an estimate:
+claude code bills a session, not the agents inside it.
 """
 import glob
 import json
@@ -40,11 +48,20 @@ def projects_dir(root):
     return d if os.path.isdir(d) else None
 
 
+def transcript_paths(pdir):
+    """every transcript under a project dir. two layouts coexist: the session's
+    own <sid>.jsonl, and one <sid>/subagents/agent-<id>.jsonl per subagent.
+    subagent turns are NOT threaded into the parent file, so globbing only the
+    top level zeroes the subagent half of every session."""
+    return (sorted(glob.glob(os.path.join(pdir, "*.jsonl")))
+            + sorted(glob.glob(os.path.join(pdir, "*", "subagents", "*.jsonl"))))
+
+
 def load(pdir):
     """all user/assistant entries, with uuid links for agent-chain grouping."""
     entries = []
-    for path in glob.glob(os.path.join(pdir, "*.jsonl")):
-        session = os.path.basename(path)[:-6]
+    for path in transcript_paths(pdir):
+        fallback = os.path.basename(path)[:-6]
         try:
             with open(path) as f:
                 for line in f:
@@ -58,14 +75,32 @@ def load(pdir):
                         "uuid": e.get("uuid"),
                         "parent": e.get("parentUuid"),
                         "side": bool(e.get("isSidechain")),
+                        "agent": e.get("agentId"),
                         "type": e["type"],
-                        "session": session,
+                        # a subagent file carries its parent's sessionId, which
+                        # is what attributes its spend to the right session
+                        "session": e.get("sessionId") or fallback,
                         "ts": e.get("timestamp", ""),
                         "msg": e.get("message") or {},
                     })
         except OSError:
             continue
     return entries
+
+
+def agent_labels(pdir):
+    """agent id -> its spawn description, from the sidecar meta files."""
+    out = {}
+    for path in glob.glob(os.path.join(pdir, "*", "subagents", "*.meta.json")):
+        try:
+            with open(path) as f:
+                m = json.load(f)
+        except (OSError, json.JSONDecodeError, ValueError):
+            continue
+        name = os.path.basename(path)[:-len(".meta.json")]
+        out[name[len("agent-"):] if name.startswith("agent-") else name] = (
+            m.get("description") or m.get("agentType") or "")
+    return out
 
 
 def usage_records(entries):
@@ -114,8 +149,118 @@ def agg(recs):
     return t
 
 
+# the windows claude code actually ships. a transcript records neither the
+# window size nor the [1m] suffix (the model id is plain `claude-opus-5`), so
+# the size is inferred — see window_size().
+WINDOWS = (200_000, 1_000_000)
+# past this much of the window, /sdd:run should take a clear point rather than
+# ride into auto-compact's lossy summary
+PRESSURE = 0.75
+
+
+def configured_window(root=None):
+    """(size, source) for the window. `[1m]` lives in the model ALIAS (settings'
+    `model`), never in the model id a transcript records, so the alias is the
+    only declaration available — project settings first, then user, the way
+    claude code itself layers them."""
+    if os.environ.get("SDD_CONTEXT_WINDOW", "").isdigit():
+        return int(os.environ["SDD_CONTEXT_WINDOW"]), "env"
+    paths = [(os.path.join(root, ".claude", n), "project")
+             for n in ("settings.local.json", "settings.json") if root]
+    paths += [(os.path.join(st.config_dir(), n), "settings")
+              for n in ("settings.local.json", "settings.json")]
+    for path, source in paths:
+        try:
+            with open(path) as f:
+                model = (json.load(f) or {}).get("model") or ""
+        except (OSError, ValueError, AttributeError):
+            continue
+        if model:
+            return (1_000_000 if "[1m]" in model else 200_000), source
+    return WINDOWS[0], "default"
+
+
+def window_size(peak, root=None):
+    """the window this session is really running in: what the alias declares,
+    widened if we have already seen more than that — so an unreadable alias can
+    never make occupancy read over 100%.
+
+    the source rides along because it changes the ADVICE: a merely assumed
+    200k window would flag a healthy 1M session at 150k as needing a clear
+    point, so a caller must be able to say the figure is provisional.
+    """
+    win, source = configured_window(root)
+    for w in WINDOWS:
+        if w >= peak and w >= win:
+            return w, source
+    return max(win, peak), source
+
+
+def ctx_size(rec):
+    """context occupancy at a request — its whole input side (fresh + written
+    cache + read cache), which is what the statusline's Ctx reports."""
+    return rec["tin"] + rec["cw"] + rec["cr"]
+
+
+def context_lifetimes(recs):
+    """split a session's requests at every context reset.
+
+    occupancy only grows within a lifetime — every turn appends and nothing is
+    evicted — so a large drop means /clear or auto-compact started a fresh one.
+    a session id outlives both, so one transcript can hold several lifetimes and
+    only the last is the window filling up now. the 10% floor is slack for a
+    cache entry expiring and being rewritten (cr falls, cw rises, sum holds).
+    """
+    segs = [[]]
+    for r in sorted(recs, key=when):
+        if segs[-1] and ctx_size(r) < ctx_size(segs[-1][-1]) * 0.9:
+            segs.append([])
+        segs[-1].append(r)
+    return segs
+
+
+def context_usage(root):
+    """live context occupancy of the newest session's ORCHESTRATOR window.
+
+    subagents are excluded on purpose: each holds its own window that dies with
+    the agent, so folding them in would report a number no /clear or /compact
+    could act on.
+    """
+    pdir = projects_dir(root)
+    recs = [r for r in usage_records(load(pdir)) if not r["side"]] if pdir else []
+    if not recs:
+        return None
+    latest = max(recs, key=when)["session"]
+    segs = context_lifetimes([r for r in recs if r["session"] == latest])
+    live = segs[-1]
+    used, peak = ctx_size(live[-1]), max(ctx_size(r) for r in live)
+    win, source = window_size(peak, root)
+    return {"session": latest, "used": used, "peak": peak, "window": win,
+            "pct": 100.0 * used / win, "requests": len(live),
+            "resets": len(segs) - 1, "over": used >= win * PRESSURE,
+            "assumed": source == "default"}
+
+
+def context_brief(root):
+    c = context_usage(root)
+    if not c:
+        return "context: no transcript data"
+    note = "  ← take a clear point" if c["over"] else ""
+    # an assumed window makes a healthy 1M run look full; say so rather than
+    # send the user to clear a window that is really at 15%
+    if c["assumed"]:
+        note += (" (window assumed — set SDD_CONTEXT_WINDOW"
+                 " or `model` in settings)" if c["over"] else " · window assumed")
+    resets = f" · {c['resets']} reset(s)" if c["resets"] else ""
+    return (f"context: {fmt_tok(c['used'])}/{fmt_tok(c['window'])}"
+            f" ({c['pct']:.0f}%) · peak {fmt_tok(c['peak'])}"
+            f" · {c['requests']} requests{resets}{note}")
+
+
 def agent_chains(entries, session):
-    """group sidechain entries into per-agent-invocation chains."""
+    """group sidechain entries into per-agent-invocation chains. own-file
+    subagents key off agentId; older in-parent sidechains walk up to their
+    root."""
     byid = {e["uuid"]: e for e in entries
             if e["session"] == session and e["uuid"]}
 
@@ -127,7 +272,7 @@ def agent_chains(entries, session):
     chains = {}
     for e in byid.values():
         if e["side"]:
-            chains.setdefault(root_of(e), []).append(e)
+            chains.setdefault(e["agent"] or root_of(e), []).append(e)
     return byid, chains
 
 
@@ -174,13 +319,22 @@ def render(root, n_sessions=0, show_agents=False):
            row("orchestrator", [r for r in cur if not r["side"]]),
            row("subagents", [r for r in cur if r["side"]]),
            f"  {'total':<14} {' ' * 36}{BLD}{GRN}${agg(cur)['usd']:.2f}{RST}",
-           "", f" {BLD}by model (latest session){RST}"]
+           ""]
+    ctx = context_usage(root)
+    if ctx:
+        col = YLW if ctx["over"] else RST
+        out += [f" {BLD}context{RST}   {col}{fmt_tok(ctx['used'])}"
+                f"/{fmt_tok(ctx['window'])} ({ctx['pct']:.0f}%){RST}"
+                f"   {DIM}peak {fmt_tok(ctx['peak'])}"
+                f" over {ctx['requests']} requests{RST}", ""]
+    out += [f" {BLD}by model (latest session){RST}"]
     for m in sorted({r["model"] for r in cur}):
         out.append(row(m.replace("claude-", "")[:14],
                        [r for r in cur if r["model"] == m]))
 
     if show_agents:
         byid, chains = agent_chains(entries, latest)
+        labels = agent_labels(pdir)
         out += ["", f" {BLD}agents (latest session){RST}"]
         if not chains:
             out.append(f"  {DIM}no subagent activity in this session{RST}")
@@ -190,7 +344,10 @@ def render(root, n_sessions=0, show_agents=False):
             ids = {e["uuid"] for e in chain}
             crecs = [r for r in cur if r["uuid"] in ids]
             t = agg(crecs)
-            label = " ".join(text_of(byid.get(root_id, {}).get("msg", {})).split())[:38]
+            # own-file agents have a meta description; older chains fall back
+            # to the prompt text of the sidechain root
+            label = (labels.get(root_id)
+                     or " ".join(text_of(byid.get(root_id, {}).get("msg", {})).split()))[:38]
             model = (crecs[0]["model"].replace("claude-", "")[:12]
                      if crecs else "?")
             out.append(f"  {i:>2} {DIM}{model:<13}{RST}"
@@ -219,21 +376,100 @@ def render(root, n_sessions=0, show_agents=False):
     return "\n".join(out)
 
 
-def brief(root):
+def statusline_cache_dir():
+    return os.path.join(st.config_dir(), "statusline-cache")
+
+
+def project_session_ids(pdir):
+    """session ids that have a transcript under this project dir — how a
+    cached statusline entry gets attributed to this repo."""
+    return {os.path.basename(p)[:-6]
+            for p in glob.glob(os.path.join(pdir, "*.jsonl"))}
+
+
+def billed(root, cache_dir=None):
+    """as-billed cost for this project, as claude code itself reported it.
+
+    the statusline is handed `cost.total_cost_usd` on every render — the real
+    billed figure, cache-write pricing and all — and drops it in
+    <config>/statusline-cache/<session>.json. reading that beats re-pricing the
+    transcript here: PRICES is our copy of a number anthropic owns and moves.
+    None when nothing writes the cache, which is what keeps the estimate as the
+    fallback rather than the default.
+
+    `day` sums the sessions last updated inside 24h, so a single long session
+    counts whole — the estimate's 24h window is per-message instead.
+    """
     pdir = projects_dir(root)
-    entries = load(pdir) if pdir else []
-    recs = usage_records(entries)
-    if not recs:
+    ids = project_session_ids(pdir) if pdir else set()
+    here = os.path.abspath(root)
+    entries = []
+    for path in glob.glob(os.path.join(cache_dir or statusline_cache_dir(),
+                                       "*.json")):
+        try:
+            with open(path) as f:
+                e = json.load(f)
+        except (OSError, ValueError):
+            continue
+        sid = e.get("session_id") or os.path.basename(path)[:-5]
+        cwd = e.get("cwd") or ""
+        # a session counts if its transcript lives here, or — for a session
+        # run in a worktree, whose transcripts land under a different project
+        # dir — if its cwd is inside the repo
+        if sid in ids or cwd == here or cwd.startswith(here + os.sep):
+            entries.append(e)
+    if not entries:
+        return None
+    entries.sort(key=lambda e: e.get("updated_at") or 0)
+    now = time.time()
+    cur = entries[-1]
+    return {"session": float(cur.get("total_cost_usd") or 0),
+            "day": sum(float(e.get("total_cost_usd") or 0) for e in entries
+                       if now - (e.get("updated_at") or 0) < 86400),
+            "sessions": len(entries),
+            "age": now - (cur.get("updated_at") or 0),
+            "session_id": cur.get("session_id")}
+
+
+def cost_parts(root):
+    """the numbers behind --brief, structured so a caller can lay them out.
+
+    `billed` says where the session and 24h figures came from: claude code's
+    own accounting, or the PRICES table. the orch/agents split is always an
+    estimate — claude code bills a session, not the agents inside it.
+    """
+    pdir = projects_dir(root)
+    recs = usage_records(load(pdir)) if pdir else []
+    p = {"billed": False, "session": None, "orch": None, "agents": None,
+         "day": None, "age": None, "sessions": 0}
+    if recs:
+        latest = max(recs, key=when)["session"]
+        cur = [r for r in recs if r["session"] == latest]
+        p["orch"] = agg([r for r in cur if not r["side"]])["usd"]
+        p["agents"] = agg([r for r in cur if r["side"]])["usd"]
+        p["session"] = p["orch"] + p["agents"]
+        p["day"] = agg([r for r in recs
+                        if when(r) > datetime.now(timezone.utc)
+                        - timedelta(days=1)])["usd"]
+        p["sessions"] = len({r["session"] for r in recs})
+    b = billed(root)
+    if b:
+        p.update(billed=True, session=b["session"], day=b["day"],
+                 age=b["age"])
+    return p
+
+
+def brief(root):
+    p = cost_parts(root)
+    if p["session"] is None:
         return "cost: no transcript data"
-    latest = max(recs, key=when)["session"]
-    cur = [r for r in recs if r["session"] == latest]
-    orch = agg([r for r in cur if not r["side"]])["usd"]
-    sub = agg([r for r in cur if r["side"]])["usd"]
-    day = agg([r for r in recs
-               if when(r) > datetime.now(timezone.utc) - timedelta(days=1)]
-              )["usd"]
-    return (f"cost: session ${orch + sub:.2f} est (orch ${orch:.2f}"
-            f" + agents ${sub:.2f}) · 24h ${day:.2f}")
+    src = "billed" if p["billed"] else "est"
+    split = ""
+    if p["orch"] is not None:
+        tag = " est" if p["billed"] else ""
+        split = f" (orch ${p['orch']:.2f} + agents ${p['agents']:.2f}{tag})"
+    return (f"cost: session ${p['session']:.2f} {src}{split}"
+            f" · 24h ${p['day']:.2f}")
 
 
 def main():
@@ -243,6 +479,9 @@ def main():
                 os.getcwd())
     if "--brief" in args:
         print(brief(root))
+        return
+    if "--context" in args:
+        print(context_brief(root))
         return
     n = 0
     if "--sessions" in args:
