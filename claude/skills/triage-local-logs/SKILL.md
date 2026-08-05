@@ -1,3 +1,8 @@
+---
+name: triage-local-logs
+description: WSSD firmware failure triage from test artifacts already on the local filesystem (build/wssd-testkit/artifacts) with NO Jira interaction — inventory artifacts, read pre-triage analysis, examine debug dumps, identify the primary failure, build a timeline, and report findings inline in chat. Use when asked to triage a local test failure, analyze a run's artifacts on disk, or investigate a failure without a ticket.
+---
+
 # WSSD Firmware Local Log Triage Rules
 
 ## Overview

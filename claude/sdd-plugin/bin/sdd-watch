@@ -4,8 +4,10 @@
 # (sdd-watch, sdd-watch --loop [sec], sdd-watch <slug>) still works unchanged.
 # every sdd-status dashboard flag passes through too: --cost, --context,
 # --log N, --width N, --no-color, --no-anim, --logs (see sdd-status's
-# docstring). `sdd-watch --loop` is the animated pane: l expands the log, v the
-# artifacts, and j/k scroll whatever is up — including the dashboard itself
+# docstring). `sdd-watch --loop` is the animated pane: l expands the log, a the
+# subagents (what each one is running right now — `sdd-agents` is the same data
+# on the command line), v the artifacts, w wraps instead of clipping, and j/k
+# scroll whatever is up — including the dashboard itself
 # when the pane is shorter than it. plain `sdd-watch` in a short pane goes
 # through $PAGER so it scrolls; --no-pager prints it instead.
 import os

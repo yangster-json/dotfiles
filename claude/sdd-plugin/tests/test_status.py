@@ -697,6 +697,46 @@ class LogViewTest(unittest.TestCase):
             self.assertLessEqual(len(line), 60)
             self.assertNotIn("…", line)   # wrapped, never clipped
 
+    def test_wrap_trades_entries_for_whole_lines(self):
+        """`w` off fits more entries by clipping; on, every entry is complete.
+        either way the pane holds its width and its height."""
+        long_entry = "- 2026-07-02 " + "verbose " * 40
+        path = os.path.join(self.root, "specs", "demo", "state.md")
+        with open(path, "a") as f:
+            f.write(long_entry + "\n")
+        counts = {}
+        for wrap in (False, True):
+            view = status.View(width=76, pane="log", height=20, wrap=wrap)
+            out = plain(self.render(view))
+            counts[wrap] = out.count("entry ")
+            for line in out.splitlines():
+                self.assertLessEqual(len(line), 76)
+            self.assertLessEqual(len(out.splitlines()), 19)
+            self.assertIn("verbose", out)
+            self.assertEqual("…" in out, not wrap)
+            self.assertEqual("wrapped" in out, wrap)
+        # wrapped, the long entry is there in full
+        wrapped = plain(self.render(status.View(width=76, pane="log",
+                                               height=20, wrap=True)))
+        self.assertEqual(wrapped.count("verbose"), 40)
+        self.assertGreater(counts[False], counts[True])
+
+    def test_wrapped_paging_steps_by_the_entries_on_screen(self):
+        """space must not step over entries the fold pushed off the pane."""
+        path = os.path.join(self.root, "specs", "demo", "state.md")
+        with open(path, "w") as f:
+            f.write(STATE.split("## log")[0] + "## log\n"
+                    + "".join(f"- 2026-07-01 entry {i} " + "pad " * 30 + "\n"
+                              for i in range(1, 31)))
+        view = status.View(width=76, pane="log", height=20, wrap=True)
+        seen = plain(self.render(view))
+        oldest = min(int(w) for w in re.findall(r"entry (\d+)", seen))
+        status.handle_keys([" "], view)
+        after = plain(self.render(view))
+        newest = max(int(w) for w in re.findall(r"entry (\d+)", after))
+        # the page below picks up exactly where this one ended — no gap
+        self.assertEqual(newest, oldest - 1)
+
     def test_expanded_view_with_an_empty_log(self):
         with open(os.path.join(self.root, "specs", "demo", "state.md")) as f:
             text = f.read()
@@ -775,6 +815,20 @@ class KeysTest(unittest.TestCase):
         self.assertEqual(v.offset, 0)
         status.handle_keys(["G"], v)              # bottom — renderer clamps
         self.assertGreater(v.offset, 100)
+
+    def test_w_toggles_wrapping_in_every_pane_and_keeps_the_scroll(self):
+        """the toggle is orthogonal to the pane: it is not a pane of its own,
+        and flipping it must not throw away where the user had scrolled to."""
+        v = status.View()
+        self.assertFalse(v.wrap)
+        for pane in ("dash", "log", "agents", "doc"):
+            v.pane, v.offset = pane, 4
+            status.handle_keys(["w"], v)
+            self.assertTrue(v.wrap, pane)
+            self.assertEqual(v.pane, pane)      # `w` never switches panes
+            self.assertEqual(v.offset, 4)       # nor loses the scroll
+            status.handle_keys(["W"], v)
+            self.assertFalse(v.wrap, pane)
 
     def test_log_limit_stays_in_range(self):
         v = status.View(log_limit=1)
@@ -947,6 +1001,36 @@ class DocPaneTest(unittest.TestCase):
         for token in ("# head", "<!-- note -->", "| a | b |", "code", "plain"):
             self.assertIn(token, rendered)
 
+    def test_wrap_all_folds_the_lines_doc_lines_clips_on_purpose(self):
+        """a wide table row and a long command in a fence are the two things
+        the v pane cuts — `w` is the only way to read either one."""
+        wide = "| id | " + "cell " * 30 + "|"
+        fenced = "```\npytest " + "arg " * 40 + "\n```"
+        head = "#### " + "a long heading " * 8
+        text = f"{wide}\n{fenced}\n{head}\n"
+        for wrap in (False, True):
+            rows = [plain(r) for r in status.doc_lines(text, 60,
+                                                      wrap_all=wrap)]
+            for line in rows:
+                self.assertLessEqual(len(line), 60)
+            body = " ".join(r.strip() for r in rows)
+            self.assertEqual("…" in body, not wrap)
+            # wrapped, the whole of each line is there to read; clipped, only
+            # what fit one row of it
+            for token, total in (("cell", 30), ("arg", 40), ("heading", 8)):
+                seen = body.count(token)
+                if wrap:
+                    self.assertEqual(seen, total, token)
+                else:
+                    self.assertLess(seen, total, token)
+
+    def test_the_doc_pane_honors_the_toggle_and_says_so(self):
+        out = plain(status.render_full(self.root, None, status.View(
+            width=76, height=24, pane="doc", wrap=True)))
+        self.assertIn("wrapped", out)
+        self.assertNotIn("wrapped", plain(status.render_full(
+            self.root, None, status.View(width=76, height=24, pane="doc"))))
+
 
 class LogStampTest(unittest.TestCase):
     """sdd-state now stamps HH:MM; both shapes must render."""
@@ -983,10 +1067,12 @@ class ContextGaugeTest(unittest.TestCase):
             f.write("demo")
         with open(os.path.join(self.root, "specs", "demo", "state.md"), "w") as f:
             f.write(STATE)
+        status._bands.update(at=time.time() + 1e6, v=(20.0, 35.0))
         self._real = status.context_data
 
     def tearDown(self):
         status.context_data = self._real
+        status._bands.update(at=0.0, v=None)
         shutil.rmtree(self.root, ignore_errors=True)
 
     def fake(self, pct, used=100_000, window=1_000_000, requests=40, resets=0):
@@ -1006,14 +1092,15 @@ class ContextGaugeTest(unittest.TestCase):
             self.assertEqual(len(bar), 12, f"pct={pct}")
 
     def test_advice_escalates_with_occupancy(self):
-        for pct, want in ((10, "healthy"), (60, "next stage boundary"),
-                          (85, "clear point advised")):
+        # bands come from config.context: recommend at 20, stop at 35
+        for pct, want in ((10, "healthy"), (25, "clear point advised"),
+                          (85, "past the run's stop threshold")):
             self.fake(pct)
             _, note = status.context_segs(self.root)
             self.assertIn(want, note, f"pct={pct}")
 
     def test_panel_renders_and_respects_the_width(self):
-        self.fake(85, used=850_000)
+        self.fake(25, used=250_000)
         for width in (52, 62, 80, 120):
             out = status.render_full(
                 self.root, None, status.View(width=width, want_ctx=True))
@@ -1037,6 +1124,335 @@ class ContextGaugeTest(unittest.TestCase):
         out = status.render_full(self.root, None,
                                  status.View(width=80, want_ctx=True))
         self.assertNotIn("clear point", out)
+
+
+class PaletteTest(unittest.TestCase):
+    """the palette is catppuccin mocha, degraded for terminals that cannot do
+    truecolor — and the width math must stay blind to how long a sequence is."""
+
+    DEPTHS = ("truecolor", "256", "basic")
+
+    def setUp(self):
+        self.saved = {k: os.environ.get(k)
+                      for k in ("SDD_COLOR_DEPTH", "COLORTERM", "TERM")}
+        self.root = make_project(STATE)
+
+    def tearDown(self):
+        for k, v in self.saved.items():
+            os.environ.pop(k, None) if v is None else os.environ.update({k: v})
+        status.use_color(False)
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def depth(self, depth):
+        os.environ["SDD_COLOR_DEPTH"] = depth
+        status.use_color(True)
+
+    def full(self, width=80, **kw):
+        return status.render_full(self.root, None,
+                                 status.View(width=width, **kw))
+
+    def test_every_entry_carries_all_three_encodings(self):
+        for name, (rgb, x256, basic) in status.MOCHA.items():
+            self.assertEqual(len(rgb), 3, name)
+            self.assertTrue(all(0 <= v <= 255 for v in rgb), name)
+            self.assertTrue(0 <= x256 <= 255, name)
+            self.assertRegex(basic, r"^\d+$", name)
+
+    def test_each_depth_emits_its_own_encoding(self):
+        for depth, want in [("truecolor", "\033[38;2;203;166;247m"),
+                            ("256", "\033[38;5;141m"),
+                            ("basic", "\033[35m")]:
+            self.depth(depth)
+            self.assertEqual(status.MAUVE, want, depth)
+
+    def test_forced_depth_beats_a_capable_terminal(self):
+        os.environ["COLORTERM"] = "truecolor"
+        os.environ["SDD_COLOR_DEPTH"] = "256"
+        self.assertEqual(status.color_depth(), "256")
+
+    def test_an_unknown_forced_depth_falls_back_to_detection(self):
+        os.environ["COLORTERM"] = "truecolor"
+        os.environ["SDD_COLOR_DEPTH"] = "sepia"
+        self.assertEqual(status.color_depth(), "truecolor")
+
+    def test_a_plain_terminal_gets_the_basic_eight(self):
+        os.environ.pop("SDD_COLOR_DEPTH", None)
+        os.environ.pop("COLORTERM", None)
+        os.environ["TERM"] = "xterm"
+        self.assertEqual(status.color_depth(), "basic")
+        os.environ["TERM"] = "xterm-256color"
+        self.assertEqual(status.color_depth(), "256")
+
+    def test_no_color_zeroes_the_whole_palette(self):
+        self.depth("truecolor")
+        status.use_color(False)
+        for name in ("DIM", "BLD", "RST", "GRN", "YLW", "RED", "MAUVE", "PINK",
+                     "PEACH", "TEAL", "SKY", "SAPH", "BLUE", "LAV", "TXT",
+                     "SUB", "SURF"):
+            self.assertEqual(getattr(status, name), "", name)
+        self.assertNotIn("\033[", self.full())
+
+    def test_width_holds_at_every_depth(self):
+        """a truecolor sequence is 5x longer than `\\033[2m` — if any width
+        calculation counted bytes instead of columns, only this would catch it.
+
+        every pane, because the log and the document viewer color their own
+        lines (tone, headings, table rules) rather than going through pack().
+        """
+        for depth in self.DEPTHS:
+            self.depth(depth)
+            for width in (52, 62, 80, 120):
+                for pane in ("dash", "log", "doc"):
+                    out = self.full(width, want_cost=True, want_ctx=True,
+                                    pane=pane, height=20)
+                    for line in out.splitlines():
+                        self.assertLessEqual(
+                            len(plain(line)), width,
+                            f"{depth} w{width} {pane} overflowed: {line!r}")
+                        self.assertEqual(line, line.rstrip())
+                for render in (status.render_logs, status.render_show):
+                    for line in render(self.root, None, width).splitlines():
+                        self.assertLessEqual(
+                            len(plain(line)), width,
+                            f"{depth} w{width} {render.__name__}: {line!r}")
+
+    def test_every_section_label_has_its_own_hue(self):
+        self.depth("truecolor")
+        out = self.full(want_cost=True, want_ctx=True)
+        seen = {}
+        for line in out.splitlines():
+            m = re.match(r"^ \033\[1m(\033\[[0-9;]*m)(\w+)", line)
+            if m:
+                seen[m.group(2)] = m.group(1)
+        # every section the dashboard actually drew is one we assigned a color
+        self.assertTrue(seen, "no section headers found")
+        for label, col in seen.items():
+            self.assertEqual(col, status.SECTION_COLOR[label],
+                             f"section {label} used an unassigned hue")
+        # and the hues are distinct enough to tell the sections apart
+        self.assertGreaterEqual(len(set(seen.values())), 5)
+
+    def test_section_colors_name_real_palette_entries(self):
+        for label, name in status.SECTIONS.items():
+            self.assertIn(name, status.MOCHA, label)
+
+    def test_an_unknown_section_still_renders(self):
+        self.depth("truecolor")
+        line = status.section("surprise", "", 60)
+        self.assertIn("surprise", plain(line))
+        self.assertLessEqual(len(plain(line)), 60)
+
+
+class LogToneTest(unittest.TestCase):
+    """the log is 30-60 near-identical lines; the tint is what makes the few
+    that report an outcome findable."""
+
+    def setUp(self):
+        os.environ["SDD_COLOR_DEPTH"] = "basic"   # short, readable sequences
+        status.use_color(True)
+
+    def tearDown(self):
+        os.environ.pop("SDD_COLOR_DEPTH", None)
+        status.use_color(False)
+
+    def test_failures_friction_and_outcomes_get_distinct_hues(self):
+        self.assertEqual(status.log_tone("T4 blocked — needs hardware"),
+                         status.RED)
+        self.assertEqual(status.log_tone("verify_retries 2 — reroute to opus"),
+                         status.YLW)
+        self.assertEqual(status.log_tone("gate1 approved by user"), status.GRN)
+
+    def test_severity_wins_over_friction(self):
+        # "failed, retrying" is a failure first — bad is matched before warn
+        self.assertEqual(status.log_tone("T3 failed, retrying once"),
+                         status.RED)
+
+    def test_an_ordinary_entry_is_left_alone(self):
+        for msg in ("T3 in progress", "wrote 4 subspecs", "spec drafted",
+                    "3 scouts dispatched"):
+            self.assertEqual(status.log_tone(msg), "", msg)
+
+    def test_a_finished_stage_counts_as_an_outcome(self):
+        for msg in ("research complete", "T2 verified", "branch merged"):
+            self.assertEqual(status.log_tone(msg), status.GRN, msg)
+
+    def test_a_tinted_entry_still_costs_no_columns(self):
+        rows = status.log_lines(["- 2026-08-03 09:00 T6 blocked: waiting",
+                                 "- 2026-08-03 09:01 T1 verified",
+                                 "- 2026-08-03 09:02 nothing notable"], 60)
+        for r in rows:
+            self.assertLessEqual(len(ANSI.sub("", r)), 60)
+            self.assertIn("\033[0m", r)   # every tint is closed
+
+    def test_the_new_marker_is_not_the_done_color(self):
+        """"just arrived" and "finished successfully" are different facts."""
+        rows = status.log_lines(["- 2026-08-03 09:00 x"], 60, mark_last=1)
+        self.assertIn(status.PINK, rows[0])
+
+
+class ThresholdTest(unittest.TestCase):
+    """money and occupancy colors, and the promise that the hue and the words
+    beside it never disagree."""
+
+    def setUp(self):
+        # truecolor, because the basic 8 has no peach — it and yellow both
+        # fall back to ANSI 33, which would hide a band mismatch
+        os.environ["SDD_COLOR_DEPTH"] = "truecolor"
+        status.use_color(True)
+        self.root = make_project(STATE)
+        # pin the bands: the real reader shells out to sdd-pipeline, and these
+        # tests are about the banding, not about config resolution
+        status._bands.update(at=time.time() + 1e6, v=(20.0, 35.0))
+
+    def tearDown(self):
+        os.environ.pop("SDD_COLOR_DEPTH", None)
+        status.use_color(False)
+        status._ctx.update(at=0.0, data=None)
+        status._bands.update(at=0.0, v=None)
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def test_money_uses_the_statusline_thresholds(self):
+        # green under $0.50, peach under $2, red at or above it
+        self.assertEqual(status.usd_color(0.49), status.GRN)
+        self.assertEqual(status.usd_color(0.50), status.PEACH)
+        self.assertEqual(status.usd_color(1.99), status.PEACH)
+        self.assertEqual(status.usd_color(2.00), status.RED)
+
+    def test_occupancy_bands_track_the_runs_thresholds(self):
+        # not headroom bands: these are the figures /sdd:run recommends and
+        # stops on (config.context, default 20 and 35), so a gauge and a halted
+        # run can never disagree
+        self.assertEqual(status.pct_color(19), status.GRN)
+        self.assertEqual(status.pct_color(20), status.YLW)
+        self.assertEqual(status.pct_color(35), status.PEACH)
+        self.assertEqual(status.pct_color(53), status.RED)
+
+    def test_bands_come_from_the_projects_own_config(self):
+        """a project that moves its thresholds moves the gauge with them."""
+        root = tempfile.mkdtemp(prefix="sdd-bands-")
+        try:
+            os.makedirs(os.path.join(root, ".claude", "sdd"))
+            with open(os.path.join(root, ".claude", "sdd", "pipeline.yaml"), "w") as f:
+                f.write("config:\n  context:\n"
+                        "    clear_point_at_pct: 40\n    hard_stop_at_pct: 60\n")
+            status._bands.update(at=0.0, v=None)
+            self.assertEqual(status.context_bands(root), (40.0, 60.0))
+            self.assertEqual(status.pct_color(45), status.YLW)
+            self.assertEqual(status.pct_color(60), status.PEACH)
+        finally:
+            status._bands.update(at=0.0, v=None)
+            shutil.rmtree(root, ignore_errors=True)
+
+    def test_unreadable_config_falls_back_to_the_bundled_figures(self):
+        status._bands.update(at=0.0, v=None)
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(status.context_bands(d), (20.0, 35.0))
+        status._bands.update(at=0.0, v=None)
+
+    def test_the_gauge_color_matches_the_advice(self):
+        """a peach bar beside "healthy" would be a lie — the note bands and
+        pct_color's bands are the same bands."""
+        notes = {}
+        for pct in (10, 19, 20, 34, 35, 52, 53, 99):
+            status._ctx.update(at=time.time() + 1e6, data={
+                "pct": pct, "used": pct * 2000, "window": 200_000,
+                "requests": 1, "resets": 0, "assumed": False})
+            segs, note = status.context_segs(self.root, max_age=10 ** 9)
+            notes.setdefault(status.pct_color(pct), set()).add(note)
+        for col, seen in notes.items():
+            self.assertEqual(len(seen), 1,
+                             f"one hue, {len(seen)} different notes: {seen}")
+        # three notes for four hues: peach and red are both "past the stop",
+        # the deeper hue only saying how far past
+        self.assertEqual(len({n for s in notes.values() for n in s}), 3)
+
+
+class LoopGuardTest(unittest.TestCase):
+    """--loop must be able to stop without a keypress.
+
+    the incident behind this: a capture harness pty-forked `--loop 0.3`, never
+    got its quit key through, and the dashboard repainted for 20 hours into a
+    reader whose buffer grew past 1.7 GiB.
+    """
+
+    def test_frames_bound(self):
+        g = status.LoopGuard(frames=3)
+        self.assertFalse(g.spent())
+        self.assertFalse(g.spent())
+        self.assertTrue(g.spent())
+
+    def test_budget_bound(self):
+        now = [0.0]
+        g = status.LoopGuard(budget=5.0, clock=lambda: now[0])
+        self.assertFalse(g.spent())
+        now[0] = 4.9
+        self.assertFalse(g.spent())
+        now[0] = 5.0
+        self.assertTrue(g.spent())
+
+    def test_orphan_stops_the_loop(self):
+        """a dashboard whose owner exited has nobody left to quit it."""
+        self.assertTrue(status.LoopGuard(ppid=-1).spent())
+        self.assertFalse(status.LoopGuard(ppid=os.getppid()).spent())
+
+    def test_unbounded_by_default(self):
+        g = status.LoopGuard()
+        self.assertFalse(any(g.spent() for _ in range(50)))
+
+    def test_emit_reports_a_dead_terminal(self):
+        """the write used to raise straight out of the redraw."""
+        real = sys.stdout
+        try:
+            sys.stdout = open(os.devnull, "w")
+            self.assertTrue(status.emit("x"))
+            sys.stdout.close()
+            self.assertFalse(status.emit("x"))
+        finally:
+            sys.stdout = real
+
+    def test_loop_takes_the_alternate_screen(self):
+        """repaints on the primary screen scrolled into tmux's history."""
+        self.assertIn("1049h", status.ALT_ON)
+        self.assertIn("1049l", status.ALT_OFF)
+
+
+class LoopExitTest(unittest.TestCase):
+    """--frames / --for end the process on their own."""
+
+    def setUp(self):
+        status.use_color(False)
+        self.root = make_project(STATE)
+        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+        self.cli = os.path.join(SDD, "bin", "sdd-status")
+
+    def run_cli(self, *extra, timeout=30):
+        return subprocess.run([sys.executable, self.cli, *extra, "--no-color"],
+                              cwd=self.root, text=True, capture_output=True,
+                              timeout=timeout)
+
+    def test_frames_terminates(self):
+        p = self.run_cli("--loop", "0.05", "--frames", "3")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertIn("sdd: demo", ANSI.sub("", p.stdout))
+
+    def test_for_terminates(self):
+        start = time.monotonic()
+        p = self.run_cli("--loop", "0.05", "--for", "1")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertLess(time.monotonic() - start, 20)
+
+    def test_frame_count_is_honored(self):
+        """one --frames frame is one painted frame, not a stream of them."""
+        one = self.run_cli("--loop", "0.05", "--frames", "1").stdout
+        five = self.run_cli("--loop", "0.05", "--frames", "5").stdout
+        self.assertLess(len(one), len(five))
+
+    def test_bound_value_is_never_read_as_the_slug(self):
+        for extra in (["--loop", "0.05", "--frames", "2"],
+                      ["--loop", "0.05", "--for", "1", "--frames", "2"]):
+            p = self.run_cli(*extra)
+            self.assertEqual(p.returncode, 0, p.stderr)
+            self.assertIn("sdd: demo", ANSI.sub("", p.stdout), f"{extra}")
 
 
 if __name__ == "__main__":

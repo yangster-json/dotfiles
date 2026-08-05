@@ -1,3 +1,8 @@
+---
+name: triage-jira
+description: WSSD firmware Jira ticket triage — the full systematic method for FAIL-xxxxx / FW-xxxxx failure tickets: deriving the /mnt/tlogs path from the ticket TITLE (not the ticket number), inventorying artifacts, examining *_FAILED_debug_dump.log, classifying watchdogs, assertions, media/flash errors, PCIe and boot failures, and writing the Jira triage comment in the required format. Use whenever asked to triage, investigate, or root-cause a firmware Jira ticket, or when a FAIL-/FW- ticket id appears in the request.
+---
+
 # WSSD Firmware Jira Ticket Triage Rules
 
 ## Overview

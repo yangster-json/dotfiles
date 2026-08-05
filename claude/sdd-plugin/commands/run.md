@@ -5,46 +5,40 @@ argument-hint: <feature description> [jira=FW-XXXXX] [upstream=<branch>] [testbe
 
 Run the SDD pipeline for: $ARGUMENTS
 
-You are the orchestrator. Read the pipeline file FIRST — the project's
-`.claude/sdd/pipeline.yaml` if it exists, else the plugin's bundled copy
-(run `sdd-path pipeline.yaml` to get its absolute path). It defines the
-stages, agent assignments, the two gates, and their routing. Agents are
-invocable as `sdd:sdd-<name>`. EFFORT is pinned in each agent's frontmatter;
-MODEL TIER comes from `config.models` when present (it overrides frontmatter —
-see "## model routing" below), otherwise from frontmatter. This command only
-tells you how to interpret it; the
-pipeline file is authoritative and the user edits it, so never assume it
-still says what it said last run.
+You are the orchestrator. Get the pipeline FIRST by running
+`sdd-pipeline --section config` — never by Reading pipeline.yaml. The resolver
+picks the project's `.claude/sdd/pipeline.yaml` over the plugin's bundled copy,
+merges the whole `extends:` chain, and strips the comments, so you read data
+instead of the ~54KB of documentation written for whoever edits the file. Then
+pull each stage's own block with `sdd-pipeline --stage <name>` as you reach it,
+rather than carrying all seven for the whole run. `--json` if you want it
+parsed; `--chain` to show which files a resolution came from.
+
+The pipeline defines the stages, agent assignments, the two gates, and their
+routing. Agents are invocable as `sdd:sdd-<name>`. EFFORT is pinned in each
+agent's frontmatter; MODEL TIER comes from `config.models` when present (it
+overrides frontmatter — see "## model routing" below), otherwise from
+frontmatter. This command only tells you how to interpret the pipeline; the
+pipeline is authoritative and the user edits it, so re-run the resolver each
+run and never assume it still says what it said last time.
 
 ## extends (personal / team profile layering)
 
-If the resolved pipeline.yaml has a top-level `extends:` key, it carries only
-a delta and inherits the rest from a base. Resolve the base value:
-- `extends: plugin` — a sentinel for the plugin's bundled default; resolve it
-  to `$(sdd-path pipeline.yaml)`. Use this from a profile so it survives
-  `/plugin update` (the bundled default moves to a versioned cache; a
-  hardcoded path would not).
-- `extends: <path>` — a filesystem path (expand `~`), for a base that is not
-  the plugin default (e.g. a team-shared project pipeline.yaml).
+A pipeline file with a top-level `extends:` key carries only a delta and
+inherits the rest from a base — `extends: plugin` for the bundled default (a
+sentinel, so it survives `/plugin update` moving that file into a versioned
+cache), or a filesystem path for a team-shared base. Chaining is allowed, so
+`<project> extends <profile> extends plugin` resolves plugin → profile →
+project, outermost applied last. `config:` merges by top-level key and
+`pipeline:` by `stage:` name: an entry present in the outer file replaces the
+base's value entirely, one that is absent inherits unchanged with the base's
+stage order preserved, and an unrecognized `stage:` name appends at the end.
 
-Chaining is allowed: the base may itself carry `extends`. Walk the chain to
-its terminal base — the file with no `extends`, which must be a complete
-pipeline (the plugin default is the usual terminus) — then merge each layer
-back over it, outermost applied last. So `<project pointer> extends
-<profile> extends plugin` resolves plugin → profile → project. A cycle
-(a file reached twice) is an error: stop and report it, do not loop.
-
-At each merge step: `config:` merges by top-level key name — a key present in
-the outer file replaces that key's entire value from the base; a key absent
-inherits unchanged. `pipeline:` entries merge the same way, matched by
-`stage:` name — a stage present in the outer file fully replaces that named
-stage; a stage absent inherits unchanged, original order preserved; an
-unrecognized `stage:` name appends at the end. `extends:` itself is consumed
-during resolution, never a merged key.
-
-This lets a personal or team profile (e.g. `sdd-profiles/datastore-fw/pipeline.yaml`,
-outside the plugin so `/plugin update` never touches it) carry only its delta
-instead of duplicating the whole file.
+`sdd-pipeline` implements all of that — you do not walk the chain or merge
+layers yourself, and a cycle comes back as an error rather than a loop. The
+rules are documented here because the user hand-writes these files (e.g.
+`sdd-profiles/datastore-fw/pipeline.yaml`, kept outside the plugin so
+`/plugin update` never touches it), not because you execute them.
 
 ## start or resume
 
@@ -98,7 +92,11 @@ instead of duplicating the whole file.
   upstream's tip.
 - Then create `specs/<slug>/state.md` from the state template (the project's
   `specs/templates/state.md` if present, else `$(sdd-path templates/state.md)`)
-  and write the plain slug to `specs/ACTIVE` in the current root. Record the
+  and write the plain slug to `specs/ACTIVE` in the current root. **Fill the
+  `## feature` section with the description verbatim, before the first stage** —
+  research.md and spec.md do not exist yet, so until they do this is the only
+  copy, and a stop or resume at `phase: research` would otherwise come back
+  knowing the slug and nothing else. Record the
   confirmed base as `upstream:` in state.md, and parse optional `jira=`,
   `testbed=`, `bay=` tokens (they override config.hw_test). Resolve the `gates`
   answer to state.md's `autopilot:` field (`gate1=<ask|skip>,gate2=<ask|skip>`):
@@ -132,11 +130,26 @@ instead of duplicating the whole file.
   move. Hand-edit only what the CLI doesn't cover: the initial tasks
   table, amendments, waived findings, tests run, `stages_skipped:`
   (the adaptive skip-list), and `tier_offset:` (the auto-route read).
+- **One event, one call — use `state event`.** Most moments in a run produce
+  several of those edits at once (a task passes: status flips, a counter
+  bumps, a line is logged). Do them in a SINGLE
+  `sdd-state event --task T3=done --bump verify_retries --log "…"`, not three
+  consecutive `state` calls. This is not cosmetic: every tool call re-sends
+  your whole context window, so at a normal mid-run occupancy three calls to
+  write three lines cost three windows — bookkeeping was ~20% of the
+  orchestrator's spend on measured runs. `event` takes repeated
+  `--set k=v` / `--task id=status` / `--bump counter[=n]` / `--log message`,
+  applies them set → task → bump → log whatever order you pass, and writes
+  once. It does NOT weaken "log as you go" (see "## logging"): batch the
+  edits that belong to the same event, never events that happened at
+  different times.
+- Batch the read-only probes the same way: the two `sdd-cost` calls at a
+  stage end are one `sdd-cost --brief; sdd-cost --context` invocation.
 - Keep the `## metrics` counters current with
-  `sdd-state bump <counter>` at the events the pipeline file
-  names (verify_retries, tasks_blocked, ambiguities, file_list_fixes,
-  findings_confirmed/rejected/waived, gate1_reroutes, gate2_reroutes,
-  test_failures, merge_conflicts) — they feed `sdd-quality`.
+  `sdd-state bump <counter>` — or the `--bump` leg of an `event` — at the
+  events the pipeline file names (verify_retries, tasks_blocked, ambiguities,
+  file_list_fixes, findings_confirmed/rejected/waived, gate1_reroutes,
+  gate2_reroutes, test_failures, merge_conflicts) — they feed `sdd-quality`.
 - Run the git choreography through `sdd-git` (feature-start,
   task-start, wip, task-merge, snapshot, dissolve — the pipeline file's
   stages say when). Each command validates its preconditions and refuses
@@ -193,7 +206,7 @@ one edit there instead of a sweep across `agents/*.md`, and it layers through
   `model`. No entry (or no `config.models` block at all) -> pass no model and
   let the agent's frontmatter default stand. EFFORT always comes from
   frontmatter — never override it here.
-- Workflow spawns (research, review): the scripts spawn via `agentType` and
+- Workflow spawns (research, review, implement): the scripts spawn via `agentType` and
   cannot read the pipeline file, so THREAD the map in. Add `models:
   config.models` (the whole map, as real json) to the `args` you pass the
   Workflow tool. Each script applies `models[<agent-name>]` as that agent's
@@ -213,12 +226,12 @@ auto-routing".
   Never paste whole artifacts, other agents' full returns, or conversation
   history into a prompt.
 - Implementers and verifiers get a SUBSPEC, not spec excerpts in the
-  prompt: at implement setup you read spec.md once and write
-  `specs/<slug>/tasks/<id>.md` per task (subspec template — feature
-  context, full requirement + amendment text, file list, verify command,
-  grepped interfaces, notes), then pass `{workdir, subspec}`. Those agents read only their
-  subspec, never spec.md or state.md; when an amendment lands, update the
-  affected subspecs.
+  prompt: at implement setup `sdd:sdd-subspec-writer` reads spec.md and
+  tasks.md and writes `specs/<slug>/tasks/<id>.md` per task, and you pass
+  `{workdir, subspec}`. Those agents read only their subspec, never spec.md or
+  state.md; when an amendment lands, update the affected subspecs — a
+  one-section edit is yours, a re-grep after a merge goes back to the same
+  agent in `mode: regen`.
 - Most agents return hybrid markdown + a fenced ```json block; the json is
   the machine-readable payload you act on. If an agent returns malformed
   json, re-spawn it once with the parse error. The exception is the research
@@ -234,17 +247,18 @@ subagent's dies with it. It only grows, so every avoidable re-read is
 permanent. The rule: **an artifact you have already read this session is
 already in your context — do not read it again.** Concretely:
 
-- **`tasks.md` is spent once the subspecs exist.** You read it at plan
-  hand-off and at implement setup to write the subspecs; after that every fact
-  a task needs lives in its subspec, and its status lives in state.md's task
-  table. Do NOT re-read `tasks.md` (or a slice of it) before each implementer
-  spawn — that turns one read into one-per-task. If you need a task's row
+- **`spec.md` and `tasks.md` are never yours to read in full.** The plan stage
+  hands you a table, not tasks.md; `sdd:sdd-subspec-writer` reads both at
+  implement setup so you don't have to, and hands back counts plus a
+  `feature_card`. That card — summary, non-goals, constraints — is the feature
+  intent you adjudicate against for the rest of the run; it is deliberately the
+  one thing that comes back in full. The exception is a spec AMENDMENT: read
+  only the section you are amending.
+- **Everything a task needs is in its subspec, and every status is in
+  state.md.** Do NOT read a subspec, or a slice of tasks.md, before each
+  implementer spawn — the implementer reads its own subspec, and re-reading
+  one turns a per-task cost into a permanent one. If you need a task's row
   mid-implement, it is in the state.md you are already updating.
-- **`spec.md` is read ONCE, in full, at implement setup**, to write the
-  subspecs. Reading it back in slices (offset/limit) at later stages is the
-  same tokens paid twice — the requirement text you need is already copied
-  into the subspec. The exception is a spec AMENDMENT: re-read only the
-  section you are amending.
 - **`pipeline.yaml` is read once, at the very start.** It does not change
   mid-run; re-reading it to re-check a config value costs more than
   remembering the value.
@@ -261,25 +275,63 @@ the conversation with a lossy summary. A clear point is strictly better —
 but only the user can take one, so your job is to make it visible.
 
 - **You cannot compact or clear yourself.** No tool does it: `/clear` and
-  `/compact` are user-typed commands, and no hook can trigger them. Never
-  claim to have compacted, and never spend a turn trying.
+  `/compact` are user-typed commands, and no hook can trigger them (a
+  PreCompact hook only observes one that already started). Never claim to have
+  compacted, and never spend a turn trying. What sdd does instead is end the
+  turn at a stage boundary so the NEXT stage starts in a fresh window — better
+  than compaction, because nothing is summarized and nothing is lost.
 - **Measure at every `stage_end`**, with `sdd-cost --context` (one line:
   occupancy, window, peak, requests). Include its figure in the stage_end log
   line next to the cost delta, so consecutive lines show context growth per
-  stage the same way they show spend.
+  stage the same way they show spend. The figure is your own window's: the
+  reading pins to `CLAUDE_CODE_SESSION_ID`, so it is right even when the
+  feature lives in another repo than the session (a cross-repo run used to
+  read "no transcript data" while its window was 44% full).
+- **The measurement is also enforced, not just asked for.**
+  `hooks/context-guard.py` fires on every `sdd-state` write that SETS `phase`
+  — a stage boundary by definition — and feeds the occupancy figure back to
+  you with the verdict already applied (note / recommend / stop). It exists
+  because this was prose-only and a measured run reached 44% having never
+  logged a single figure. Treat its line as the measurement: log it, act on
+  it, and do not re-run `sdd-cost --context` to double-check the same
+  boundary.
 - **Announce the boundary** when `config.context.announce_clear_points`: on
   leaving a stage, state in one line that the run is safely resumable — the
   phase it would resume from, and that `/clear` then `/sdd:run` continues it.
   Below `clear_point_at_pct` that is a note, not a suggestion; keep it to one
   line and move on.
 - **Recommend it** once occupancy is at or past `config.context.clear_point_at_pct`
-  (default 75): say plainly that a clear point is advised here, give the
+  (default 20 — a percentage of the WINDOW, so 20% of a 1m-context session is
+  200k tokens): say plainly that a clear point is advised here, give the
   occupancy figure, and continue working. Do not stop, do not ask — a gate is
   the only place you take input, and context pressure is not a gate.
-- **Stop only if `config.context.hard_stop_at_pct` is >0 and occupancy is past
-  it.** Then finish the current stage, log a `stop` event naming the resume
-  phase, and end the turn with the resume instruction. This exists for
-  unattended runs, where nobody is reading the recommendation.
+- **Stop at EVERY stage boundary when `config.context.stop_at_every_stage`**
+  (default true). This is the "compact between stages" rule, done the lossless
+  way: on entering a stage — with the new `phase:` already written, which is
+  what makes resume exact — log a `stop` event naming that phase and end the
+  turn with the resume instruction. No stage then pays for the previous one's
+  agent returns. It costs one `/clear` + `/sdd:run` per stage; set the key
+  false for threshold-only stops (the right choice for an unattended run,
+  unless something outside the session re-launches it). Two boundaries are
+  exempt: occupancy below `config.context.stop_floor_pct` (default 8 — an
+  almost-empty window costs more to re-establish than it saves, which is the
+  first boundary of a run and all of `/sdd:quick`), and `phase: done`, which
+  has no next stage.
+- **Stop if `config.context.hard_stop_at_pct` is >0 and occupancy is past it**
+  (default 35). Same shape, threshold-triggered: finish the current stage, log
+  a `stop` event naming the resume phase, and end the turn with the resume
+  instruction. This is the backstop for unattended runs, where nobody acts on
+  the recommendation — but it is not conditional on autopilot, so an attended
+  run stops too. That is deliberate: past this figure every further request
+  re-reads a window that large, and `/clear` + `/sdd:run` resumes losslessly
+  from `phase:`. Present it as the cheap next step it is, not as a failure.
+- **While a stop is in force, new spawns are BLOCKED.** The same guard hook
+  denies `Task` and `Workflow` calls until the window is actually cleared, so
+  "finish the stage anyway" is not available to you at a boundary stop. If you
+  see that denial, do not work around it (no inline substitute for the agent,
+  no second attempt): end the turn with the resume instruction. Nothing is
+  stranded — an interrupted stage re-runs its workflow from the top (see
+  "## workflow stages"), and the guard lifts itself once occupancy drops.
 - A stage boundary is the ONLY safe clear point: mid-stage, unmerged task
   worktrees and un-recorded verdicts live only in your context. Never suggest
   one between an implementer spawn and its merge.
@@ -343,13 +395,20 @@ entries per stage stay ordered and timeable.
 - **Log as you go, not at the end.** Write the line at the moment the event
   happens — never batch a stage's events into one summary afterwards, and
   never reconstruct them later from memory. An interrupted run must leave a
-  log that explains where it got to.
+  log that explains where it got to. (Batching a single event's edits into one
+  `state event` call is not batching events — it is the same instant, one tool
+  call instead of three. Multiple `--log` legs in one call are fine only when
+  the lines describe that same moment.)
 - **What to log:** every event in `config.logging.events` when
   `config.logging.level` is `verbose` (the default); only the stage
   transitions, gates, task outcomes, findings, tests, and commits when it is
   `normal`. On a fully unattended run (both gates skipped) the log IS the
   user's only window into the middle of the pipeline — treat verbose as
   mandatory there.
+- **Do not narrate a running subagent.** Log the dispatch and the return, not
+  what an agent is doing between them: the user already has that live, from the
+  agents' own transcripts (`sdd-agents`, or `a` in `sdd-status --loop`). Your
+  job is the events only you know about.
 - **Shape:** one line, `<stage>: <what happened>`, carrying the numbers that
   make it reviewable — ids, counts, verdicts, effort/tier when it changed, and
   on stage_end both the `sdd-cost --brief` figure and the `sdd-cost --context`
@@ -520,8 +579,9 @@ skip-list, this is your judgment, never silent.
   EFFECTIVE map once — apply the offset to config.models with ladder clamping —
   and use that effective map everywhere config.models is used per "## model
   routing": as each Agent-tool spawn's `model`, and as the `models:` arg threaded
-  to the research / review workflows. The scripts stay unchanged; they receive an
-  already-shifted plain map. Offset 0 => the effective map IS config.models.
+  to the research / review / implement workflows. The scripts stay unchanged; they
+  receive an already-shifted plain map. Offset 0 => the effective map IS
+  config.models.
 - **Composition with complexity.** Orthogonal: the per-task `complexity` tag
   picks WHICH agent (implementer-lite vs implementer), this offset then shifts
   that agent's tier. A heavy feature runs a simple task's lite implementer at

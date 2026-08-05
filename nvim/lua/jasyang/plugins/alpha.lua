@@ -41,8 +41,8 @@ return {
     dashboard.section.header.opts.hl = "AlphaHeader"
     dashboard.section.footer.opts.hl = "AlphaFooter"
     dashboard.section.buttons.val = {
-      dashboard.button("s", "🕘  Open last session", "<cmd>AutoSession restore<CR>"),
-      dashboard.button("r", "🔎  Find string", ":Telescope live_grep<CR>"),
+      dashboard.button("r", "🕘  Open last session", "<cmd>AutoSession restore<CR>"),
+      dashboard.button("s", "🔎  Find string", ":Telescope live_grep<CR>"),
       dashboard.button("f", "🔍  Find file", ":Telescope find_files<CR>"),
       dashboard.button("e", "📁  Open file explorer", ":NvimTreeToggle<CR>"),
       dashboard.button("n", "📄  New file", ":enew<CR>"),

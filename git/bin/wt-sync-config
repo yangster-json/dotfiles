@@ -1,0 +1,53 @@
+#!/bin/sh
+# Copy the gitignored editor/LSP config from the main worktree into a linked
+# worktree, rewriting absolute paths that point back at the main tree.
+#
+# compile_commands.json embeds an absolute "directory" per entry. Copied
+# verbatim, clangd resolves those to the MAIN worktree and indexes its sources
+# and headers from inside this one -- wrong branch content, silently.
+#
+# usage: wt-sync-config [worktree-path]   (defaults to the current worktree)
+set -e
+
+# text files only -- each one is sed-rewritten, so never list a binary here
+FILES="compile_commands.json pyrightconfig.json"
+
+wt=${1:-$(git rev-parse --show-toplevel)}
+wt=$(CDPATH= cd -- "$wt" && pwd)
+
+# the first --porcelain entry is always the main worktree
+main=$(git -C "$wt" worktree list --porcelain | head -1 | sed 's/^worktree //')
+
+if [ "$wt" = "$main" ]; then
+    exit 0
+fi
+
+# escape a path for the pattern / replacement halves of the sed below
+esc_pat() { printf '%s' "$1" | sed 's/[.[\*^$\\#]/\\&/g'; }
+esc_rep() { printf '%s' "$1" | sed 's/[\\&#]/\\&/g'; }
+from=$(esc_pat "$main")
+to=$(esc_rep "$wt")
+
+status=0
+for f in $FILES; do
+    src="$main/$f"
+    dst="$wt/$f"
+    if [ ! -f "$src" ]; then
+        continue
+    fi
+    # never clobber a worktree's own config
+    if [ -e "$dst" ]; then
+        continue
+    fi
+    # keep failures per-file: drop the partial temp and carry on to the rest
+    tmp="$dst.tmp$$"
+    if sed "s#$from#$to#g" "$src" > "$tmp" && mv "$tmp" "$dst"; then
+        echo "worktree config: copied $f"
+    else
+        rm -f "$tmp"
+        echo "worktree config: failed to copy $f" >&2
+        status=1
+    fi
+done
+
+exit $status

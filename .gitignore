@@ -23,6 +23,13 @@ claude/daemon*
 claude/statsig/
 claude/todos/
 claude/plugins/marketplaces/
+claude/plugins/cache/
+claude/plugins/installed_plugins.json
+claude/plugins/plugin-catalog-cache.json
+claude/statusline-cache/
+claude/tasks/
+claude/plans/
+claude/-augment.log
 claude/stats-cache.json
 claude/mcp-needs-auth-cache.json
 claude/policy-limits.json

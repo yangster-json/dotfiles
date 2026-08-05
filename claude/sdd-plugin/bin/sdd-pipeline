@@ -1,0 +1,198 @@
+#!/usr/bin/env python3
+"""sdd-pipeline — resolve the pipeline.yaml `extends:` chain and print the result.
+
+/sdd:run used to Read the whole pipeline file. the bundled default is ~54KB and
+roughly four fifths of it is explanatory comments for the human editing it, none
+of which the orchestrator needs; with `extends:` it also had to read every file
+in the chain and merge them in-context. that landed early in the longest
+sessions sdd runs, so it was re-read on every later turn.
+
+this prints the same information with comments stripped and the chain already
+merged, so the orchestrator reads data instead of documentation.
+
+usage:
+  sdd-pipeline                    resolved pipeline, as yaml
+  sdd-pipeline --json             resolved pipeline, as json
+  sdd-pipeline --section config   only config: (model routing, gates, intake)
+  sdd-pipeline --section pipeline only the stage list
+  sdd-pipeline --stage implement  only that one stage
+  sdd-pipeline --stage x --section config   both, in one call
+  sdd-pipeline --chain            resolution chain and sizes, no body
+  sdd-pipeline <path>             start from an explicit file
+
+the orchestrator reads config: once and then one stage at a time, so `--stage`
+deliberately does NOT carry config: — combine the two flags when a single spawn
+needs both.
+
+with no path, the start file is <cwd>/.claude/sdd/pipeline.yaml when it exists,
+else the plugin's bundled copy — the same preference /sdd:run applies.
+
+merge rules mirror run.md's "## extends" section, and that file stays
+authoritative: the outermost layer is applied last; `config:` merges by
+top-level key and `pipeline:` by `stage:` name, where an entry present in the
+outer file replaces the base's value entirely and one that is absent inherits
+unchanged; an unrecognized stage name appends at the end. `extends:` is consumed
+during resolution and never appears in the output. a file reached twice is a
+cycle and is reported as an error rather than followed.
+"""
+import argparse
+import json
+import os
+import sys
+
+try:
+    import yaml
+except ImportError:
+    sys.stderr.write("sdd-pipeline: needs PyYAML (pip install pyyaml)\n")
+    sys.exit(1)
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PLUGIN_PIPELINE = os.path.join(ROOT, "pipeline.yaml")
+PROJECT_PIPELINE = os.path.join(".claude", "sdd", "pipeline.yaml")
+
+
+def start_file(explicit):
+    """the file /sdd:run would start from."""
+    if explicit:
+        return os.path.abspath(os.path.expanduser(explicit))
+    if os.path.exists(PROJECT_PIPELINE):
+        return os.path.abspath(PROJECT_PIPELINE)
+    return PLUGIN_PIPELINE
+
+
+def resolve_extends(value, referrer):
+    """map an `extends:` value to an absolute path."""
+    # `plugin` is a sentinel so a profile survives /plugin update, which moves
+    # the bundled default into a versioned cache
+    if value == "plugin":
+        return PLUGIN_PIPELINE
+    p = os.path.expanduser(value)
+    if not os.path.isabs(p):
+        p = os.path.join(os.path.dirname(referrer), p)
+    return os.path.abspath(p)
+
+
+def load_chain(path):
+    """walk extends to the terminal base; returns [terminal, ..., outermost]."""
+    chain, seen = [], []
+    while True:
+        real = os.path.realpath(path)
+        if real in seen:
+            names = " -> ".join(os.path.basename(p) for p in seen + [real])
+            raise SystemExit(f"sdd-pipeline: extends cycle: {names}")
+        seen.append(real)
+        if not os.path.exists(path):
+            raise SystemExit(f"sdd-pipeline: no pipeline file at {path}")
+        with open(path) as fh:
+            doc = yaml.safe_load(fh) or {}
+        if not isinstance(doc, dict):
+            raise SystemExit(f"sdd-pipeline: {path} is not a yaml mapping")
+        chain.append((path, doc))
+        nxt = doc.get("extends")
+        if not nxt:
+            break
+        path = resolve_extends(nxt, path)
+    chain.reverse()  # terminal base first, so layers apply outermost-last
+    return chain
+
+
+def merge_pipeline(base, layer):
+    """match stages by name; keep base order, append unknown names."""
+    by_name = {s.get("stage"): s for s in layer if isinstance(s, dict)}
+    out, used = [], set()
+    for s in base:
+        name = s.get("stage") if isinstance(s, dict) else None
+        if name in by_name:
+            out.append(by_name[name])
+            used.add(name)
+        else:
+            out.append(s)
+    for s in layer:
+        name = s.get("stage") if isinstance(s, dict) else None
+        if name not in used:
+            out.append(s)
+    return out
+
+
+def merge(base, layer):
+    out = dict(base)
+    for key, value in layer.items():
+        if key == "extends":
+            continue  # consumed by resolution, never a merged key
+        if key == "config" and isinstance(value, dict):
+            cfg = dict(base.get("config") or {})
+            cfg.update(value)
+            out["config"] = cfg
+        elif key == "pipeline" and isinstance(value, list):
+            out["pipeline"] = merge_pipeline(base.get("pipeline") or [], value)
+        else:
+            out[key] = value
+    return out
+
+
+def block_str(dumper, data):
+    # long folded scalars read better as literal blocks than as quoted runs
+    style = "|" if "\n" in data else None
+    return dumper.represent_scalar("tag:yaml.org,2002:str", data, style=style)
+
+
+def emit(doc, as_json):
+    if as_json:
+        return json.dumps(doc, indent=1, default=str)
+    yaml.add_representer(str, block_str, Dumper=yaml.SafeDumper)
+    return yaml.safe_dump(doc, sort_keys=False, default_flow_style=False,
+                          width=100, allow_unicode=True).rstrip()
+
+
+def main(argv):
+    ap = argparse.ArgumentParser(
+        prog="sdd-pipeline", add_help=True,
+        description="resolve and print the sdd pipeline (comments stripped)")
+    ap.add_argument("path", nargs="?", help="explicit start file")
+    ap.add_argument("--json", action="store_true", help="emit json")
+    ap.add_argument("--section", choices=("config", "pipeline"),
+                    help="emit only this top-level section")
+    ap.add_argument("--stage", help="emit only this stage (combine with "
+                                    "--section config to get both)")
+    ap.add_argument("--chain", action="store_true",
+                    help="show the resolution chain and sizes, no body")
+    ap.add_argument("--resolved", action="store_true",
+                    help="default behavior; accepted for explicitness")
+    a = ap.parse_args(argv)
+
+    chain = load_chain(start_file(a.path))
+
+    if a.chain:
+        for i, (path, doc) in enumerate(chain):
+            kind = "base" if i == 0 else "layer"
+            keys = ",".join(k for k in doc if k != "extends")
+            print(f"{kind:<5} {os.path.getsize(path):>7}B  {path}  [{keys}]")
+        return 0
+
+    doc = chain[0][1]
+    for _, layer in chain[1:]:
+        doc = merge(doc, layer)
+    doc.pop("extends", None)
+
+    if a.stage:
+        stages = [s for s in (doc.get("pipeline") or [])
+                  if isinstance(s, dict) and s.get("stage") == a.stage]
+        if not stages:
+            have = ", ".join(s.get("stage", "?") for s in doc.get("pipeline") or []
+                             if isinstance(s, dict))
+            sys.stderr.write(f"sdd-pipeline: no stage {a.stage!r}; have: {have}\n")
+            return 1
+        out = {}
+        if a.section == "config":
+            out["config"] = doc.get("config") or {}
+        out["pipeline"] = stages
+        doc = out
+    elif a.section:
+        doc = {a.section: doc.get(a.section)}
+
+    print(emit(doc, a.json))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

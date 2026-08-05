@@ -4,11 +4,13 @@ single commands, so phase flips, counters, and task statuses stop being
 prose-maintained markdown edits.
 
 usage:
-  .claude/sdd/state [--root DIR] get  <key>
-  .claude/sdd/state [--root DIR] set  <key> <value>
-  .claude/sdd/state [--root DIR] bump <counter> [n]
-  .claude/sdd/state [--root DIR] task <id> <status>
-  .claude/sdd/state [--root DIR] log  <message>
+  .claude/sdd/state [--root DIR] get   <key>
+  .claude/sdd/state [--root DIR] set   <key> <value>
+  .claude/sdd/state [--root DIR] bump  <counter> [n]
+  .claude/sdd/state [--root DIR] task  <id> <status>
+  .claude/sdd/state [--root DIR] log   <message>
+  .claude/sdd/state [--root DIR] event [--set k=v] [--task id=status]
+                                      [--bump counter[=n]] [--log message] ...
 
   get   print a header field (or metrics counter) value.
   set   rewrite a header `key: value` line in place (trailing html comment
@@ -22,6 +24,14 @@ usage:
         called many times per stage (see pipeline.yaml's config.logging), so
         the stamp carries the time — entries within one run must be orderable
         and timeable, which a bare date cannot do.
+  event several of the above in ONE invocation, one read and one write. each
+        flag repeats; they apply set -> task -> bump -> log regardless of the
+        order given, so a log line describes state as it now reads. PREFER
+        THIS over consecutive calls: every invocation is a separate tool call
+        that re-reads the caller's whole context window, so three calls to
+        write three lines cost three windows. e.g.
+          state event --task T3=done --bump verify_retries \
+                      --log "implement: T3 verify PASS after 1 retry"
 
 the active feature resolves exactly like the other tools: specs/ACTIVE
 under --root (default cwd), following one `worktree:` pointer. edits are
@@ -62,6 +72,13 @@ def save(path, text):
     os.replace(tmp, path)
 
 
+def save_and_report(path, applied):
+    """apply_*() returns (text, message); write it and hand back the message."""
+    text, msg = applied
+    save(path, text)
+    return msg
+
+
 def key_line(key):
     """same tolerance as statelib.field, with the value span capturable."""
     return re.compile(
@@ -79,7 +96,7 @@ def cmd_get(text, key):
     print(val)
 
 
-def cmd_set(path, text, key, value):
+def apply_set(text, key, value):
     if key.lower() in st.metrics(text):
         die(f"{key!r} is a metrics counter — use bump")
     m = key_line(key).search(text)
@@ -89,8 +106,7 @@ def cmd_set(path, text, key, value):
         sec = re.search(r"^##\s", text, re.M)
         at = sec.start() if sec else len(text)
         text = text[:at] + f"{key}: {value}\n\n" + text[at:]
-    save(path, text)
-    print(f"{key}: {value}")
+    return text, f"{key}: {value}"
 
 
 def metrics_span(text):
@@ -110,7 +126,7 @@ def metrics_span(text):
     return (start, off) if start is not None else None
 
 
-def cmd_bump(path, text, counter, n):
+def apply_bump(text, counter, n):
     span = metrics_span(text)
     if not span:
         die("state.md has no ## metrics section")
@@ -123,11 +139,10 @@ def cmd_bump(path, text, counter, n):
         die(f"unknown counter {counter!r} — known: {known}")
     new = int(m.group("num")) + n
     body = body[:m.start("num")] + str(new) + body[m.end("num"):]
-    save(path, text[:span[0]] + body + text[span[1]:])
-    print(f"{counter}: {new}")
+    return text[:span[0]] + body + text[span[1]:], f"{counter}: {new}"
 
 
-def cmd_task(path, text, task_id, status):
+def apply_task(text, task_id, status):
     lines = text.splitlines(keepends=True)
     header = None
     for i, line in enumerate(lines):
@@ -147,13 +162,11 @@ def cmd_task(path, text, task_id, status):
             raw[header.index("status")] = f" {status} "
             nl = "\n" if line.endswith("\n") else ""
             lines[i] = "|" + "|".join(raw) + "|" + nl
-            save(path, "".join(lines))
-            print(f"{row['id']}: {status}")
-            return
+            return "".join(lines), f"{row['id']}: {status}"
     die(f"no task row with id {task_id!r} in the ## tasks table")
 
 
-def cmd_log(path, text, message):
+def apply_log(text, message):
     # HH:MM as well as the date: the log is now written many times per stage,
     # and a day-resolution stamp cannot order (or time) entries within a run
     entry = f"- {time.strftime('%Y-%m-%d %H:%M')} {message}\n"
@@ -175,8 +188,64 @@ def cmd_log(path, text, message):
             end -= 1
         lines.insert(end, entry)
         text = "".join(lines)
-    save(path, text)
-    print(entry.strip())
+    return text, entry.strip()
+
+
+def split_pair(flag, arg):
+    """`k=v` — split on the FIRST `=` so values may contain one."""
+    if "=" not in arg:
+        die(f"{flag} wants key=value, got {arg!r}")
+    k, v = arg.split("=", 1)
+    if not k:
+        die(f"{flag} wants key=value, got {arg!r}")
+    return k, v
+
+
+def cmd_event(path, text, rest):
+    """apply several bookkeeping edits in ONE invocation.
+
+    every separate `state` call is a separate tool call, and a tool call in a
+    long run re-reads the orchestrator's whole context window — so a stage that
+    logs, flips a task, and bumps a counter paid for three full windows to
+    write three lines. batching them is the same edits at a third of the
+    requests. ordering is fixed (set -> task -> bump -> log) so the log line
+    describes state as it now reads, whatever order the flags came in.
+    """
+    ops = {"set": [], "task": [], "bump": [], "log": []}
+    i = 0
+    while i < len(rest):
+        flag, i = rest[i], i + 1
+        if flag not in ("--set", "--task", "--bump", "--log"):
+            die(f"event: unknown flag {flag!r} "
+                "(expected --set/--task/--bump/--log)")
+        if i >= len(rest):
+            die(f"event: {flag} needs a value")
+        ops[flag[2:]].append(rest[i])
+        i += 1
+    if not any(ops.values()):
+        die("event: nothing to do — pass at least one "
+            "--set/--task/--bump/--log")
+
+    out = []
+    for arg in ops["set"]:
+        text, msg = apply_set(text, *split_pair("--set", arg))
+        out.append(msg)
+    for arg in ops["task"]:
+        text, msg = apply_task(text, *split_pair("--task", arg))
+        out.append(msg)
+    for arg in ops["bump"]:
+        # counter, or counter=n for a step other than 1
+        counter, n = (arg, 1) if "=" not in arg else split_pair("--bump", arg)
+        if not str(n).lstrip("-").isdigit():
+            die(f"bump amount must be an integer, got {str(n)!r}")
+        text, msg = apply_bump(text, counter, int(n))
+        out.append(msg)
+    for arg in ops["log"]:
+        text, msg = apply_log(text, arg)
+        out.append(msg)
+
+    save(path, text)                      # one write for the whole event
+    print("\n".join(out))
 
 
 def main(argv):
@@ -188,25 +257,27 @@ def main(argv):
         root = args[1]
         args = args[2:]
     if not args:
-        die("usage: state [--root DIR] get|set|bump|task|log ... "
+        die("usage: state [--root DIR] get|set|bump|task|log|event ... "
             "(see header of this script)")
     cmd, rest = args[0], args[1:]
     path, text = locate(root)
     if cmd == "get" and len(rest) == 1:
         cmd_get(text, rest[0])
     elif cmd == "set" and len(rest) == 2:
-        cmd_set(path, text, rest[0], rest[1])
+        print(save_and_report(path, apply_set(text, rest[0], rest[1])))
     elif cmd == "bump" and 1 <= len(rest) <= 2:
         n = 1
         if len(rest) == 2:
             if not rest[1].lstrip("-").isdigit():
                 die(f"bump amount must be an integer, got {rest[1]!r}")
             n = int(rest[1])
-        cmd_bump(path, text, rest[0], n)
+        print(save_and_report(path, apply_bump(text, rest[0], n)))
     elif cmd == "task" and len(rest) == 2:
-        cmd_task(path, text, rest[0], rest[1])
+        print(save_and_report(path, apply_task(text, rest[0], rest[1])))
     elif cmd == "log" and len(rest) == 1:
-        cmd_log(path, text, rest[0])
+        print(save_and_report(path, apply_log(text, rest[0])))
+    elif cmd == "event":
+        cmd_event(path, text, rest)
     else:
         die(f"unknown command or wrong arguments: {' '.join(args)}")
 

@@ -1,0 +1,35 @@
+#!/bin/sh
+# Run a personal hook extension, then chain to the repo's own hook.
+#
+# The firmware repo's top.mk:544 re-copies utils/git/* over .git/hooks on every
+# build and chmods them read-only, so those cannot be edited in place.
+# core.hooksPath points here instead; every hook name in this dir is a symlink
+# to this dispatcher.
+#
+#   git -C <repo> config core.hooksPath ~/dotfiles/git/hooks
+#
+# Only hook names symlinked here are dispatched. If the repo adds a new hook to
+# top.mk's _git_hooks list, add a matching symlink or it will stop firing.
+set -e
+
+hook=$(basename -- "$0")
+here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+
+# extension runs first; its failure must not block the repo's hook
+if [ -x "$here/ext/$hook" ]; then
+    "$here/ext/$hook" "$@" || echo "hooks: ext/$hook failed, continuing" >&2
+fi
+
+common=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || common=
+if [ -z "$common" ]; then
+    echo "hooks: cannot locate git common dir, skipping $hook" >&2
+    exit 0
+fi
+
+# exec by full path so the repo hooks' `dirname $0` sibling lookups still
+# resolve (commit-msg calls pure-commit-msg and clean_build.py that way)
+real="$common/hooks/$hook"
+if [ ! -x "$real" ]; then
+    exit 0
+fi
+exec "$real" "$@"

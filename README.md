@@ -11,9 +11,10 @@ contains symlinks pointing into this repo.
 | `oh-my-zsh-custom/`  | `~/.oh-my-zsh/custom`   | oh-my-zsh custom plugins/themes     |
 | `tmux.conf`          | `~/.tmux.conf`          | tmux config (TPM + catppuccin)      |
 | `nvim/`              | `~/.config/nvim`        | Neovim config (lazy.nvim)           |
-| `claude/`            | `~/.claude`             | Claude Code config, agents, skills  |
+| `claude/`            | `~/.claude`             | Claude Code config, agents, skills, the `sdd` plugin |
 | `.wezterm.lua`       | `~/.wezterm.lua`        | WezTerm config                      |
 | `kanata/kanata.kbd`  | `~/.config/kanata/`     | kanata keyboard remapping           |
+| `git/hooks/`         | *(`core.hooksPath`)*    | chained git hooks, per-repo opt-in   |
 
 ## Setup on a new machine
 
@@ -32,6 +33,27 @@ mkdir -p ~/.config/kanata && ln -s ~/dotfiles/kanata/kanata.kbd ~/.config/kanata
 rm -rf ~/.oh-my-zsh/custom
 ln -s ~/dotfiles/oh-my-zsh-custom ~/.oh-my-zsh/custom
 ```
+
+### Git hooks (opt in per repo)
+
+`git/hooks/` is not symlinked — point a repo's `core.hooksPath` at it:
+
+```sh
+git -C ~/firmware/master config core.hooksPath ~/dotfiles/git/hooks
+```
+
+Every hook name in that dir symlinks to `_dispatch`, which runs `ext/<hook>` (if
+one exists) and then execs the repo's own `.git/hooks/<hook>`. The chain exists
+because the firmware repo's `top.mk` re-copies `utils/git/*` over `.git/hooks` on
+every build and chmods them read-only, so those cannot be edited in place.
+
+`ext/post-checkout` seeds a newly added worktree with the main worktree's
+gitignored LSP config (`compile_commands.json`, `pyrightconfig.json`), rewriting
+the embedded absolute paths. Re-run it by hand on an existing worktree with
+`git/bin/wt-sync-config [worktree-path]`.
+
+Only hook names present as symlinks are dispatched. If the repo adds one to
+`top.mk`'s `_git_hooks` list, add a matching symlink or it silently stops firing.
 
 ## Dependencies
 
@@ -85,6 +107,9 @@ Things the configs reference that must be installed separately.
   - `~/.claude/.credentials.json` — created by logging in
   - `~/.claude/.mcp.json` — MCP server config; contains Jira/Confluence personal
     access tokens, recreate by hand
+- `claude/sdd-plugin/` is the spec-driven-development pipeline plugin, installed
+  from this repo acting as its own marketplace — see its
+  [README](claude/sdd-plugin/README.md)
 
 ### Other
 

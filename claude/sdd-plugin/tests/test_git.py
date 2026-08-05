@@ -156,6 +156,19 @@ class GitHelperTest(unittest.TestCase):
             f.write("more\n")
         run_cli(["snapshot"], fwt, expect=1)
 
+    def test_snapshot_stages_a_gitignored_specs_dir(self):
+        with open(os.path.join(self.repo, ".gitignore"), "w") as f:
+            f.write("specs/\n")
+        git(["add", "-A"], self.repo)
+        git(["commit", "-m", "ignore specs"], self.repo)
+        fwt = self.feature("ignored")
+        os.makedirs(os.path.join(fwt, "specs", "ignored"))
+        with open(os.path.join(fwt, "specs", "ignored", "spec.md"), "w") as f:
+            f.write("# spec\n")
+        run_cli(["snapshot"], fwt)
+        self.assertIn("specs/ignored/spec.md",
+                      git(["show", "--name-only", "HEAD"], fwt))
+
     def test_dissolve(self):
         fwt = self.feature()
         run_cli(["dissolve", self.base], fwt)  # nothing to dissolve
@@ -204,6 +217,18 @@ class GitHelperTest(unittest.TestCase):
         # legitimately exists there from feature()/task-start above —
         # only .claude/sdd is what learnings-dir must avoid creating)
         self.assertFalse(os.path.exists(os.path.join(self.repo, ".claude", "sdd")))
+
+    def test_base_specs_dir_lives_outside_the_repo(self):
+        fwt = self.feature()
+        with tempfile.TemporaryDirectory() as cfg:
+            with mock.patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": cfg}):
+                expected = statelib.project_base_specs_path(self.repo)
+                for cwd in (self.repo, fwt):
+                    p = run_cli(["base-specs-dir"], cwd)
+                    self.assertEqual(p.stdout.strip(), expected)
+                self.assertTrue(os.path.isdir(expected))
+                self.assertTrue(expected.startswith(cfg))
+        self.assertFalse(os.path.exists(os.path.join(self.repo, "specs")))
 
 
 if __name__ == "__main__":

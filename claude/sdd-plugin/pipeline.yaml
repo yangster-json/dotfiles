@@ -30,18 +30,19 @@ config:
   # run.md's "## model routing" applies these at every spawn (Agent-tool and
   # workflow paths alike); the workflow scripts read the same map from args.
   models:
-    sdd-researcher:        haiku
-    sdd-researcher-deep:   sonnet
-    sdd-spec-writer:       opus
-    sdd-spec-critic:       opus
-    sdd-spec-critic-lite:  sonnet
-    sdd-planner:           opus
-    sdd-implementer:       sonnet
-    sdd-implementer-lite:  haiku
-    sdd-verifier:          sonnet
-    sdd-reviewer:          sonnet
-    sdd-review-judge:      opus
-    sdd-test-recommender:  sonnet
+    sdd-researcher: haiku
+    sdd-researcher-deep: sonnet
+    sdd-spec-writer: opus
+    sdd-spec-critic: opus
+    sdd-spec-critic-lite: sonnet
+    sdd-planner: opus
+    sdd-subspec-writer: sonnet
+    sdd-implementer: sonnet
+    sdd-implementer-lite: haiku
+    sdd-verifier: sonnet
+    sdd-reviewer: sonnet
+    sdd-review-judge: opus
+    sdd-test-recommender: sonnet
 
   # repo-relative; the authoritative standard
   coding_standard: docs/coding_standard.md
@@ -68,7 +69,10 @@ config:
 
     JIRA: FW-XXXXX
     Test-Coverage: <tests that prove the change>
-    Requirements: <R-numbers this commit implements, from specs/<slug>/spec.md>
+
+  # no Requirements: trailer and no R-numbers anywhere in the message — the
+  # spec is not in history (config.specs_tracking), so a reference to it
+  # would dangle. the commit stands on its own: diff, bullets, tests.
 
   # matches the comment style in the repo's history. this is the SOURCE the
   # standards digest is distilled from — implementers read the digest, not
@@ -82,6 +86,13 @@ config:
       (alignment, timing, hw quirks, flaky-test workarounds) — still lowercase
     - never touch structural markers:
       // ::pure_astyle_formatted::   and   #endif // !UNIT_TEST
+    - NEVER reference sdd or its artifacts in code, tests, or docstrings:
+      no requirement ids (R-3), task ids (T2), subspec/spec/plan paths,
+      amendment numbers, or phrases like "per the spec" / "as required by".
+      the spec is scaffolding and is never committed — a comment pointing
+      at it dangles the moment the commit lands. say the reason itself:
+        bad   // R-4: retry twice before failing over
+        good  // controller needs two tries after a warm reset
 
   # accumulated lessons the pipeline reads before spawns and appends to on
   # mistakes, so it stops repeating them. TWO scopes: project (this
@@ -90,39 +101,50 @@ config:
   # mechanics, scope-selection rule, and INDEX.md line format live in run.md's
   # "## learnings" — the single source, not restated here.
   learnings:
-    project: sdd-git learnings-dir            # run it; stdout is the directory
-                                              # (<claude-config>/sdd-learnings/<munged-repo>,
-                                              # keyed to the main checkout —
-                                              # never in the project's own tree)
-    global: sdd-git learnings-dir --global    # run it; stdout is the shared
-                                              # cross-project directory
-                                              # (<claude-config>/sdd-learnings/_global).
-                                              # both live outside the plugin
-                                              # cache, so /plugin update never
-                                              # wipes accumulated lessons.
+    project:
+      sdd-git learnings-dir # run it; stdout is the directory
+      # (<claude-config>/sdd-learnings/<munged-repo>,
+      # keyed to the main checkout —
+      # never in the project's own tree)
+    global:
+      sdd-git learnings-dir --global # run it; stdout is the shared
+      # cross-project directory
+      # (<claude-config>/sdd-learnings/_global).
+      # both live outside the plugin
+      # cache, so /plugin update never
+      # wipes accumulated lessons.
 
   # living base specs — the as-built behavior contracts of the codebase,
-  # one file per area: specs/base/<area>.md (template
+  # one file per area: <spec_base>/<area>.md (template
   # $(sdd-path templates/base-spec.md)). /sdd:cleanup merges each merged
   # feature's as-built requirements in (amendments applied, blocked
   # requirements dropped), so specs stay anchored to the code instead of
   # going dormant per feature. the spec-writer quotes matching contracts
   # into new specs; the consistency critic blocks silent contradictions.
-  # a missing directory just means nothing has merged yet.
-  spec_base: specs/base
+  # an empty directory just means nothing has merged yet.
+  # it lives OUTSIDE the repo, keyed to the main checkout the same way the
+  # learnings dirs are — specs are never committed (specs_tracking), so an
+  # in-repo base would be invisible to every fresh feature worktree and die
+  # with the first clean checkout.
+  spec_base:
+    sdd-git base-specs-dir # run it; stdout is the directory
+    # (<claude-config>/sdd-specs/<munged-repo>/base)
 
   # how pipeline artifacts (specs/<slug>/, a newly generated standards
   # digest) reach repo history at the commit stage:
+  #   untracked    — DEFAULT. never staged, never committed; the commits
+  #                  hold code and tests only. specs/ exists in the working
+  #                  tree during the run (and rides wip(sdd) snapshot
+  #                  commits so task worktrees see the subspecs — dissolve
+  #                  drops those before the real commits), then
+  #                  /sdd:cleanup archives specs/<slug>/. gitignore specs/
+  #                  so it never shows up as noise in git status.
+  #                  config.spec_base already lives outside the repo, so
+  #                  the living base survives this mode.
   #   with_feature — folded into the first logical commit (solo repos)
   #   own_commit   — one separate final commit, so human reviewers can
-  #                  skim or abandon it without touching the code commits;
-  #                  the Requirements:/Test-Coverage: trailers keep the
-  #                  traceability either way
-  #   untracked    — never committed; /sdd:cleanup archives specs/<slug>/
-  #                  instead. gitignore specs/ in this mode, and point
-  #                  config.spec_base outside the repo or the living base
-  #                  dies with it
-  specs_tracking: with_feature
+  #                  skim or abandon it without touching the code commits
+  specs_tracking: untracked
 
   # integration with github.com/pure-experimental/fw-skills
   # install: git clone the repo, then symlink its skills/* into this
@@ -130,12 +152,12 @@ config:
   # wherever a stage names a skill: if it is available in the session, USE IT
   # instead of reimplementing the process inline.
   fw_skills:
-    unit_test: fw-run-unit-test    # build + run x86 unit tests
-    hw_pytest: fw-hw-pytest        # run one hw pytest on a testbed bay
-    full_pytest: fw-run-pytest     # build + flash + run + artifacts
-    code_review: fw-code-review    # style/minimality pass, complements sdd review
-    commit: fw-commit              # astyle + explicit staging + message format
-    pr: fw-pr                      # push branch + open pr (only if user asks)
+    unit_test: fw-run-unit-test # build + run x86 unit tests
+    hw_pytest: fw-hw-pytest # run one hw pytest on a testbed bay
+    full_pytest: fw-run-pytest # build + flash + run + artifacts
+    code_review: fw-code-review # style/minimality pass, complements sdd review
+    commit: fw-commit # astyle + explicit staging + message format
+    pr: fw-pr # push branch + open pr (only if user asks)
 
   # optional sibling key, not set here: internal_docs — see run.md's
   # "## internal docs" for what it does. a profile that extends this file
@@ -152,13 +174,22 @@ config:
   # via agentType; the orchestrator passes config.models into the workflow
   # args, and each script applies it as a per-agent model override (frontmatter
   # is the fallback when the map has no entry).
+  # a second reason these are scripts: an agent return that lands in a script
+  # is paid for ONCE, while one that lands in the orchestrator's window is
+  # re-read on every later request of the run. implement is the largest
+  # fan-out (one or two spawns per task, plus retries), so it is scripted too
+  # — but only the agent chain; git and adjudication cannot leave the
+  # orchestrator (see the stage's own note).
   workflows:
-    research: workflows/research.js   # bundled; resolve via `sdd-path <value>`
-    review: workflows/review.js       # (or a project .claude/sdd/<value> override)
+    research: workflows/research.js # bundled; resolve via `sdd-path <value>`
+    review: workflows/review.js # (or a project .claude/sdd/<value> override)
+    implement: workflows/implement.js
+    spec: workflows/spec.js # writer + critics + the revision round
+    plan: workflows/plan.js # planner, and re-plans on a gate reroute
 
   hw_test:
-    testbed: null                  # e.g. fw-comet02 — set here or supply at gate 2
-    bay: null                      # e.g. 19
+    testbed: null # e.g. fw-comet02 — set here or supply at gate 2
+    bay: null # e.g. 19
 
   # optional sibling key, not set here: hw_test_heuristic (list of
   # keywords) — see run.md's "## hw-test heuristic" for what it does. a
@@ -166,8 +197,8 @@ config:
   # to force testbed/bay at intake when the feature reads as hardware-related.
 
   worktree:
-    enabled: true                  # /sdd:run spins off a git worktree per feature
-    name_prefix: sdd/              # feature worktree + branch: sdd/<slug> under .claude/worktrees/
+    enabled: true # /sdd:run spins off a git worktree per feature
+    name_prefix: sdd/ # feature worktree + branch: sdd/<slug> under .claude/worktrees/
     # the worktree mechanics — feature-start/task-start (fetch, precondition
     # checks, EnterWorktree) and the sdd/<slug>-<id> dash-not-slash task
     # branches — are driven by sdd-git and sequenced in run.md's
@@ -221,8 +252,8 @@ config:
   # human touchpoint is the intake menu — pre-answer it via args to unattend
   # that too). default ask/ask preserves today's two-checkpoint behavior.
   autopilot:
-    gate1: ask     # ask | skip
-    gate2: ask     # ask | skip
+    gate1: ask # ask | skip
+    gate2: ask # ask | skip
 
   # feature-level model-tier auto-routing. config.models above is the BASELINE
   # role -> tier map; this shifts the WHOLE map up or down one rung for THIS
@@ -266,24 +297,24 @@ config:
   logging:
     level: verbose
     events:
-      - stage_start          # entering a stage, with what it was handed
-      - agent_dispatch       # a spawn or fan-out: how many, which agents, tier
-      - agent_return         # what came back, as counts (findings, angles, tasks)
-      - artifact_write       # research.md / spec.md / tasks.md / subspecs written
-      - decision             # an auto-decision: adaptive skip, tier read,
-                             # gate1 auto-approve, an (assumption) amendment
-      - task_start           # task id + title + worktree, as it starts
-      - task_verify          # verifier verdict, or the orchestrator's own check
-      - task_retry           # a retry rung, WITH the reason it failed
-      - task_merge           # merged into the feature branch (or conflicted)
-      - task_done            # final status per task
-      - gate                 # gate presented, and the route the user picked
-      - finding              # confirmed / rejected / withdrawn / waived tallies
-      - test_run             # each test invocation and its result
-      - commit               # each logical commit made
-      - stage_end            # leaving a stage, with the cost + context deltas
-                             # and (per config.context) the clear-point note
-      - stop                 # any halt, with exactly what is needed to resume
+      - stage_start # entering a stage, with what it was handed
+      - agent_dispatch # a spawn or fan-out: how many, which agents, tier
+      - agent_return # what came back, as counts (findings, angles, tasks)
+      - artifact_write # research.md / spec.md / tasks.md / subspecs written
+      - decision # an auto-decision: adaptive skip, tier read,
+        # gate1 auto-approve, an (assumption) amendment
+      - task_start # task id + title + worktree, as it starts
+      - task_verify # verifier verdict, or the orchestrator's own check
+      - task_retry # a retry rung, WITH the reason it failed
+      - task_merge # merged into the feature branch (or conflicted)
+      - task_done # final status per task
+      - gate # gate presented, and the route the user picked
+      - finding # confirmed / rejected / withdrawn / waived tallies
+      - test_run # each test invocation and its result
+      - commit # each logical commit made
+      - stage_end # leaving a stage, with the cost + context deltas
+        # and (per config.context) the clear-point note
+      - stop # any halt, with exactly what is needed to resume
 
   # the orchestrator's own context window — the one thing a long run can
   # exhaust that no subagent budget covers. each subagent holds its own window
@@ -297,19 +328,112 @@ config:
   # and `/sdd:run` with no arguments resumes from `phase:`. So at a stage
   # boundary the cheapest fix is to start a fresh window, not to summarize a
   # full one. run.md's "## clear points" owns the mechanics.
+  # NOTE the scale: these are percentages of the WINDOW, and on a 1m-context
+  # model 75% was 750k tokens — a threshold a feature never reaches, so the
+  # recommendation never fired while every request re-read a window that large.
+  # cost is linear in occupancy (each tool call re-sends the whole window at
+  # the cache-read rate), so the useful thresholds are far lower than they look:
+  # 20% of 1m = 200k, past which requests cost ~$0.10 each just to re-read.
+  # on a 200k-context session the same figures mean 40k/70k — proportionally
+  # tighter than before, which is the intended direction; raise them if a
+  # 200k run starts taking clear points mid-stage-graph.
   context:
-    announce_clear_points: true  # at each stage_end, say the run is safely
-                                 # resumable — the user cannot take a clear
-                                 # point they were never told about
-    clear_point_at_pct: 75       # occupancy (percent of the window, per
-                                 # `sdd-cost --context`) past which the
-                                 # announcement becomes a recommendation.
-                                 # below it the boundary is just noted.
-    hard_stop_at_pct: 0          # >0 makes the orchestrator STOP at a stage
-                                 # boundary past this figure instead of only
-                                 # recommending — for unattended runs, where
-                                 # nobody is watching to act on the advice.
-                                 # 0 disables (never stop on context alone).
+    announce_clear_points:
+      true # at each stage_end, say the run is safely
+      # resumable — the user cannot take a clear
+      # point they were never told about
+    clear_point_at_pct:
+      20 # occupancy (percent of the window, per
+      # `sdd-cost --context`) past which the
+      # announcement becomes a recommendation.
+      # below it the boundary is just noted.
+    hard_stop_at_pct:
+      35 # >0 makes the orchestrator STOP at a stage
+      # boundary past this figure instead of only
+      # recommending — for unattended runs, where
+      # nobody is watching to act on the advice.
+      # 0 disables (never stop on context alone).
+      # resume is lossless (`/sdd:run` reads
+      # phase:), so this costs a re-launch, not
+      # progress.
+    stop_at_every_stage:
+      false # stop at EVERY stage boundary, whatever the
+      # occupancy — the closest thing to "compact
+      # between stages" that exists, and better than
+      # compaction: nothing is summarized, the next
+      # stage just starts in a fresh window. no stage
+      # ever pays for the previous one's returns.
+      # costs one `/clear` + `/sdd:run` per stage (~6
+      # per feature); set false to go back to
+      # threshold-only stops. false is also the right
+      # choice for a fully unattended run unless
+      # something outside the session re-launches it.
+    stop_floor_pct:
+      8 # below this, stop_at_every_stage does NOT fire:
+      # a window holding almost nothing costs more to
+      # re-establish than it saves, and the first
+      # boundary of a run (or a whole /sdd:quick) sits
+      # there. the threshold stops above are unaffected.
+      # `phase: done` never stops either — nothing
+      # follows it.
+    # the two figures above and this switch are NOT self-enforced: the
+    # orchestrator used to be told to measure at every stage_end and simply
+    # didn't — a run reached 44% with no occupancy figure in its log at all.
+    # hooks/context-guard.py now measures at every phase write (a stage
+    # boundary by definition), feeds the figure back, and blocks new
+    # Task/Workflow spawns while a stop is in force. these keys are what it
+    # reads, so editing them here changes real behavior, not just advice.
+
+  # waste stripped from a tool result BEFORE it lands in the window, by
+  # hooks/output-diet.py. the context block above is the coarse lever (clear
+  # the whole window at a boundary, and pay a cold prefix on resume); this is
+  # the fine one — it keeps the window small enough that the coarse lever fires
+  # less often, and never invalidates a cached prefix because it only ever
+  # rewrites the result being appended.
+  # follows AgentDiet (arXiv 2509.23586): waste is useless / redundant /
+  # expired, reduction must be invoked EXTERNALLY (agents given an erase tool
+  # do not use it), and a reduction that does not clear the token threshold is
+  # not worth making. both passes here are deterministic — no model is invoked,
+  # so the overhead is one interpreter start per tool call, not a reflection
+  # call.
+  diet:
+    enabled: true
+    min_tokens:
+      500 # a result under this is left alone, and a shrink
+      # that would save less than this is dropped. both
+      # halves matter: the mechanism must never cost more
+      # than it returns.
+    dedupe:
+      true # an identical repeat of the SAME call (same tool,
+      # same arguments, same cwd, byte-identical output)
+      # becomes a one-line pointer to the step that already
+      # holds it. exact-match only, so a re-read after an
+      # edit passes straight through — changed content is
+      # never hidden. asking twice in a row serves the full
+      # output, which is the recovery path if the window was
+      # cleared since.
+    shrink:
+      true # a large result from a command in shrink_commands
+      # keeps its head, its tail, and every error/fail/warn
+      # line; the middle is elided with a note saying so.
+    head_lines: 40
+    tail_lines: 60
+    max_signal_lines:
+      80 # cap on lines lifted out of the elided middle — a
+      # run with 600 failures must not re-expand to full size
+    shrink_commands: # regex, matched against the command (or the
+      # file path for a Read). opt-in by pattern on
+      # purpose: a `cat` of one specific file is
+      # usually bulk that was deliberately asked for.
+      - "\\b(pytest|ctest|unittest|tox|nosetests)\\b"
+      - "\\b(make|ninja|cmake|scons|bazel)\\b"
+      - "\\bgit\\s+(status|diff|log|show)\\b"
+      - "\\b(npm|yarn|pnpm)\\s+(test|run)\\b"
+      - "\\bcargo\\s+(test|build|clippy)\\b"
+      - "_debug_dump\\.log\\b" # the triage skills pull whole dumps in
+      - "\\b(dmesg|journalctl)\\b"
+    ledger_entries:
+      400 # per-session dedupe ledger cap, oldest first
 
   # how hard the pipeline tries to RESCUE a failing task or test before it
   # gives up. a dead end (a blocked task, a still-red test halt) is the only
@@ -320,28 +444,31 @@ config:
   # mechanics live in the implement/test stages below; this block only sets
   # the dials.
   recovery:
-    task_attempts: 3        # total implementer tries for one task before it
-                            # blocks. 1 initial + escalating retries: retry 2
-                            # re-spawns with the failure evidence and the
-                            # implementer's effort bumped one tier; the LAST
-                            # attempt is diagnosis-first — the orchestrator
-                            # root-causes the repeated failure and amends the
-                            # subspec, fixes the verify command, or decomposes
-                            # the task before the final try. 1 disables the
-                            # ladder (old behavior: one retry then block).
-    merge_conflict: rerun   # a task-merge conflict (exit 2) means the
-                            # "disjoint" file sets overlapped. rerun -> abort
-                            # the isolated attempt (sdd-git task-abort) and
-                            # re-run the task SERIALLY on the current feature
-                            # HEAD so it builds on the merged code; block only
-                            # if it still fails. block -> mark blocked at once
-                            # (old behavior).
-    test_fix_rounds: 2      # bounded auto-fix rounds in the test stage before
-                            # the run halts. each round diagnoses first
-                            # (flaky/environment -> re-run the test once, no
-                            # fix task; genuine -> a fix task at escalating
-                            # effort). still red after the last round -> halt
-                            # and report (the one true post-gate-2 dead end).
+    task_attempts:
+      3 # total implementer tries for one task before it
+      # blocks. 1 initial + escalating retries: retry 2
+      # re-spawns with the failure evidence and the
+      # implementer's effort bumped one tier; the LAST
+      # attempt is diagnosis-first — the orchestrator
+      # root-causes the repeated failure and amends the
+      # subspec, fixes the verify command, or decomposes
+      # the task before the final try. 1 disables the
+      # ladder (old behavior: one retry then block).
+    merge_conflict:
+      rerun # a task-merge conflict (exit 2) means the
+      # "disjoint" file sets overlapped. rerun -> abort
+      # the isolated attempt (sdd-git task-abort) and
+      # re-run the task SERIALLY on the current feature
+      # HEAD so it builds on the merged code; block only
+      # if it still fails. block -> mark blocked at once
+      # (old behavior).
+    test_fix_rounds:
+      2 # bounded auto-fix rounds in the test stage before
+      # the run halts. each round diagnoses first
+      # (flaky/environment -> re-run the test once, no
+      # fix task; genuine -> a fix task at escalating
+      # effort). still red after the last round -> halt
+      # and report (the one true post-gate-2 dead end).
 
   intake:
     # asked ONCE per feature in a single AskUserQuestion menu, before anything
@@ -351,66 +478,65 @@ config:
     # gate 1 for veto. args tokens (upstream=, jira=, testbed=/bay=)
     # pre-answer their question and skip it.
     questions:
-      - upstream   # base branch — options: repo default, current branch's
-                   # upstream, current HEAD, free-form.
-                   # you-decide -> repo default.
-      - jira       # FW ticket — options: <existing id>, none yet (create
-                   # before commit via fw-jira), no ticket.
-                   # you-decide -> search jira for a related ticket during
-                   # research and propose it at gate 1.
-      - hw_test    # options: testbed+bay now, decide at gate 2, no hw tests.
-                   # you-decide -> follow the test-recommender's hw_required.
-      - depth      # options: full pipeline, /sdd:quick.
-                   # you-decide -> pick by feature size. tiny/isolated -> hand
-                   # off to /sdd:quick and say so. otherwise stay on /sdd:run
-                   # but, when config.adaptive.enabled, TAILOR it: propose the
-                   # optional stages to skip (see "## adaptive stage selection"
-                   # in run.md) rather than always running the full graph. the
-                   # tailoring is restated at gate 1 for veto.
-      - gates      # when should I stop for you? sets config.autopilot for THIS
-                   # run (recorded in state.md autopilot, overriding the config
-                   # default). options:
-                   #   both gates        -> gate1 ask, gate2 ask (the default)
-                   #   skip plan gate    -> gate1 skip, gate2 ask
-                   #   unattended        -> gate1 skip, gate2 skip; launch and
-                   #                        review the finished commit (the plan
-                   #                        + findings land in the final report)
-                   # you-decide -> use config.autopilot as written (ask/ask
-                   # unless a project/profile changed it). asked once up front
-                   # so an unattended run needs no further looking.
+      - upstream # base branch — options: repo default, current branch's
+        # upstream, current HEAD, free-form.
+        # you-decide -> repo default.
+      - jira # FW ticket — options: <existing id>, none yet (create
+        # before commit via fw-jira), no ticket.
+        # you-decide -> search jira for a related ticket during
+        # research and propose it at gate 1.
+      - hw_test # options: testbed+bay now, decide at gate 2, no hw tests.
+        # you-decide -> follow the test-recommender's hw_required.
+      - depth # options: full pipeline, /sdd:quick.
+        # you-decide -> pick by feature size. tiny/isolated -> hand
+        # off to /sdd:quick and say so. otherwise stay on /sdd:run
+        # but, when config.adaptive.enabled, TAILOR it: propose the
+        # optional stages to skip (see "## adaptive stage selection"
+        # in run.md) rather than always running the full graph. the
+        # tailoring is restated at gate 1 for veto.
+      - gates # when should I stop for you? sets config.autopilot for THIS
+        # run (recorded in state.md autopilot, overriding the config
+        # default). options:
+        #   both gates        -> gate1 ask, gate2 ask (the default)
+        #   skip plan gate    -> gate1 skip, gate2 ask
+        #   unattended        -> gate1 skip, gate2 skip; launch and
+        #                        review the finished commit (the plan
+        #                        + findings land in the final report)
+        # you-decide -> use config.autopilot as written (ask/ask
+        # unless a project/profile changed it). asked once up front
+        # so an unattended run needs no further looking.
       # the questions below pre-answer decisions that otherwise surface LATER
       # (a gate veto, a halt). each defaults to you-decide = today's behavior,
       # so they only matter to someone front-loading an unattended launch.
-      - tier       # model tier for this feature -> state.md tier_offset,
-                   # overriding the auto_route read. options: standard | heavy |
-                   # light. you-decide -> the auto_route difficulty read when
-                   # config.auto_route.enabled, else standard.
-      - stages     # stage selection. options: full graph | tailor (skip the
-                   # optional stages this feature doesn't need). you-decide ->
-                   # tailor when config.adaptive.enabled, else full. `full`
-                   # forces state.md stages_skipped: none regardless of config.
+      - tier # model tier for this feature -> state.md tier_offset,
+        # overriding the auto_route read. options: standard | heavy |
+        # light. you-decide -> the auto_route difficulty read when
+        # config.auto_route.enabled, else standard.
+      - stages # stage selection. options: full graph | tailor (skip the
+        # optional stages this feature doesn't need). you-decide ->
+        # tailor when config.adaptive.enabled, else full. `full`
+        # forces state.md stages_skipped: none regardless of config.
       - on_findings # default disposition for CONFIRMED review findings ->
-                   # state.md findings_policy. options: fix (fix tasks ->
-                   # re-review) | waive (record + report, ship as-is) | stop
-                   # (pause for me even under autopilot). used verbatim when
-                   # gate2 is skipped; pre-selects the gate-2 route when it asks.
-                   # you-decide -> fix.
+        # state.md findings_policy. options: fix (fix tasks ->
+        # re-review) | waive (record + report, ship as-is) | stop
+        # (pause for me even under autopilot). used verbatim when
+        # gate2 is skipped; pre-selects the gate-2 route when it asks.
+        # you-decide -> fix.
       - on_test_fail # policy when tests stay red after
-                   # config.recovery.test_fix_rounds -> state.md
-                   # test_fail_policy. options: halt (stop + report, default) |
-                   # proceed (commit anyway with red tests led prominently in
-                   # the report — never faked as passing). you-decide -> halt.
-      - pr         # when done -> state.md pr. options: stop at commit (default)
-                   # | open a PR (skill fw-pr). you-decide -> stop at commit.
+        # config.recovery.test_fix_rounds -> state.md
+        # test_fail_policy. options: halt (stop + report, default) |
+        # proceed (commit anyway with red tests led prominently in
+        # the report — never faked as passing). you-decide -> halt.
+      - pr # when done -> state.md pr. options: stop at commit (default)
+        # | open a PR (skill fw-pr). you-decide -> stop at commit.
 
 # context rules for every spawn live in the /sdd:run command file (run.md) —
 # that is the single source; they are deliberately not restated here.
 
 pipeline:
-
   - stage: research
-    run_via: workflow research     # config.workflows — the script owns the fan-out
-    optional: true                 # adaptive: may be skipped (config.adaptive)
+    run_via: workflow research # config.workflows — the script owns the fan-out
+    optional: true # adaptive: may be skipped (config.adaptive)
     skip_when: >
       the change is small AND the touched area is already covered by the living
       base specs (config.spec_base) or is otherwise well-understood from the
@@ -447,10 +573,13 @@ pipeline:
     gate: none
 
   - stage: spec
-    agents: sdd:sdd-spec-writer, then sdd:sdd-spec-critic + sdd:sdd-spec-critic-lite
-      (parallel)
-    critics_optional: true         # adaptive: the WRITER always runs; the two
-                                   # critics are the skippable substep
+    run_via: workflow spec # config.workflows — writer + critics + revision
+    agents:
+      sdd:sdd-spec-writer, then sdd:sdd-spec-critic + sdd:sdd-spec-critic-lite
+      (parallel) — all spawned BY the script
+    critics_optional:
+      true # adaptive: the WRITER always runs; the two
+      # critics are the skippable substep
     critics_skip_when: >
       the spec is short and low-risk — few requirements, no new external
       contract, no base-spec overlap to contradict, nothing a feasibility or
@@ -467,15 +596,46 @@ pipeline:
       themselves.
     revision: one round if any critic returns a blocking finding (skipped when
       the critics were skipped per critics_skip_when);
-      unresolved blockers are surfaced at gate 1, not looped again
-    output: specs/<slug>/spec.md
+      unresolved blockers are surfaced at gate 1, not looped again — the script
+      runs the round, so the debate never enters the orchestrator's window
+    orchestrator: >
+      invoke the workflow with args {slug, feature, workdir, user_input,
+      critics: false when critics_skip_when applies, requirements needed by
+      nothing here}. it returns a DIGEST: requirement ids, ambiguities,
+      open_issues, per-critic verdict+counts, BLOCKING findings in full,
+      advisory findings as one-liners, and revised:true when the revision
+      round ran. you record the ambiguities as amendments, surface any
+      remaining open_issues/blockers at gate 1, and re-run inline whatever
+      `critic_failures` or `failed` names. two escape hatches for when YOU
+      have evidence against a critic (research.md or the code falsifies it):
+      `revise_inline: false` returns the findings unrevised, and
+      `resolutions: [{target, decision}]` is applied by the writer verbatim.
+    output: specs/<slug>/spec.md (the writer writes it; nobody returns its text)
+    fallback: Workflow tool unavailable or the run fails -> spawn the writer and
+      critics yourself per the agents line above, and note it once in the final
+      report.
     gate: none
 
   - stage: plan
-    agents: sdd:sdd-planner
+    run_via: workflow plan # config.workflows — planner + the derived set math
+    agents: sdd:sdd-planner — spawned BY the script
     input: slug (reads spec.md and research.md itself) + matching learnings
+    orchestrator: >
+      invoke the workflow with args {slug, workdir, requirements: the spec
+      stage's requirement_ids, revision: reason when re-planning after a gate
+      reroute}. it returns the TABLE (id, title, complexity, depends_on,
+      parallel_ok, requirements, file COUNT, and `conflicts` — the tasks whose
+      file sets actually overlap, computed from the paths) plus
+      coverage_counts, coverage_gaps, coverage_disputed, unplannable and
+      parallel_ok_disputed. mirror the table into state.md and batch from
+      `conflicts` + depends_on — the paths themselves stay out of your window;
+      read a task's file list and verify command from tasks.md when you write
+      that task's subspec at implement setup.
     output: specs/<slug>/tasks.md + tasks table mirrored into state.md,
       each task tagged complexity simple|standard
+    fallback:
+      Workflow tool unavailable or the run fails -> spawn sdd:sdd-planner
+      yourself, and note it once in the final report.
     gate: |
       autopilot check (state.md autopilot gate1 — resolved at intake from the
       `gates` question, default from config.autopilot.gate1): if `skip`,
@@ -522,9 +682,41 @@ pipeline:
         abort   -> stop, state preserved for later /sdd:run resume
 
   - stage: implement
+    run_via:
+      workflow implement # config.workflows — the script owns the
+      # per-task agent chain, NOT the stage
     agents: per task — sdd:sdd-implementer or sdd:sdd-implementer-lite
       (complexity simple -> lite; standard -> implementer);
-      sdd:sdd-verifier for STANDARD tasks only
+      sdd:sdd-verifier for STANDARD tasks only — all spawned BY the script
+    orchestrator: >
+      the script owns ONE thing: the implement -> verify -> escalating-retry
+      chain for a batch of already-prepared tasks. everything around it is
+      still yours, because a workflow script has no shell and the rest is
+      judgment: `setup` below (digest, subspecs, snapshot), choosing the batch
+      in dependency order, cutting task worktrees (`sdd-git task-start`)
+      BEFORE the call, and every merge (`sdd-git wip` / `task-merge` /
+      `task-abort`) AFTER it returns.
+      invoke it per batch with args {slug, attempts: config.recovery.task_attempts,
+      models: <effective config.models>, tasks: [{id, title, complexity,
+      subspec, workdir}]} — workdir the ABSOLUTE worktree path that task owns,
+      subspec relative to it. one batch is either a single solo task or the
+      concurrent group `loop` allows (max 3, file sets pairwise disjoint).
+      it returns {results, ready, escalations, retries_total}; act on each
+      row's status:
+        verified        -> commit + merge (the `merge` step below)
+        implemented     -> a SIMPLE task, deliberately unverified by any agent:
+                           run its verify command yourself, check scope, then
+                           merge (see `verification`)
+        needs_files     -> `scope_stop` below — adjudicate, amend, re-run
+        ambiguity       -> `ambiguity` below — resolve, amend, re-run
+        needs_diagnosis -> the script exhausted attempts-1 rungs; take the
+                           final diagnosis-first attempt yourself
+        exhausted       -> the ladder is disabled (task_attempts: 1) and the
+                           one try failed: mark it blocked, no further rung
+        blocked | unverified | agent_failed -> re-run that task inline; never
+                           read one of these as a pass
+      bump verify_retries by retries_total, and log per-task outcomes as
+      usual — the script logs progress for the live view, not to state.md.
     setup: >
       (1) standards digest: if config.standards_digest does not exist, spawn
       one sdd:sdd-researcher with the angle "distill config.coding_standard +
@@ -532,26 +724,32 @@ pipeline:
       generated code"; the orchestrator writes the digest. if the repo has
       no file at config.coding_standard, the digest is config.comment_style
       plus the conventions section of research.md — never invent rules.
-      (2) subspecs: read spec.md ONCE and write one subspec per task —
-      specs/<slug>/tasks/<id>.md from the subspec template — carrying the
-      feature context (the spec's summary, non-goals, and constraints —
-      what keeps micro-decisions aligned), the full text of the task's
-      requirements, the amendments touching its files, the file list, the
-      verify command, the tasks.md notes, and an interfaces section: grep
-      the exact signatures, types, and registration macros the task must
-      call or implement (from the files on its list and from the tasks it
-      depends on) and paste them in verbatim with path:line — the
-      implementer starts from contracts instead of exploring the codebase.
-      an interface owned by a dependency task that has not merged yet
-      cannot be grepped — copy the planned signature from tasks.md and
-      mark it (planned — regenerate after T<n>); the merge step below
-      regenerates it from source. implementers and verifiers
-      read ONLY their subspec, never spec.md or state.md.
-      ONCE means once for the orchestrator too: after this step spec.md and
-      tasks.md are SPENT — every fact a task needs is in its subspec and every
-      status is in state.md's table. re-reading either before each spawn (even
-      a slice) pays the same tokens once per task in a window that never
-      shrinks. see run.md "### your own window".
+      the digest MUST carry config.comment_style's no-sdd-references rule
+      verbatim; it is the only channel that rule reaches implementers by.
+      an existing digest missing that rule is stale — regenerate it.
+      (2) subspecs: spawn ONE sdd:sdd-subspec-writer with
+      {mode: "write", slug, workdir, tasks: [{id, title, complexity}],
+      learnings: [<matched learning paths>]} — it reads spec.md, tasks.md and
+      the amendments itself and writes specs/<slug>/tasks/<id>.md per task
+      (feature context, verbatim requirements, amendments, file list, verify
+      command, grepped interfaces, notes). the agent file owns the contract.
+      you do NOT read spec.md or tasks.md for this — that is the whole point of
+      the spawn: transcription and greps are bulky, they are needed once, and
+      anything you read here is re-sent on every request of review, test and
+      commit. see run.md "### your own window".
+      it returns {feature_card, subspecs:[{task, path, requirements, files,
+      interfaces, planned, lines}], changed, gaps}. KEEP the feature_card
+      (summary, non-goals, constraints — under 12 lines): it is the feature
+      intent you adjudicate scope stops, ambiguities and the diagnosis-first
+      rung against once the agent is gone. `planned` per subspec tells you
+      which ones the merge step must send back for regen. a non-empty `gaps`
+      is a real hole — a task with no matching requirement, a missing file, an
+      ungreppable interface — resolve it (amend, or re-plan that task) before
+      the task starts; never let the agent's refusal to invent one pass as
+      done. no return at all -> re-spawn once, then fall back to writing the
+      subspecs yourself per the template.
+      implementers and verifiers read ONLY their subspec, never spec.md or
+      state.md.
       (3) snapshot: `sdd-git snapshot` — commits specs/ (and
       only specs/) on the feature branch as "wip(sdd): specs snapshot" so
       task worktrees cut from it contain the digest and subspecs; record
@@ -571,21 +769,31 @@ pipeline:
       (see the agent file): their return includes a red run — evidence the
       new test can fail — beside the green verify; the verifier still
       re-derives test honesty independently.
+      you cut the worktrees, then hand the batch to the implement workflow;
+      each task's chain runs independently inside it, so a task that passes
+      first try never waits on another task's retries.
     verification: >
       standard tasks -> sdd:sdd-verifier spawned with the SAME workdir
       (independent judgment on requirement compliance, scope, test honesty).
       simple tasks -> NO spawn: the orchestrator re-runs the task's verify
       command and checks scope with git status/diff in the workdir — a
-      spawn exists only where judgment is needed. on FAIL (verifier FAIL or
-      orchestrator check fail) climb the config.recovery.task_attempts
-      ladder before giving up (increment verify_retries per retry): the
-      first retry re-spawns the implementer with the failure evidence and
-      its effort bumped one tier; the LAST attempt is diagnosis-first — the
-      orchestrator root-causes the repeated failure from the evidence it
-      already has (stale interfaces? wrong verify command? a task too big to
-      land in one pass?) and, before the final try, amends the subspec, or
-      corrects the verify command, or decomposes the task into smaller
-      sub-tasks appended to the state.md table (each with its own subspec).
+      spawn exists only where judgment is needed — plus the same sdd-leakage
+      grep the verifier runs (requirement ids, task ids, spec/subspec/sdd
+      mentions in the diff's comments and test names); a real hit fails the
+      task like any other check. on FAIL the config.recovery.task_attempts
+      ladder is climbed in two halves (increment verify_retries per retry —
+      the workflow reports retries_total for exactly this):
+      the SCRIPT takes the first attempts-1 rungs, each re-spawning the
+      implementer with the failure evidence at effort bumped one tier;
+      the LAST attempt is diagnosis-first and stays with the ORCHESTRATOR,
+      which is what a `needs_diagnosis` row means — root-cause the repeated
+      failure from the evidence in that row (stale interfaces? wrong verify
+      command? a task too big to land in one pass?) and, before the final try,
+      amend the subspec, or correct the verify command, or decompose the task
+      into smaller sub-tasks appended to the state.md table (each with its own
+      subspec), then re-run it (a one-task batch through the workflow, or
+      inline). a SIMPLE task that fails the orchestrator's own check has had no
+      script-side rung at all, so its whole ladder is the orchestrator's.
       only when the ladder is exhausted mark the task blocked (increment
       tasks_blocked, record a learning) and continue the loop — a blocked
       task is surfaced at gate 2, never a hard halt.
@@ -604,10 +812,13 @@ pipeline:
       `sdd-git -C <feature worktree> wip <id> "<title>"`; block only if the
       serial re-run still fails verification. `block` -> mark blocked at
       once. either way increment merge_conflicts; on a block record a
-      learning. the loop continues. after a merge, regenerate the ## interfaces
-      section of every not-yet-started subspec whose task depends_on the
-      merged task — grep the feature worktree, where the real signatures
-      now exist — and re-snapshot if anything changed.
+      learning. the loop continues. after a merge, the interfaces every
+      not-yet-started dependent was given as (planned — …) now exist in source:
+      spawn sdd:sdd-subspec-writer with {mode: "regen", slug, workdir,
+      tasks: [<the dependents whose `planned` named the merged task>],
+      merged: <id>} and re-snapshot if its `changed` is non-empty. delegated
+      for the same reason the write is: n merges done inline means n permanent
+      copies of the grep output in a window that never shrinks.
       invariant: the feature branch HEAD always contains all completed work;
       the commit stage later dissolves the wip commits into real ones.
     scope_stop: >
@@ -632,10 +843,15 @@ pipeline:
       made past gate 2 (a fix or test-fix task) goes in the final report
       instead. Only a hard blocker the orchestrator cannot resolve stops the
       pipeline, and that is an error report, not a request for input.
+    fallback: Workflow tool unavailable or the run fails -> spawn the
+      implementers and verifiers yourself via the Agent tool exactly as
+      `agents`/`verification` describe, climbing the same ladder inline, and
+      note it once in the final report. The stage is unchanged either way —
+      only where the agent returns land is.
     gate: none
 
   - stage: review
-    run_via: workflow review       # config.workflows — rounds 1-2 + judge + recommender
+    run_via: workflow review # config.workflows — rounds 1-2 + judge + recommender
     agents: 3x sdd:sdd-reviewer (combative), sdd:sdd-review-judge,
       sdd:sdd-test-recommender — spawned BY the workflow script; round 0 and
       gate 2 stay with the orchestrator
@@ -762,10 +978,20 @@ pipeline:
       commits with messages per config.commit_standard.
       pipeline artifacts (specs/<slug>/ and, when this feature generated
       it, specs/standards-digest.md) land per config.specs_tracking:
+        untracked    -> never staged. dissolve leaves them STAGED (soft
+                        reset keeps the index), so unstage them first —
+                        `git restore --staged specs` — then verify with
+                        `git diff --cached --name-only` that no specs/
+                        path is in any commit you make. /sdd:cleanup
+                        archives specs/<slug>/ afterwards.
         with_feature -> included in the first logical commit
         own_commit   -> one SEPARATE final commit ("FW-XXXXX: sdd
                         artifacts for <slug>") after the code commits
-        untracked    -> never staged; /sdd:cleanup archives specs/<slug>/
+      the commit MESSAGE is spec-free too, whatever the mode: no R-numbers,
+      no task ids, no specs/ paths (see config.commit_standard). same for
+      the diff — if a code comment mentions the spec, a requirement, or a
+      task id, strip it before committing; it is a review finding the review
+      stage should already have caught.
       never push. open a pr when state.md pr=open (skill fw-pr) or the user
       asks; otherwise stop at commit.
     close: >

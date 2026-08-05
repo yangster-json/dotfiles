@@ -8,7 +8,14 @@ usage:
   .claude/sdd/cost --sessions N      recent sessions table
   .claude/sdd/cost --brief           one line (used by /sdd:run at gates)
   .claude/sdd/cost --context         one line: live context occupancy
+  .claude/sdd/cost --context --json  the same as json (used by the context hook)
+  .claude/sdd/cost --context --session <id>   pin the reading to one session
   .claude/sdd/cost --loop [sec]      self-refreshing (default 30)
+
+--context reports the caller's OWN window: it pins to CLAUDE_CODE_SESSION_ID
+(exported into every Bash call) and reads that one transcript wherever claude
+code filed it, so a cross-repo run and a second terminal on the same repo both
+report correctly. Without an id it guesses newest-wins and says so.
 
 token counts are exact (transcript usage records, deduped by message id) and
 cover the whole session — the orchestrator's own turns plus every subagent,
@@ -31,14 +38,36 @@ from datetime import datetime, timedelta, timezone
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import statelib as st  # noqa: E402
 
-# usd per million tokens: input, output, cache_write, cache_read.
+# usd per million tokens: (base input, output). the two cache rates are
+# MULTIPLES of base input, not separate list prices, so they are derived below
+# instead of being maintained by hand — that is what kept the 1h cache-write
+# rate wrong (see CACHE_MULT).
 PRICES = {
-    "opus":   (5.0, 25.0, 6.25, 0.50),
-    "fable":  (5.0, 25.0, 6.25, 0.50),
-    "sonnet": (3.0, 15.0, 3.75, 0.30),
-    "haiku":  (1.0, 5.0, 1.25, 0.10),
+    "opus":   (5.0, 25.0),
+    "fable":  (10.0, 50.0),   # fable/mythos tier sits ABOVE opus
+    "sonnet": (3.0, 15.0),
+    "haiku":  (1.0, 5.0),
 }
-DEFAULT_PRICE = PRICES["sonnet"]
+DEFAULT_TIER = "sonnet"
+
+# sonnet 5 introductory list price, applied to requests made on or before the
+# expiry (the discount is by request date, so pricing an old record with it and
+# a new one without it are both correct). delete the entry once it lapses.
+INTRO = {"sonnet": ((2.0, 10.0), "2026-08-31")}
+
+# fast mode is the same model at premium rates (usage.speed == "fast"),
+# opus-tier only.
+FAST = {"opus": (10.0, 50.0)}
+
+# cache pricing is a multiplier on that tier's base input rate:
+#   read      0.1x   — the same for both ttls
+#   write 5m  1.25x   (the default ttl)
+#   write 1h  2.0x    — a 1-HOUR cache write costs 1.6x what a 5m one does,
+#                       and long sdd runs write almost entirely at 1h, so
+#                       charging every write at 1.25x understated them badly.
+# usage.cache_creation carries the per-ttl split; records without it (older
+# transcripts) are priced at the 5m default.
+CACHE_MULT = {"read": 0.1, "write_5m": 1.25, "write_1h": 2.0}
 
 DIM, BLD, RST, GRN, YLW = "\033[2m", "\033[1m", "\033[0m", "\033[32m", "\033[33m"
 
@@ -59,8 +88,14 @@ def transcript_paths(pdir):
 
 def load(pdir):
     """all user/assistant entries, with uuid links for agent-chain grouping."""
+    return load_files(transcript_paths(pdir))
+
+
+def load_files(paths):
+    """the same, from an explicit transcript list — the context reader wants ONE
+    session's file, not every transcript the project ever accumulated."""
     entries = []
-    for path in transcript_paths(pdir):
+    for path in paths:
         fallback = os.path.basename(path)[:-6]
         try:
             with open(path) as f:
@@ -113,22 +148,44 @@ def usage_records(entries):
         if not u:
             continue
         key = e["msg"].get("id") or e["uuid"]
+        # cache_creation splits the write by ttl; they are priced differently
+        cc = u.get("cache_creation") or {}
         seen[key] = dict(e, model=e["msg"].get("model", "?"),
                          tin=u.get("input_tokens", 0),
                          tout=u.get("output_tokens", 0),
                          cw=u.get("cache_creation_input_tokens", 0),
-                         cr=u.get("cache_read_input_tokens", 0))
+                         cw1h=cc.get("ephemeral_1h_input_tokens", 0),
+                         cr=u.get("cache_read_input_tokens", 0),
+                         speed=u.get("speed", "standard"))
     return list(seen.values())
 
 
-def est(rec):
-    p = DEFAULT_PRICE
-    for name, price in PRICES.items():
-        if name in rec["model"]:
-            p = price
+def rates(rec):
+    """(input, output) usd/M for this record: its tier, then fast-mode premium
+    or a live introductory price."""
+    tier = DEFAULT_TIER
+    for name in PRICES:
+        if name in rec.get("model", ""):
+            tier = name
             break
-    return (rec["tin"] * p[0] + rec["tout"] * p[1]
-            + rec["cw"] * p[2] + rec["cr"] * p[3]) / 1e6
+    base = PRICES[tier]
+    intro = INTRO.get(tier)
+    if intro and rec.get("ts", "")[:10] <= intro[1]:
+        base = intro[0]
+    if rec.get("speed") == "fast" and tier in FAST:
+        base = FAST[tier]   # a premium price, not a discountable one
+    return base
+
+
+def est(rec):
+    tin_rate, tout_rate = rates(rec)
+    cw1h = rec.get("cw1h", 0)
+    cw5m = rec["cw"] - cw1h          # no split recorded -> all at the 5m rate
+    return (rec["tin"] * tin_rate
+            + rec["tout"] * tout_rate
+            + cw5m * tin_rate * CACHE_MULT["write_5m"]
+            + cw1h * tin_rate * CACHE_MULT["write_1h"]
+            + rec["cr"] * tin_rate * CACHE_MULT["read"]) / 1e6
 
 
 def when(rec):
@@ -139,10 +196,11 @@ def when(rec):
 
 
 def agg(recs):
-    t = {"tin": 0, "tout": 0, "cw": 0, "cr": 0, "usd": 0.0}
+    t = {"tin": 0, "tout": 0, "cw": 0, "cw1h": 0, "cr": 0, "usd": 0.0}
     for r in recs:
         for k in ("tin", "tout", "cw", "cr"):
             t[k] += r[k]
+        t["cw1h"] += r.get("cw1h", 0)
         t["usd"] += est(r)
     read_in = t["tin"] + t["cw"] + t["cr"]
     t["cached_pct"] = 100 * t["cr"] / read_in if read_in else 0
@@ -219,30 +277,85 @@ def context_lifetimes(recs):
     return segs
 
 
-def context_usage(root):
-    """live context occupancy of the newest session's ORCHESTRATOR window.
+def session_transcript(session, root=None):
+    """path to <session>.jsonl, wherever claude code filed it.
+
+    a transcript lives under projects/<munged-cwd>/, and that cwd is the
+    SESSION's — not the repo the run is working on. so resolving by root alone
+    breaks on a cross-repo run (session in repo A, feature worktree in repo B):
+    B has no project dir at all, `projects_dir` returns None, and a 44%-full
+    window reports "no transcript data". root is only a hint at which directory
+    to try first; every other one is searched before giving up.
+    """
+    if not session:
+        return None
+    here = projects_dir(root) if root else None
+    others = sorted(glob.glob(os.path.join(st.config_dir(), "projects", "*")))
+    for pdir in ([here] if here else []) + others:
+        path = os.path.join(pdir, f"{session}.jsonl")
+        if os.path.isfile(path):
+            return path
+    return None
+
+
+def newest_transcript():
+    """the most recently written session transcript in ANY project dir.
+
+    last resort for a caller with no session id AND no project dir for its root
+    — again the cross-repo run. mtime only, nothing parsed, and every caller
+    marks the result as a guess: it can pick a session from another repo.
+    """
+    paths = glob.glob(os.path.join(st.config_dir(), "projects", "*", "*.jsonl"))
+    return max(paths, key=os.path.getmtime) if paths else None
+
+
+def context_usage(root, session=None, pin_env=True):
+    """live context occupancy of ONE session's ORCHESTRATOR window.
 
     subagents are excluded on purpose: each holds its own window that dies with
     the agent, so folding them in would report a number no /clear or /compact
     could act on.
+
+    the session is PINNED where it can be: claude code exports
+    CLAUDE_CODE_SESSION_ID to every Bash call, so an orchestrator asking about
+    its own window gets its own window. newest-wins is only a fallback, and it
+    is a race two terminals on one repo can lose — hence `pinned` in the
+    result, and every caller that renders the figure says when it is a guess.
+    pin_env=False opts out (the dashboard watches a RUN, not its own shell).
     """
-    pdir = projects_dir(root)
-    recs = [r for r in usage_records(load(pdir)) if not r["side"]] if pdir else []
+    if session is None:
+        session = os.environ.get("CLAUDE_CODE_SESSION_ID", "") if pin_env else ""
+    path = session_transcript(session, root)
+    pinned = bool(path)
+    if not path:
+        pdir = projects_dir(root)
+        if pdir:
+            recs = [r for r in usage_records(load(pdir)) if not r["side"]]
+            if not recs:
+                return None
+            session = max(recs, key=when)["session"]
+            recs = [r for r in recs if r["session"] == session]
+        else:
+            path = newest_transcript()
+            if not path:
+                return None
+            session = os.path.basename(path)[:-6]
+    if path:
+        recs = [r for r in usage_records(load_files([path])) if not r["side"]]
     if not recs:
         return None
-    latest = max(recs, key=when)["session"]
-    segs = context_lifetimes([r for r in recs if r["session"] == latest])
+    segs = context_lifetimes(recs)
     live = segs[-1]
     used, peak = ctx_size(live[-1]), max(ctx_size(r) for r in live)
     win, source = window_size(peak, root)
-    return {"session": latest, "used": used, "peak": peak, "window": win,
+    return {"session": session, "used": used, "peak": peak, "window": win,
             "pct": 100.0 * used / win, "requests": len(live),
             "resets": len(segs) - 1, "over": used >= win * PRESSURE,
-            "assumed": source == "default"}
+            "assumed": source == "default", "pinned": pinned}
 
 
-def context_brief(root):
-    c = context_usage(root)
+def context_brief(root, session=None):
+    c = context_usage(root, session)
     if not c:
         return "context: no transcript data"
     note = "  ← take a clear point" if c["over"] else ""
@@ -251,6 +364,10 @@ def context_brief(root):
     if c["assumed"]:
         note += (" (window assumed — set SDD_CONTEXT_WINDOW"
                  " or `model` in settings)" if c["over"] else " · window assumed")
+    # a guessed session can be another terminal's window entirely, so the
+    # figure must never read as authoritative
+    if not c["pinned"]:
+        note += f" · session guessed ({c['session'][:8]})"
     resets = f" · {c['resets']} reset(s)" if c["resets"] else ""
     return (f"context: {fmt_tok(c['used'])}/{fmt_tok(c['window'])}"
             f" ({c['pct']:.0f}%) · peak {fmt_tok(c['peak'])}"
@@ -474,6 +591,12 @@ def brief(root):
 
 def main():
     args = sys.argv[1:]
+    # consumed before root detection: the id must not be mistaken for a path
+    session = None
+    if "--session" in args:
+        i = args.index("--session")
+        session = args[i + 1] if len(args) > i + 1 else ""
+        del args[i:i + 2]
     root = next((a for a in args
                  if not a.startswith("-") and not a.replace(".", "").isdigit()),
                 os.getcwd())
@@ -481,7 +604,13 @@ def main():
         print(brief(root))
         return
     if "--context" in args:
-        print(context_brief(root))
+        if "--json" in args:
+            # for hooks and anything else that has to compare against a
+            # threshold rather than show a human a line
+            print(json.dumps(context_usage(root, session)
+                             or {"error": "no transcript data"}))
+        else:
+            print(context_brief(root, session))
         return
     n = 0
     if "--sessions" in args:

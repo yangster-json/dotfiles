@@ -1,0 +1,532 @@
+#!/usr/bin/env python3
+"""token usage analyzer for claude code transcripts.
+
+reads ~/.claude/projects/**/*.jsonl and reports where tokens (and dollars) go,
+broken down by model, by tool, by agent kind, by skill, and by project.
+
+token counts are exact -- they come from the `usage` record on each assistant
+message, deduped by message id (resumed/copied transcripts repeat messages).
+dollars are ESTIMATES from the price table below.
+
+attribution model (the interesting part):
+  each assistant turn ingests   new = input_tokens + cache_creation_input_tokens
+  and re-reads                  old = cache_read_input_tokens
+
+  `new` is split proportionally across the tool_result blocks that landed in
+  context just before the turn -- that is the INJECTION cost of a tool call.
+  `old` is split proportionally across everything injected earlier in the
+  session -- that is the CARRY cost: what you pay again on every later turn
+  because that output is still sitting in the context window.
+
+  carry is usually the bigger number and is what makes one fat tool result
+  expensive. splits are proportional-by-bytes, so per-tool figures are
+  estimates; the totals they sum to are exact.
+
+validated against claude code's own billed `total_cost_usd` (cached by
+statusline-command.py in <config>/statusline-cache/): 0.986 of billed across
+33 sessions / $323. per-session outliers run ~0.75-1.20, mostly because the
+statusline cache is a mid-session snapshot and misses later turns.
+
+usage:
+  ccanalyze.py                    full report, all time
+  ccanalyze.py --days 7           only sessions with activity in last 7 days
+  ccanalyze.py --project firmware substring filter on project dir
+  ccanalyze.py --top 25           rows per table
+  ccanalyze.py --json             machine-readable dump
+"""
+import argparse
+import glob
+import json
+import os
+import sys
+from collections import defaultdict
+from datetime import datetime, timedelta, timezone
+
+ROOT = os.path.expanduser("~/.claude/projects")
+
+# usd per million tokens: (base input, output). cache rates are multiples of
+# base input, not separate list prices -- see CACHE_MULT.
+PRICES = {
+    "fable":  (10.0, 50.0),
+    "mythos": (10.0, 50.0),
+    "opus":   (5.0, 25.0),
+    "sonnet": (3.0, 15.0),
+    "haiku":  (1.0, 5.0),
+}
+DEFAULT_TIER = "sonnet"
+
+# sonnet 5 introductory rate, by request date. delete once it lapses.
+INTRO = {"sonnet": ((2.0, 10.0), "2026-08-31")}
+
+# fast mode is the same model at premium rates (usage.speed == "fast").
+FAST = {"opus": (10.0, 50.0)}
+
+CACHE_MULT = {"read": 0.1, "write_5m": 1.25, "write_1h": 2.0}
+
+
+def tier_of(model):
+    m = (model or "").lower()
+    for name in ("fable", "mythos", "opus", "sonnet", "haiku"):
+        if name in m:
+            return name
+    return DEFAULT_TIER
+
+
+def rates(model, ts, speed):
+    """return (input, output) usd per mtok for this model/date/speed."""
+    t = tier_of(model)
+    if speed == "fast" and t in FAST:
+        return FAST[t]
+    if t in INTRO:
+        (rate, expiry) = INTRO[t]
+        if ts and ts[:10] <= expiry:
+            return rate
+    return PRICES.get(t, PRICES[DEFAULT_TIER])
+
+
+def cost_of(u, model, ts):
+    """dollars for one usage record."""
+    inp, out = rates(model, ts, u.get("speed"))
+    cc = u.get("cache_creation") or {}
+    w1h = cc.get("ephemeral_1h_input_tokens", 0)
+    w5m = cc.get("ephemeral_5m_input_tokens", 0)
+    # fall back to the flat field when the breakdown is absent
+    if not (w1h or w5m):
+        w5m = u.get("cache_creation_input_tokens", 0)
+    return (
+        u.get("input_tokens", 0) * inp
+        + u.get("cache_read_input_tokens", 0) * inp * CACHE_MULT["read"]
+        + w5m * inp * CACHE_MULT["write_5m"]
+        + w1h * inp * CACHE_MULT["write_1h"]
+        + u.get("output_tokens", 0) * out
+    ) / 1e6
+
+
+def lanes_of(u):
+    """(fresh, read, write_5m, write_1h, output) token counts."""
+    cc = u.get("cache_creation") or {}
+    w1h = cc.get("ephemeral_1h_input_tokens", 0)
+    w5m = cc.get("ephemeral_5m_input_tokens", 0)
+    if not (w1h or w5m):
+        w5m = u.get("cache_creation_input_tokens", 0)
+    return (u.get("input_tokens", 0), u.get("cache_read_input_tokens", 0),
+            w5m, w1h, u.get("output_tokens", 0))
+
+
+LANE_NAMES = ("fresh input", "cache read", "cache write 5m", "cache write 1h",
+              "output")
+LANE_MULT = (1.0, CACHE_MULT["read"], CACHE_MULT["write_5m"],
+             CACHE_MULT["write_1h"], None)  # None = priced at output rate
+
+
+class Bucket:
+    __slots__ = ("turns", "inp", "read", "w5m", "w1h", "out", "cost", "lane_usd")
+
+    def __init__(self):
+        self.turns = self.inp = self.read = self.w5m = self.w1h = self.out = 0
+        self.cost = 0.0
+        self.lane_usd = [0.0] * 5
+
+    def add(self, u, cost, model, ts):
+        fresh, read, w5m, w1h, out = lanes_of(u)
+        self.turns += 1
+        self.inp += fresh
+        self.read += read
+        self.w5m += w5m
+        self.w1h += w1h
+        self.out += out
+        self.cost += cost
+        # exact per-lane dollars at this record's own rates
+        rin, rout = rates(model, ts, u.get("speed"))
+        for i, tok in enumerate((fresh, read, w5m, w1h)):
+            self.lane_usd[i] += tok * rin * LANE_MULT[i] / 1e6
+        self.lane_usd[4] += out * rout / 1e6
+
+    @property
+    def total_in(self):
+        return self.inp + self.read + self.w5m + self.w1h
+
+
+def blocks(msg):
+    c = msg.get("content")
+    return c if isinstance(c, list) else []
+
+
+def blob_len(x):
+    """rough byte size of arbitrary tool_result content."""
+    if isinstance(x, str):
+        return len(x)
+    if isinstance(x, list):
+        n = 0
+        for b in x:
+            if isinstance(b, dict):
+                n += len(b.get("text") or "") or len(json.dumps(b, default=str))
+            else:
+                n += len(str(b))
+        return n
+    if x is None:
+        return 0
+    return len(json.dumps(x, default=str))
+
+
+def scan(files, cutoff):
+    """single pass over every transcript; returns aggregated report data."""
+    seen_ids = set()
+    by = {k: defaultdict(Bucket) for k in
+          ("model", "agent", "skill", "plugin", "project", "day", "effort",
+           "speed")}
+    overall = Bucket()
+    # context-window size histogram, weighted by dollars
+    ctx_hist = defaultdict(lambda: [0, 0.0])   # bucket label -> [turns, usd]
+
+    # per-tool attribution
+    tool_calls = defaultdict(int)
+    tool_bytes = defaultdict(int)
+    tool_inject = defaultdict(float)   # tokens
+    tool_carry = defaultdict(float)    # tokens
+    tool_cost = defaultdict(float)     # dollars
+    other_inject = other_carry = other_cost = 0.0
+
+    cold_turns = 0
+    sessions = defaultdict(lambda: {"cost": 0.0, "turns": 0, "peak": 0,
+                                    "project": "", "ts": ""})
+    dups = 0
+
+    for path in files:
+        parts = path.split(os.sep)
+        try:
+            project = parts[parts.index("projects") + 1]
+        except (ValueError, IndexError):
+            project = "?"
+        is_sub = "subagents" in parts
+        session_key = path
+
+        # session-local state for the carry attribution
+        tool_name_of = {}            # tool_use_id -> tool name
+        pending = []                 # (tool_name, bytes) awaiting the next turn
+        share = defaultdict(float)   # tool name -> injected tokens so far
+        share_other = 0.0
+        recs = []
+
+        with open(path, errors="replace") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    d = json.loads(line)
+                except ValueError:
+                    continue
+                recs.append(d)
+
+        # honour --days at session granularity: keep the session if anything
+        # in it is recent, so mid-session context still attributes correctly
+        if cutoff:
+            newest = ""
+            for d in recs:
+                ts = d.get("timestamp") or ""
+                if ts > newest:
+                    newest = ts
+            if newest and newest < cutoff:
+                continue
+
+        for d in recs:
+            typ = d.get("type")
+
+            if typ == "user":
+                for b in blocks(d.get("message", {})):
+                    if isinstance(b, dict) and b.get("type") == "tool_result":
+                        name = tool_name_of.get(b.get("tool_use_id"), "?")
+                        pending.append((name, blob_len(b.get("content"))))
+                continue
+
+            if typ != "assistant":
+                continue
+
+            msg = d.get("message", {})
+            for b in blocks(msg):
+                if isinstance(b, dict) and b.get("type") == "tool_use":
+                    tool_name_of[b.get("id")] = b.get("name") or "?"
+                    tool_calls[b.get("name") or "?"] += 1
+
+            mid = msg.get("id")
+            u = msg.get("usage") or {}
+            if not u:
+                pending = []
+                continue
+            if mid:
+                if mid in seen_ids:
+                    dups += 1
+                    pending = []
+                    continue
+                seen_ids.add(mid)
+
+            model = msg.get("model") or "?"
+            ts = d.get("timestamp") or ""
+            c = cost_of(u, model, ts)
+
+            overall.add(u, c, model, ts)
+            by["model"][model].add(u, c, model, ts)
+            by["agent"]["subagent" if is_sub else "main"].add(u, c, model, ts)
+            by["project"][project].add(u, c, model, ts)
+            by["effort"][d.get("effort") or "(unset)"].add(u, c, model, ts)
+            by["speed"][u.get("speed") or "(unset)"].add(u, c, model, ts)
+            if ts:
+                by["day"][ts[:10]].add(u, c, model, ts)
+            if d.get("attributionSkill"):
+                by["skill"][d["attributionSkill"]].add(u, c, model, ts)
+            if d.get("attributionPlugin"):
+                by["plugin"][d["attributionPlugin"]].add(u, c, model, ts)
+
+            s = sessions[session_key]
+            s["cost"] += c
+            s["turns"] += 1
+            s["project"] = project
+            s["ts"] = max(s["ts"], ts)
+            ctx = (u.get("input_tokens", 0) + u.get("cache_read_input_tokens", 0)
+                   + u.get("cache_creation_input_tokens", 0))
+            s["peak"] = max(s["peak"], ctx)
+
+            for edge, label in ((50_000, "   <50K"), (100_000, " 50-100K"),
+                                (200_000, "100-200K"), (300_000, "200-300K"),
+                                (500_000, "300-500K"), (10**12, "   >500K")):
+                if ctx < edge:
+                    ctx_hist[label][0] += 1
+                    ctx_hist[label][1] += c
+                    break
+
+            # ---- attribution -------------------------------------------------
+            inp, outp = rates(model, ts, u.get("speed"))
+            new_tok = u.get("input_tokens", 0) + u.get("cache_creation_input_tokens", 0)
+            read_tok = u.get("cache_read_input_tokens", 0)
+            if read_tok == 0:
+                cold_turns += 1
+
+            # blended $/token for the "new" bucket (mix of fresh + 5m + 1h writes)
+            cc = u.get("cache_creation") or {}
+            w1h = cc.get("ephemeral_1h_input_tokens", 0)
+            w5m = cc.get("ephemeral_5m_input_tokens", 0)
+            if not (w1h or w5m):
+                w5m = u.get("cache_creation_input_tokens", 0)
+            new_usd = (u.get("input_tokens", 0) * inp
+                       + w5m * inp * CACHE_MULT["write_5m"]
+                       + w1h * inp * CACHE_MULT["write_1h"]) / 1e6
+            read_usd = read_tok * inp * CACHE_MULT["read"] / 1e6
+
+            # split `new` across the tool results that just arrived
+            tot_b = sum(b for _, b in pending)
+            if tot_b > 0:
+                for name, nb in pending:
+                    frac = nb / tot_b
+                    # tool results rarely account for *all* new context; cap the
+                    # attributable share at the observed new-token count
+                    tok = new_tok * frac
+                    tool_bytes[name] += nb
+                    tool_inject[name] += tok
+                    tool_cost[name] += new_usd * frac
+                    share[name] += tok
+            else:
+                other_inject += new_tok
+                other_cost += new_usd
+                share_other += new_tok
+            pending = []
+
+            # split `read` across everything injected earlier this session
+            tot_s = sum(share.values()) + share_other
+            if read_tok and tot_s > 0:
+                for name, sv in share.items():
+                    frac = sv / tot_s
+                    tool_carry[name] += read_tok * frac
+                    tool_cost[name] += read_usd * frac
+                other_carry += read_tok * (share_other / tot_s)
+                other_cost += read_usd * (share_other / tot_s)
+            elif read_tok:
+                other_carry += read_tok
+                other_cost += read_usd
+
+    return {
+        "overall": overall, "by": by, "dups": dups, "cold": cold_turns,
+        "tool_calls": tool_calls, "tool_bytes": tool_bytes,
+        "tool_inject": tool_inject, "tool_carry": tool_carry,
+        "tool_cost": tool_cost,
+        "other": (other_inject, other_carry, other_cost),
+        "sessions": sessions, "ctx_hist": ctx_hist,
+    }
+
+
+# ---- rendering -------------------------------------------------------------
+
+def h(n):
+    n = float(n)
+    for unit, div in (("B", 1e9), ("M", 1e6), ("K", 1e3)):
+        if abs(n) >= div:
+            return f"{n/div:.1f}{unit}"
+    return f"{n:.0f}"
+
+
+def usd(x):
+    return f"${x:,.2f}"
+
+
+def table(title, rows, cols, widths):
+    print(f"\n{title}")
+    print("  " + "  ".join(c.rjust(w) if i else c.ljust(w)
+                           for i, (c, w) in enumerate(zip(cols, widths))))
+    print("  " + "  ".join("-" * w for w in widths))
+    for r in rows:
+        print("  " + "  ".join(str(v).rjust(w) if i else str(v).ljust(w)[:w]
+                              for i, (v, w) in enumerate(zip(r, widths))))
+
+
+def bucket_rows(d, top, total_cost):
+    rows = []
+    for k, b in sorted(d.items(), key=lambda kv: -kv[1].cost)[:top]:
+        pct = 100 * b.cost / total_cost if total_cost else 0
+        rows.append([k, b.turns, h(b.total_in), h(b.read), h(b.out),
+                     usd(b.cost), f"{pct:.1f}%"])
+    return rows
+
+
+BCOLS = ["", "turns", "in", "cached", "out", "est $", "%"]
+BW = [34, 6, 8, 8, 8, 10, 6]
+
+
+def report(R, top):
+    o = R["overall"]
+    tc = o.cost
+    print("=" * 84)
+    print("CLAUDE CODE TOKEN USAGE".center(84))
+    print("=" * 84)
+    print(f"\n  assistant turns   {o.turns:,}   (skipped {R['dups']:,} duplicate "
+          f"records from resumed/copied transcripts)")
+    print(f"  input tokens      {h(o.total_in)}")
+    print(f"    fresh           {h(o.inp)}   {100*o.inp/max(o.total_in,1):.1f}%   "
+          f"@ 1.0x")
+    print(f"    cache read      {h(o.read)}   {100*o.read/max(o.total_in,1):.1f}%   "
+          f"@ 0.1x")
+    print(f"    cache write 5m  {h(o.w5m)}   {100*o.w5m/max(o.total_in,1):.1f}%   "
+          f"@ 1.25x")
+    print(f"    cache write 1h  {h(o.w1h)}   {100*o.w1h/max(o.total_in,1):.1f}%   "
+          f"@ 2.0x")
+    print(f"  output tokens     {h(o.out)}")
+    print(f"\n  estimated cost    {usd(tc)}")
+
+    # exact dollar split by lane -- the "where does the money actually go" line
+    print("\n  WHERE THE DOLLARS GO (exact, per-record rates):")
+    toks = (o.inp, o.read, o.w5m, o.w1h, o.out)
+    for i, name in enumerate(LANE_NAMES):
+        m = LANE_MULT[i]
+        rate = f"{m}x in" if m is not None else "out rate"
+        print(f"    {name:<16} {usd(o.lane_usd[i]):>10}  "
+              f"{100*o.lane_usd[i]/max(tc,1e-9):5.1f}%   "
+              f"{h(toks[i]):>7} tok @ {rate}")
+
+    print(f"\n  cold turns (no cache read): {R['cold']:,} "
+          f"({100*R['cold']/max(o.turns,1):.1f}% of turns)")
+
+    B = R["by"]
+    table("BY MODEL", bucket_rows(B["model"], top, tc), BCOLS, BW)
+    table("BY AGENT KIND", bucket_rows(B["agent"], top, tc), BCOLS, BW)
+    table("BY EFFORT", bucket_rows(B["effort"], top, tc), BCOLS, BW)
+    if len(B["speed"]) > 1:
+        table("BY SPEED (fast mode = 2x rates)",
+              bucket_rows(B["speed"], top, tc), BCOLS, BW)
+    table("BY PROJECT", bucket_rows(B["project"], top, tc), BCOLS, BW)
+    if B["skill"]:
+        table("BY SKILL", bucket_rows(B["skill"], top, tc), BCOLS, BW)
+    if B["plugin"]:
+        table("BY PLUGIN", bucket_rows(B["plugin"], top, tc), BCOLS, BW)
+
+    # context size -- shows how much you pay for carrying a big window
+    ch = R["ctx_hist"]
+    order = ["   <50K", " 50-100K", "100-200K", "200-300K", "300-500K", "   >500K"]
+    table("BY CONTEXT SIZE AT TIME OF TURN",
+          [[lbl, ch[lbl][0], usd(ch[lbl][1]),
+            f"{100*ch[lbl][1]/tc if tc else 0:.1f}%",
+            usd(ch[lbl][1] / ch[lbl][0]) if ch[lbl][0] else "-"]
+           for lbl in order if lbl in ch],
+          ["context", "turns", "est $", "%", "$/turn"], [10, 7, 10, 7, 9])
+
+    # tool attribution
+    names = set(R["tool_calls"]) | set(R["tool_cost"])
+    rows = []
+    for n in sorted(names, key=lambda k: -R["tool_cost"].get(k, 0))[:top]:
+        calls = R["tool_calls"].get(n, 0)
+        inj = R["tool_inject"].get(n, 0)
+        car = R["tool_carry"].get(n, 0)
+        cost = R["tool_cost"].get(n, 0)
+        amp = car / inj if inj else 0
+        rows.append([n, calls, h(R["tool_bytes"].get(n, 0)), h(inj), h(car),
+                     f"{amp:.1f}x", usd(cost), f"{100*cost/tc if tc else 0:.1f}%"])
+    oi, oc, ou = R["other"]
+    rows.append(["(prompt/system/user text)", "-", "-", h(oi), h(oc),
+                 f"{oc/oi if oi else 0:.1f}x", usd(ou),
+                 f"{100*ou/tc if tc else 0:.1f}%"])
+    table("BY TOOL  (inject = tokens added to context; carry = re-read on later turns)",
+          rows,
+          ["tool", "calls", "bytes", "inject", "carry", "amp", "est $", "%"],
+          [34, 6, 8, 8, 8, 6, 10, 6])
+
+    # priciest sessions
+    ss = sorted(R["sessions"].values(), key=lambda s: -s["cost"])[:top]
+    table("PRICIEST SESSIONS",
+          [[f"{s['project'][:28]} {s['ts'][:10]}", s["turns"], h(s["peak"]),
+            usd(s["cost"])] for s in ss],
+          ["project / date", "turns", "peak ctx", "est $"], [42, 6, 9, 10])
+
+    # recent daily trend
+    days = sorted(B["day"].items())[-14:]
+    if days:
+        table("LAST 14 ACTIVE DAYS",
+              [[d, b.turns, h(b.total_in), h(b.out), usd(b.cost)]
+               for d, b in days],
+              ["day", "turns", "in", "out", "est $"], [12, 6, 8, 8, 10])
+    print()
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__,
+                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--days", type=int, help="only sessions active in last N days")
+    p.add_argument("--project", help="substring filter on project directory")
+    p.add_argument("--top", type=int, default=15, help="rows per table")
+    p.add_argument("--json", action="store_true", help="machine-readable output")
+    p.add_argument("--root", default=ROOT)
+    a = p.parse_args()
+
+    files = glob.glob(os.path.join(a.root, "**", "*.jsonl"), recursive=True)
+    if a.project:
+        files = [f for f in files if a.project in f]
+    if not files:
+        sys.exit(f"no transcripts under {a.root}")
+
+    cutoff = ""
+    if a.days:
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=a.days)).isoformat()
+
+    R = scan(sorted(files), cutoff)
+
+    if a.json:
+        out = {
+            "totals": {k: getattr(R["overall"], k) for k in
+                       ("turns", "inp", "read", "w5m", "w1h", "out", "cost")},
+            "by": {dim: {k: {s: getattr(b, s) for s in
+                             ("turns", "inp", "read", "w5m", "w1h", "out", "cost")}
+                         for k, b in d.items()}
+                   for dim, d in R["by"].items()},
+            "tools": {n: {"calls": R["tool_calls"].get(n, 0),
+                          "bytes": R["tool_bytes"].get(n, 0),
+                          "inject": R["tool_inject"].get(n, 0),
+                          "carry": R["tool_carry"].get(n, 0),
+                          "cost": R["tool_cost"].get(n, 0)}
+                      for n in set(R["tool_calls"]) | set(R["tool_cost"])},
+            "cold_turns": R["cold"], "duplicates_skipped": R["dups"],
+        }
+        json.dump(out, sys.stdout, indent=2, default=str)
+        print()
+    else:
+        report(R, a.top)
+
+
+if __name__ == "__main__":
+    main()

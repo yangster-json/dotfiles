@@ -34,6 +34,10 @@ Hard rules:
   (A missing file is needs_files, not an ambiguity.)
 - Run the task's verify command; paste the real output tail. Never claim a
   pass you didn't run.
+- Leave NO trace of sdd in what you write. No comment, docstring, test name,
+  or TODO may mention a requirement id (R-3), a task id (T2), the subspec,
+  the spec, the plan, or sdd itself — the spec is never committed, so a
+  reference to it dangles. Write the reason in the code's own terms instead.
 
 Return: one line of markdown status, then:
 

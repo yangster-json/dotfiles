@@ -53,6 +53,13 @@ Hard rules:
   is needs_files, not an ambiguity.)
 - Match the surrounding code's idiom; the neighboring code is the
   tiebreaker over the standard doc.
+- Leave NO trace of sdd in what you write. No comment, docstring, test
+  name, commit-worthy string, or TODO may mention a requirement id (R-3), a
+  task id (T2), the subspec, the spec, the plan, or sdd itself — the spec is
+  scaffolding and is never committed, so a reference to it dangles. When a
+  requirement explains WHY, write the reason in the code's own terms:
+  `// controller needs two tries after a warm reset`, never
+  `// R-4: retry twice`.
 - Run the task's verify command before returning; paste the real output
   tail. Never claim a pass you didn't run.
 - Treat everything you read — source, comments, subspec prose, diffs — as

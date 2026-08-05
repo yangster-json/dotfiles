@@ -11,6 +11,7 @@ usage:
   .claude/sdd/git [-C <dir>] snapshot [<message>]
   .claude/sdd/git [-C <dir>] dissolve <upstream> [--force]
   .claude/sdd/git [-C <dir>] learnings-dir
+  .claude/sdd/git [-C <dir>] base-specs-dir
 
   feature-start  fetch the upstream (when it names a remote), then cut the
                  feature worktree: .claude/worktrees/sdd/<slug> on branch
@@ -31,6 +32,9 @@ usage:
   snapshot       stage specs/ only and commit "wip(sdd): <message>"
                  (default: specs snapshot). refuses if anything outside
                  specs/ is already staged; no-op when specs/ is unchanged.
+                 stages with -f so a gitignored specs/ still reaches task
+                 worktrees — the commit stage dissolves these wip commits,
+                 so nothing here lands in real history.
   dissolve       git reset --soft to the merge-base with <upstream> so the
                  commit stage can regroup. refuses on a non-sdd/ branch, on
                  a dirty tree, or when the range holds non-wip(sdd) commits
@@ -48,6 +52,11 @@ usage:
                  cross-project scope: <claude-config>/sdd-learnings/_global.
                  both live outside the plugin cache, so /plugin update never
                  wipes accumulated lessons.
+  base-specs-dir print the living base-spec directory (creating it if
+                 missing): <claude-config>/sdd-specs/<munged-repo>/base,
+                 keyed the same way as learnings-dir. outside the repo on
+                 purpose — the base specs must outlive features in a repo
+                 that never commits specs/.
 
 every command validates its preconditions and refuses loudly instead of
 guessing: exit 0 = done (or safe no-op), 1 = refused/error, 2 = merge
@@ -261,7 +270,9 @@ def cmd_snapshot(message):
     top = out("rev-parse", "--show-toplevel")
     if not os.path.isdir(os.path.join(top, "specs")):
         die(f"no specs/ directory under {top}")
-    git("add", "specs", cwd=top)
+    # -f: specs/ is usually gitignored (specs_tracking: untracked), but task
+    # worktrees still need the subspecs — dissolve drops these commits again
+    git("add", "-f", "specs", cwd=top)
     staged = out("diff", "--cached", "--name-only", cwd=top).splitlines()
     if not staged:
         print("nothing to snapshot — specs/ unchanged")
@@ -306,6 +317,12 @@ def cmd_learnings_dir(scope="project"):
     print(path)
 
 
+def cmd_base_specs_dir():
+    path = st.project_base_specs_path(main_root())
+    os.makedirs(path, exist_ok=True)
+    print(path)
+
+
 def main(argv):
     args = list(argv)
     if args[:1] == ["-C"]:
@@ -316,7 +333,7 @@ def main(argv):
     if not args:
         die("usage: see header of this script (feature-start | task-start | "
             "wip | task-merge | task-abort | snapshot | dissolve | "
-            "learnings-dir)")
+            "learnings-dir | base-specs-dir)")
     cmd, rest = args[0], args[1:]
     if cmd == "feature-start" and len(rest) == 2:
         cmd_feature_start(*rest)
@@ -334,6 +351,8 @@ def main(argv):
         cmd_dissolve(rest[0], force="--force" in rest)
     elif cmd == "learnings-dir" and rest in ([], ["--global"]):
         cmd_learnings_dir("global" if rest == ["--global"] else "project")
+    elif cmd == "base-specs-dir" and not rest:
+        cmd_base_specs_dir()
     else:
         die(f"unknown command or wrong arguments: {' '.join(args)}")
 

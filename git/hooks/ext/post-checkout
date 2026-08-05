@@ -1,0 +1,14 @@
+#!/bin/sh
+# Seed a newly created worktree with the main worktree's local LSP config.
+#
+# `git worktree add` fires post-checkout with the null sha as the old ref; a
+# plain `git checkout` / `git switch` passes a real one. That is what separates
+# a fresh worktree from an ordinary branch switch.
+set -e
+
+if [ "$1" != "0000000000000000000000000000000000000000" ] || [ "$3" != "1" ]; then
+    exit 0
+fi
+
+here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+exec "$here/../../bin/wt-sync-config"

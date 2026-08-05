@@ -19,8 +19,8 @@ Read specs/<slug>/spec.md and specs/<slug>/research.md, then hunt for:
 - requirement-vs-requirement contradictions; non-goals too vague to exclude
   anything;
 - contradictions with the as-built contracts in the living base specs
-  (config.spec_base, default specs/base/ — read any file covering the touched
-  area): a requirement that changes a contracted behavior without naming the
+  (config.spec_base — by default `sdd-git base-specs-dir`, run it for the
+  directory; read any file covering the touched area): a requirement that changes a contracted behavior without naming the
   <AREA>-R<n> it supersedes is blocking.
 
 Rules:

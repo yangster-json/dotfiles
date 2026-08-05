@@ -22,10 +22,15 @@ for _, click in ipairs({
   keymap.set({ "n", "v", "i" }, click, "<nop>", { desc = "Disable mouse click navigation" })
 end
 
--- delete single character without copying into register
--- keymap.set("n", "x", '"_x')
 keymap.set({ "n", "v" }, "<leader>y", [["+y]], { desc = "copy to clipboard" })
 keymap.set("n", "<leader>Y", [["+Y]], { desc = "copy to clipboard" })
+
+-- delete without clobbering the clipboard (clipboard=unnamedplus sends d/x to "+)
+keymap.set({ "n", "v" }, "X", [["_d]], { desc = "Delete to black hole register" })
+-- XX needs its own mapping, the second X would expand the operator again
+keymap.set("n", "XX", [["_dd]], { desc = "Delete line to black hole register" })
+keymap.set({ "n", "v" }, "x", [["_x]], { desc = "Delete char to black hole register" })
+keymap.set("v", "<leader>p", [["_dP]], { desc = "Paste over selection, keep clipboard" })
 
 -- increment/decrement numbers
 keymap.set("n", "<leader>+", "<C-a>", { desc = "Increment number" }) -- increment

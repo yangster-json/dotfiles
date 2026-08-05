@@ -19,8 +19,9 @@ planner, combative review.
    write `specs/ACTIVE`. Check both learnings indexes for entries matching
    the touched area and honor them — project (`sdd-git
    learnings-dir`, then that directory's `INDEX.md`) and global
-   (`sdd-git learnings-dir --global`, then its `INDEX.md`) — and grep `specs/base/`
-   (config.spec_base) for contracts covering it — a quick change that
+   (`sdd-git learnings-dir --global`, then its `INDEX.md`) — and grep the
+   living base specs (`sdd-git base-specs-dir`, config.spec_base) for
+   contracts covering it — a quick change that
    alters a contracted behavior must say so in the mini-spec, never
    contradict the base silently. Explore the code yourself just
    enough to write `specs/<slug>/spec.md`: 1–3 EARS requirements, a
@@ -62,9 +63,13 @@ planner, combative review.
 
 5. **Test + commit.** Run the task's verify command's suite; then commit per
    the pipeline's commit stage — the `fw-commit` skill when installed,
-   otherwise config.commit_standard from the sdd pipeline file (project
-   `.claude/sdd/pipeline.yaml`, else the bundled `sdd-path pipeline.yaml`). Stage
-   `specs/<slug>/` per config.specs_tracking (with_feature → include;
-   own_commit → separate final commit; untracked → leave it for
-   /sdd:cleanup to archive), never push. Set `phase: done`, delete
+   otherwise config.commit_standard from `sdd-pipeline --section config` (it
+   resolves project-over-bundled and the `extends:` chain; do not Read
+   pipeline.yaml, which is ~54KB of mostly comments). Stage
+   `specs/<slug>/` per config.specs_tracking (untracked, the default → never
+   stage it, `git restore --staged specs` if anything crept in, and leave it
+   for /sdd:cleanup to archive; with_feature → include; own_commit →
+   separate final commit). Keep the commit spec-free: no R-numbers or task
+   ids in the message, and strip any comment in the diff that points at the
+   spec. Never push. Set `phase: done`, delete
    `specs/ACTIVE`, report.

@@ -18,6 +18,13 @@ base_ref:            <!-- feature-branch HEAD after the specs snapshot; review/t
 hw_testbed: none     <!-- e.g. fw-comet02 — from pipeline config or gate 2 -->
 hw_bay: none         <!-- e.g. 19 -->
 
+## feature
+<!-- the intake description, verbatim, written before the first stage. until
+     research.md and spec.md exist this is the ONLY copy — without it a resume
+     (or a stage-boundary stop) at phase: research knows the slug and nothing
+     about what is being built. -->
+<what the user asked for>
+
 ## tasks
 <!-- mirrored from tasks.md by the plan stage; statuses live here. gate-2
      fix tasks (F1..) and quick tasks (Q1) are appended here and get

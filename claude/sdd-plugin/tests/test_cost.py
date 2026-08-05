@@ -20,24 +20,79 @@ def entry(uuid, session, **kw):
     return e
 
 
-def rec(model="claude-sonnet-5", tin=0, tout=0, cw=0, cr=0):
-    return {"model": model, "tin": tin, "tout": tout, "cw": cw, "cr": cr}
+def rec(model="claude-sonnet-5", tin=0, tout=0, cw=0, cr=0, **kw):
+    r = {"model": model, "tin": tin, "tout": tout, "cw": cw, "cr": cr}
+    r.update(kw)
+    return r
+
+
+LAPSED = "2099-01-01T00:00:00Z"   # past every INTRO expiry
 
 
 class TestEstimate(unittest.TestCase):
     def test_sonnet_output_rate(self):
-        # 1M sonnet output tokens at $15/M
-        self.assertAlmostEqual(cost.est(rec(tout=1_000_000)), 15.0, places=2)
+        # 1M sonnet output tokens at the $10/M introductory rate
+        self.assertAlmostEqual(cost.est(rec(tout=1_000_000)), 10.0, places=2)
+
+    def test_intro_price_lapses_by_request_date(self):
+        # the discount is by request date, so a later record pays list ($15/M)
+        self.assertAlmostEqual(
+            cost.est(rec(tout=1_000_000, ts=LAPSED)), 15.0, places=2)
 
     def test_opus_input_rate(self):
-        # 1M opus input tokens at $5/M
+        # 1M opus input tokens at $5/M (no introductory rate on opus)
         self.assertAlmostEqual(
             cost.est(rec(model="claude-opus-4-8", tin=1_000_000)), 5.0, places=2)
+
+    def test_fable_is_priced_above_opus(self):
+        self.assertAlmostEqual(
+            cost.est(rec(model="claude-fable-5", tout=1_000_000)), 50.0, places=2)
+
+    def test_fast_mode_is_a_premium_rate(self):
+        self.assertAlmostEqual(
+            cost.est(rec(model="claude-opus-5", tout=1_000_000, speed="fast")),
+            50.0, places=2)
 
     def test_unknown_model_falls_back_to_default(self):
         # an unrecognized model uses the sonnet default price
         self.assertAlmostEqual(
-            cost.est(rec(model="mystery-9", tout=1_000_000)), 15.0, places=2)
+            cost.est(rec(model="mystery-9", tout=1_000_000, ts=LAPSED)),
+            15.0, places=2)
+
+
+class TestCacheRates(unittest.TestCase):
+    """cache rates are multiples of the tier's base input rate. a 1h write
+    costs 2x base and a 5m write 1.25x — pricing every write at 1.25x
+    understated long runs, which write almost entirely at 1h."""
+
+    def test_read_is_a_tenth_of_input(self):
+        self.assertAlmostEqual(
+            cost.est(rec(model="claude-opus-5", cr=1_000_000)), 0.50, places=2)
+
+    def test_write_defaults_to_the_5m_rate(self):
+        # no cache_creation split recorded -> 1.25x base
+        self.assertAlmostEqual(
+            cost.est(rec(model="claude-opus-5", cw=1_000_000)), 6.25, places=2)
+
+    def test_a_1h_write_costs_double_base(self):
+        self.assertAlmostEqual(
+            cost.est(rec(model="claude-opus-5", cw=1_000_000, cw1h=1_000_000)),
+            10.0, places=2)
+
+    def test_mixed_ttls_are_priced_separately(self):
+        # 1M at 1h (2x) + 1M at 5m (1.25x) on opus = 10.00 + 6.25
+        self.assertAlmostEqual(
+            cost.est(rec(model="claude-opus-5", cw=2_000_000, cw1h=1_000_000)),
+            16.25, places=2)
+
+    def test_records_carry_the_ttl_split(self):
+        e = entry("a", "s")
+        e["message"]["usage"]["cache_creation_input_tokens"] = 300
+        e["message"]["usage"]["cache_creation"] = {
+            "ephemeral_1h_input_tokens": 200, "ephemeral_5m_input_tokens": 100}
+        r = cost.usage_records([{"type": "assistant", "uuid": "a",
+                                 "msg": e["message"], "ts": e["timestamp"]}])[0]
+        self.assertEqual((r["cw"], r["cw1h"]), (300, 200))
 
 
 class TestAgg(unittest.TestCase):
@@ -258,6 +313,117 @@ class TestContextWindow(unittest.TestCase):
             json.dump({"model": "opus[1m]"}, f)
         self.assertEqual(cost.configured_window(root), (1_000_000, "project"))
         shutil.rmtree(root, ignore_errors=True)
+
+
+class TestContextSession(unittest.TestCase):
+    """WHOSE window --context reports. two terminals on one repo, and a run
+    whose feature lives in a different repo than the session, both used to be
+    answered wrong — the first by newest-wins, the second not at all."""
+
+    def setUp(self):
+        self.saved = {k: os.environ.get(k) for k in
+                      ("SDD_CONTEXT_WINDOW", "CLAUDE_CONFIG_DIR",
+                       "CLAUDE_CODE_SESSION_ID")}
+        os.environ.pop("SDD_CONTEXT_WINDOW", None)
+        os.environ.pop("CLAUDE_CODE_SESSION_ID", None)
+        self.cfg = tempfile.mkdtemp(prefix="sdd-cfg-")
+        os.environ["CLAUDE_CONFIG_DIR"] = self.cfg
+        os.environ["SDD_CONTEXT_WINDOW"] = "200000"
+        # session A: the run, 100k in. session B: another terminal, 10k in.
+        self.repo = tempfile.mkdtemp(prefix="sdd-repo-")
+        self.write_session("A" * 8, self.repo, 100_000, "12:00:00")
+        self.write_session("B" * 8, self.repo, 10_000, "13:00:00")
+
+    def tearDown(self):
+        for k, v in self.saved.items():
+            os.environ.pop(k, None) if v is None else os.environ.update({k: v})
+        shutil.rmtree(self.cfg, ignore_errors=True)
+        shutil.rmtree(self.repo, ignore_errors=True)
+
+    def write_session(self, session, root, ctx, clock, ndx=1):
+        """one transcript with a single request whose input side sums to ctx."""
+        pdir = os.path.join(self.cfg, "projects", cost.st.munge(root))
+        os.makedirs(pdir, exist_ok=True)
+        e = entry(f"u{session}{ndx}", session,
+                  timestamp=f"2026-07-31T{clock}Z")
+        e["message"]["usage"] = {"input_tokens": 2, "output_tokens": 10,
+                                 "cache_creation_input_tokens": 1000,
+                                 "cache_read_input_tokens": ctx - 1002}
+        path = os.path.join(pdir, f"{session}.jsonl")
+        with open(path, "a") as f:
+            f.write(json.dumps(e) + "\n")
+        return path
+
+    def test_env_session_wins_over_newest(self):
+        # B is newer, but A is the session asking — 100k, not 10k
+        os.environ["CLAUDE_CODE_SESSION_ID"] = "A" * 8
+        c = cost.context_usage(self.repo)
+        self.assertEqual(c["used"], 100_000)
+        self.assertEqual(c["session"], "A" * 8)
+        self.assertTrue(c["pinned"])
+
+    def test_explicit_session_beats_the_env(self):
+        os.environ["CLAUDE_CODE_SESSION_ID"] = "A" * 8
+        self.assertEqual(cost.context_usage(self.repo, "B" * 8)["used"], 10_000)
+
+    def test_without_an_id_it_guesses_newest_and_says_so(self):
+        c = cost.context_usage(self.repo)
+        self.assertEqual(c["used"], 10_000)      # B, the newest — a guess
+        self.assertFalse(c["pinned"])
+        self.assertIn("session guessed", cost.context_brief(self.repo))
+
+    def test_pin_env_off_ignores_the_callers_session(self):
+        # the dashboard watches a RUN, not the shell it runs in
+        os.environ["CLAUDE_CODE_SESSION_ID"] = "A" * 8
+        c = cost.context_usage(self.repo, pin_env=False)
+        self.assertEqual(c["used"], 10_000)
+        self.assertFalse(c["pinned"])
+
+    def test_cross_repo_run_is_found_by_session_id(self):
+        # the feature lives here; the session's transcript is filed under the
+        # repo it was LAUNCHED from, so this root has no project dir at all
+        other = tempfile.mkdtemp(prefix="sdd-other-")
+        try:
+            os.environ["CLAUDE_CODE_SESSION_ID"] = "A" * 8
+            self.assertIsNone(cost.projects_dir(other))
+            c = cost.context_usage(other)
+            self.assertEqual(c["used"], 100_000)
+            self.assertTrue(c["pinned"])
+        finally:
+            shutil.rmtree(other, ignore_errors=True)
+
+    def test_cross_repo_without_an_id_falls_back_to_newest_anywhere(self):
+        other = tempfile.mkdtemp(prefix="sdd-other-")
+        try:
+            c = cost.context_usage(other)
+            self.assertEqual(c["used"], 10_000)
+            self.assertFalse(c["pinned"])
+        finally:
+            shutil.rmtree(other, ignore_errors=True)
+
+    def test_no_transcripts_anywhere_is_still_none(self):
+        shutil.rmtree(os.path.join(self.cfg, "projects"))
+        self.assertIsNone(cost.context_usage(self.repo))
+        self.assertEqual(cost.context_brief(self.repo), "context: no transcript data")
+
+    def test_pinned_reading_uses_the_last_lifetime_only(self):
+        # a /clear keeps the session id: occupancy drops, and the reading must
+        # follow the new lifetime rather than the file-wide peak
+        os.environ["CLAUDE_CODE_SESSION_ID"] = "A" * 8
+        self.write_session("A" * 8, self.repo, 20_000, "14:00:00", ndx=2)
+        c = cost.context_usage(self.repo)
+        self.assertEqual((c["used"], c["resets"]), (20_000, 1))
+
+    def test_subagent_turns_never_count(self):
+        # a subagent's window dies with it — no /clear could act on it
+        os.environ["CLAUDE_CODE_SESSION_ID"] = "A" * 8
+        pdir = os.path.join(self.cfg, "projects", cost.st.munge(self.repo))
+        e = entry("side1", "A" * 8, timestamp="2026-07-31T15:00:00Z",
+                  isSidechain=True)
+        e["message"]["usage"] = {"input_tokens": 900_000, "output_tokens": 1}
+        with open(os.path.join(pdir, f"{'A' * 8}.jsonl"), "a") as f:
+            f.write(json.dumps(e) + "\n")
+        self.assertEqual(cost.context_usage(self.repo)["used"], 100_000)
 
 
 class TestFmtTok(unittest.TestCase):

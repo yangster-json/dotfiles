@@ -135,6 +135,59 @@ class StateCliTest(unittest.TestCase):
         self.assertLess(text.index("before waived"),
                         text.index("## waived findings"))
 
+    def test_event_applies_every_edit_in_one_call(self):
+        p = run_cli(["event",
+                     "--set", "phase=implement",
+                     "--task", "T2=done",
+                     "--bump", "verify_retries",
+                     "--log", "implement: T2 verify PASS"], self.root)
+        text = self.text()
+        self.assertEqual(st.field(text, "phase"), "implement")
+        self.assertEqual(
+            {r["id"]: r["status"] for r in st.task_rows(text)}["T2"], "done")
+        self.assertEqual(st.metrics(text)["verify_retries"], 1)
+        self.assertTrue([l for l in st.sections(text)["log"]
+                         if l.endswith("implement: T2 verify PASS")])
+        # every edit reports, so a batched call is as auditable as N calls
+        for want in ("phase: implement", "T2: done", "verify_retries: 1"):
+            self.assertIn(want, p.stdout)
+
+    def test_event_repeats_a_flag(self):
+        run_cli(["event", "--bump", "verify_retries=2", "--bump", "tasks_blocked",
+                 "--log", "one", "--log", "two"], self.root)
+        m = st.metrics(self.text())
+        self.assertEqual((m["verify_retries"], m["tasks_blocked"]), (2, 3))
+        logged = [l for l in st.sections(self.text())["log"] if l.strip()]
+        self.assertTrue(logged[-2].endswith("one"))
+        self.assertTrue(logged[-1].endswith("two"))
+
+    def test_event_log_value_may_contain_equals(self):
+        run_cli(["event", "--log", "test: EXPECT=3 got=4"], self.root)
+        self.assertTrue([l for l in st.sections(self.text())["log"]
+                         if l.endswith("test: EXPECT=3 got=4")])
+
+    def test_event_applies_in_fixed_order_not_argument_order(self):
+        # log last, so its line describes state as it now reads
+        run_cli(["event", "--log", "phase flip", "--set", "phase=review"],
+                self.root)
+        text = self.text()
+        self.assertEqual(st.field(text, "phase"), "review")
+
+    def test_event_rejects_bad_input_without_writing(self):
+        before = self.text()
+        run_cli(["event"], self.root, expect=1)                       # no ops
+        run_cli(["event", "--nope", "x"], self.root, expect=1)        # bad flag
+        run_cli(["event", "--set", "phase"], self.root, expect=1)     # no `=`
+        run_cli(["event", "--log"], self.root, expect=1)              # no value
+        self.assertEqual(self.text(), before)
+
+    def test_event_is_atomic_when_a_later_edit_fails(self):
+        """one write at the end, so a bad counter cannot half-apply the batch."""
+        before = self.text()
+        run_cli(["event", "--set", "phase=implement",
+                 "--bump", "no_such_counter"], self.root, expect=1)
+        self.assertEqual(self.text(), before)
+
     def test_get(self):
         p = run_cli(["get", "phase"], self.root)
         self.assertEqual(p.stdout.strip(), "research")

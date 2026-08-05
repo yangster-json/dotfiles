@@ -1,0 +1,260 @@
+#!/usr/bin/env python3
+"""sdd-agents — what each subagent of the run is doing, from its own transcript.
+
+state.md's log is the orchestrator's account, written between spawns. This is
+the agents' own: claude code appends a transcript per subagent as it works
+(see agentlib), so a fan-out of three reviewers or five research scouts can be
+watched one row per agent instead of inferred from what came back.
+
+usage:
+  sdd-agents [slug]            one row per agent + a short activity tail
+  sdd-agents --tail N          N rows of interleaved activity (0 = all kept,
+                               --no-tail = just the roster)
+  sdd-agents --follow [sec]    stream calls as they arrive (^C to stop). opens
+                               with --tail N of history (default 10, --no-tail
+                               for none), then only what is new
+  sdd-agents --agent <who>     one agent in full: prompt, every call, verdict
+                               (`who` matches an id prefix, type, or task id)
+  sdd-agents --json            the same data as json, for scripting
+
+filters:
+  slug            only this feature's agents (default: the active feature —
+                  `--any` for every feature in the repo)
+  --since MIN     only agents whose transcript grew in the last MIN minutes
+                  (default 120; --all removes the window)
+  --live          only the agents working right now (the roster keeps the
+                  finished and the abandoned ones by default, so a verifier
+                  that just returned is still on screen when you look)
+  --wrap          fold long rows instead of clipping them to the width —
+                  the whole command, the whole finding, on as many lines as
+                  it takes (the `w` key in sdd-status --loop)
+  --no-color      plain output (NO_COLOR does the same)
+  --width N       force the layout width
+
+the live pane equivalent is `sdd-status --loop` and then `a`, which shows the
+same rows next to the phase ladder and task table.
+"""
+import importlib.util
+import os
+import sys
+import time
+from importlib.machinery import SourceFileLoader
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+
+import agentlib as ag  # noqa: E402
+import statelib as st  # noqa: E402
+
+
+def _load(name, filename):
+    """load a sibling CLI as a module. sdd-status owns the mocha palette and
+    the terminal helpers the whole dashboard family shares; duplicating them
+    here is how two views of one run start disagreeing about what green means.
+    Extension-less files need an explicit loader."""
+    loader = SourceFileLoader(name, os.path.join(HERE, filename))
+    spec = importlib.util.spec_from_loader(name, loader)
+    mod = importlib.util.module_from_spec(spec)
+    loader.exec_module(mod)
+    return mod
+
+
+ui = _load("sdd_status_ui", "sdd-status")
+# sdd-status maps agentlib's tones to the mocha palette (ui.hue) and colors a
+# row with ui.agent_line — the same two functions the `a` pane draws with, so
+# the two views cannot drift
+render = ui.agent_line
+
+
+def head(title, note, width):
+    return ui.titled(f"{ui.BLD}{ui.MAUVE}{title}{ui.RST}",
+                     f"{ui.DIM}{note}{ui.RST}", width)
+
+
+def summary(agents, now=None):
+    """the header's tally — same status words, same hues, as the rows below."""
+    return " · ".join(f"{ui.hue(ag.TONE.get(k, 'plain'))}{v} {k}{ui.RST}"
+                      for k, v in ag.counts(agents, now).items())
+
+
+def render_table(agents, width, now=None, wrap=False):
+    return [" " + render(segs) for a in agents
+            for segs in ag.rows(a, width - 1, now, wrap=wrap)]
+
+
+def render_tail(agents, width, limit, with_agent=True, wrap=False):
+    return [" " + render(segs) for e in ag.timeline(agents, limit)
+            for segs in ag.event_rows(e, width - 1, with_agent, wrap=wrap)]
+
+
+def render_roster(agents, slug, width, tail, now=None, wrap=False):
+    """the default view: one row per agent, then what has happened lately."""
+    title = f"sdd agents: {slug}" if slug else "sdd agents"
+    if not agents:
+        where = f" for {slug}" if slug else ""
+        return "\n".join([
+            head(title, "none", width),
+            f"  {ui.DIM}no subagent transcripts{where} in the window — they "
+            f"appear as soon as a stage spawns one ({ui.RST}"
+            f"{ui.DIM}--all widens it){ui.RST}"])
+    out = [head(title, summary(agents, now), width)]
+    out += render_table(agents, width, now, wrap)
+    if tail is not None:
+        rows = render_tail(agents, width, tail, wrap=wrap)
+        out += ["", ui.section("recent activity",
+                               f"last {min(tail, len(rows))} calls",
+                               width)]
+        out += rows
+    return "\n".join(l.rstrip() for l in out)
+
+
+def render_agent(root, slug, who, width, now=None, wrap=False):
+    """one agent in full — the view for "why did T4 fail?"."""
+    agents = ag.agents(root, slug, now=now)
+    hits = [a for a in agents if _matches(a, who)]
+    if not hits:
+        known = ", ".join(sorted({ag.label(a) for a in agents})) or "none"
+        return (f"{ui.DIM}no agent matching {who!r} "
+                f"(agents seen: {known}){ui.RST}")
+    agent = hits[-1]                      # the most recently started match
+    state = ag.status(agent, now)
+    out = [head(f"{ag.label(agent)} · {ag.what(agent)}",
+                f"{ag.GLYPH.get(state, '·')} {state}", width)]
+    out += ui.pack(ui.kv([
+        ("id", agent["id"]), ("model", agent["model"] or None),
+        ("ran", ag.dur(ag.elapsed(agent))), ("turns", str(agent["turns"])),
+        ("calls", str(agent["tools"])),
+        ("errors", str(agent["errors"]) if agent["errors"] else None),
+        ("branch", agent["branch"] or None)]), width)
+    if agent["prompt"]:
+        out += ["", ui.section("handed", "first lines of the spawn prompt",
+                               width)]
+        out += ui.wrap(agent["prompt"].strip().splitlines()[:6], width)
+    out += ["", ui.section("activity",
+                           f"{agent['tools']} calls · "
+                           f"{len(agent['events'])} rows kept", width)]
+    out += render_tail([agent], width, 0, with_agent=False, wrap=wrap)
+    if agent["final"]:
+        out += ["", ui.section("returned", "", width)]
+        out += ui.wrap([agent["final"]], width)
+    return "\n".join(l.rstrip() for l in out)
+
+
+def _matches(agent, who):
+    who = who.lower()
+    return (agent["id"].lower().startswith(who)
+            or who in ag.label(agent).lower()
+            or agent["task"].lower() == who)
+
+
+def follow(root, slug, width, interval, context=10, wrap=False):
+    """append-only stream — every new call, as it lands. deliberately not a
+    redrawn dashboard: that is `sdd-status --loop` + `a`. a stream is what a
+    second pane, a pipe, or a scrollback you want to keep actually wants.
+
+    it opens with `context` calls of history so the first screen is not blank,
+    then only ever prints what it has not printed before.
+    """
+    def emit(events):
+        for ev in sorted(events, key=lambda e: e["ts"]):
+            for segs in ag.event_rows(ev, width - 1, wrap=wrap):
+                print(" " + render(segs), flush=True)
+
+    try:
+        agents = ag.agents(root, slug)
+        seen = {a["path"]: a["seq"] for a in agents}
+        if context:                    # 0 opens on a blank screen, not on all
+            emit(ag.timeline(agents, context))
+        while True:
+            time.sleep(interval)
+            fresh = []
+            for agent in ag.agents(root, slug):
+                mark = seen.get(agent["path"], 0)
+                fresh += [e for e in agent["events"] if e["seq"] > mark]
+                seen[agent["path"]] = agent["seq"]
+            emit(fresh)
+    except KeyboardInterrupt:
+        pass
+
+
+def main():
+    args = sys.argv[1:]
+    if "--help" in args or "-h" in args:
+        print(__doc__.strip())
+        return 0
+    value_flags = ("--tail", "--since", "--agent", "--width", "--follow")
+
+    def flag(name, default, cast=int):
+        if name not in args:
+            return default
+        i = args.index(name)
+        nxt = args[i + 1] if len(args) > i + 1 else ""
+        try:
+            return cast(nxt)
+        except ValueError:
+            return default
+
+    slug = next((a for i, a in enumerate(args)
+                 if not a.startswith("-")
+                 and not (i and args[i - 1] in value_flags)), None)
+    ui.use_color(not ("--no-color" in args or os.environ.get("NO_COLOR")))
+    width = flag("--width", 0) or ui.term_width()
+
+    root = ui.find_root()
+    if not root:
+        print(f"{ui.DIM}not inside an sdd project "
+              f"(no specs/ directory found){ui.RST}")
+        return 1
+    # default to the active feature, so a repo with ten finished features does
+    # not report all of their agents; --any opts out
+    if not slug and "--any" not in args:
+        active = st.resolve_active(root)
+        slug = active[1] if active else None
+        if active:
+            root = active[0]
+
+    since = 0 if "--all" in args else flag("--since", 120) * 60
+    if "--json" in args:
+        import json
+        agents = [ag.public(a)
+                  for a in ag.agents(root, slug, since=since)]
+        print(json.dumps(agents, indent=2, default=str))
+        return 0
+    if "--agent" in args:
+        i = args.index("--agent")
+        who = args[i + 1] if len(args) > i + 1 else ""
+        if not who or who.startswith("-"):
+            print(f"{ui.DIM}--agent needs an id prefix, agent type, "
+                  f"or task id{ui.RST}")
+            return 1
+        print(render_agent(root, slug, who, width,
+                           wrap="--wrap" in args))
+        return 0
+    if "--follow" in args:
+        follow(root, slug, width, flag("--follow", 2.0, float),
+               context=0 if "--no-tail" in args else flag("--tail", 10),
+               wrap="--wrap" in args)
+        return 0
+
+    # --live drops the finished ones; the roster keeps them by default so a
+    # just-completed verifier is still on screen when you look
+    agents = ag.agents(root, slug, since=since)
+    if "--live" in args:
+        # working right now — not "unfinished", which also covers the agents
+        # that died with an interrupted run and are never coming back
+        agents = [a for a in agents
+                  if ag.status(a) in ("running", "stale")]
+    tail = None if "--no-tail" in args else flag("--tail", 12)
+    print(render_roster(agents, slug, width, tail,
+                        wrap="--wrap" in args))
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except BrokenPipeError:
+        # `sdd-agents --follow | head` is the obvious way to use this, and the
+        # interpreter's own exit-time flush would raise a second time — so
+        # leave without one
+        os._exit(0)

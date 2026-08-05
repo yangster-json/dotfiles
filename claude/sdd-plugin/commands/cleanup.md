@@ -33,12 +33,14 @@ pipeline's commit stage, which keeps the worktree on purpose.
    cleanup is the last chance.
 
 4. **Merge the spec into the living base** (config.spec_base in the sdd
-   pipeline file, default `specs/base/`). Only for a feature that actually
+   pipeline file — by default `sdd-git base-specs-dir`: run it, stdout is
+   the directory, and it lives outside the repo so nothing here dirties the
+   working tree). Only for a feature that actually
    merged (step 2's ancestor check) — never fold unshipped requirements
    into the base. Assemble the AS-BUILT requirements from
    `specs/<slug>/spec.md` + state.md: amendments override the requirements
    they touch; drop any requirement whose tasks all ended blocked. Pick
-   the area file `specs/base/<area>.md` — <area> is the subsystem the
+   the area file `<spec_base>/<area>.md` — <area> is the subsystem the
    feature touched; match an existing file before inventing a new name,
    and create a missing one from the base-spec template (project
    `specs/templates/base-spec.md` if present, else
@@ -46,8 +48,8 @@ pipeline's commit stage, which keeps the worktree on purpose.
    changes a behavior an existing line contracts, REPLACE that line and
    note the supersession in its provenance comment; otherwise append it
    under the next `<AREA>-R<n>` id. Every line keeps provenance:
-   `<!-- from <slug> R<n>, <date>, <jira> -->`. This edits the main
-   checkout's working tree — tell the user to commit it.
+   `<!-- from <slug> R<n>, <date>, <jira> -->`. Nothing to commit — the
+   base specs live outside the repo.
 
 5. **Remove worktrees and branches.**
    - Leftover task worktrees first: `.claude/worktrees/sdd/<slug>-*` →
@@ -58,15 +60,14 @@ pipeline's commit stage, which keeps the worktree on purpose.
    - Finish with `git worktree prune`.
 
 6. **Spec directory.**
-   - Tracked in the main checkout (the normal case — it merged with the
-     PR): leave it; it is part of history and feeds
-     `sdd-quality`. With `delete` in $ARGUMENTS, `git rm -r
-     specs/<slug>` after confirmation and tell the user to commit.
-   - Untracked (aborted or never-merged feature, or the project runs
-     `config.specs_tracking: untracked` — the normal case there): offer
-     archive
+   - Untracked (the normal case — `config.specs_tracking: untracked`, or an
+     aborted/never-merged feature): offer archive
      (`mv specs/<slug> specs/archive/<slug>` — quality still finds it
      there) or delete. Default to archive.
+   - Tracked (the project runs `with_feature`/`own_commit` and it merged
+     with the PR): leave it; it is part of history and feeds
+     `sdd-quality`. With `delete` in $ARGUMENTS, `git rm -r
+     specs/<slug>` after confirmation and tell the user to commit.
 
 7. **Clear pointers.** Delete `specs/ACTIVE` in the main checkout if it
    names this slug or its worktree. Never touch another feature's pointer.
@@ -77,6 +78,6 @@ pipeline's commit stage, which keeps the worktree on purpose.
 
 Never push, never touch remote branches, never delete the project learnings
 directory (`sdd-git learnings-dir`), the global one (`sdd-git learnings-dir
---global`), or `specs/base/`. Both learnings directories live outside the
-project tree (under `<claude-config>/sdd-learnings/`, keyed to the repo — see
+--global`), or the base specs (`sdd-git base-specs-dir`). All three live
+outside the project tree (under `<claude-config>/`, keyed to the repo — see
 run.md's learnings section), so worktree/branch removal never touches them.

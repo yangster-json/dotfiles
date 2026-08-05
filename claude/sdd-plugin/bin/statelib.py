@@ -177,3 +177,16 @@ def global_learnings_path():
     """the cross-project (global-scope) learnings directory — a fixed bucket
     under learnings_base(), shared by every project on this machine."""
     return os.path.join(learnings_base(), "_global")
+
+
+def specs_base():
+    """root of the out-of-repo sdd spec store. same never-dirties-a-repo
+    placement as learnings_base(), so the living base specs survive a repo
+    that never commits specs/."""
+    return os.path.join(config_dir(), "sdd-specs")
+
+
+def project_base_specs_path(root):
+    """this project's living base-spec directory — keyed by the project's
+    munged absolute path, so every worktree of a repo resolves the same one."""
+    return os.path.join(specs_base(), munge(root), "base")

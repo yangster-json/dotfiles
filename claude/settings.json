@@ -48,10 +48,11 @@
       "source": {
         "source": "directory",
         "path": "/u/jasyang/.claude"
-      }
+      },
+      "autoUpdate": true
     }
   },
-  "effortLevel": "high",
+  "effortLevel": "medium",
   "tui": "fullscreen",
   "skipDangerousModePermissionPrompt": true,
   "theme": "auto",

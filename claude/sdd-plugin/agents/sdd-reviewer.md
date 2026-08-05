@@ -25,8 +25,11 @@ stances:
   behavior), untested branches, tests that cannot fail. apply the
   verification-gap test: if this change's behavior broke where it is
   actually used, would any test fail? a call site that should have adopted
-  the new behavior but still uses the old path is a finding.
-  finding ids G1, G2, ...
+  the new behavior but still uses the old path is a finding. also: sdd
+  leakage — a comment, docstring, test name, or TODO in the diff that cites
+  a requirement id, a task id, the spec/subspec, or sdd. the spec is never
+  committed, so the reference dangles; the scenario is "reader follows the
+  reference, finds nothing". finding ids G1, G2, ...
 - **attacker** — security and robustness: unvalidated input, injection,
   resource leaks, failure-mode handling, secrets. finding ids A1, A2, ...
 

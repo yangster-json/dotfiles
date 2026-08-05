@@ -41,7 +41,11 @@ Work entirely inside workdir. Check, in order:
 4. **standards** — spot-check the diff against the standards digest
    (<workdir>/specs/standards-digest.md), comment style included. Consult
    the full coding standard only if the digest is ambiguous on a point at
-   issue.
+   issue. Grep the diff for sdd leakage — requirement ids, task ids,
+   `spec`/`subspec`/`sdd` mentions in comments, docstrings, test names, or
+   TODOs (`git diff -U0 | grep -nEi '\b(R-?[0-9]+|T[0-9]+)\b|sub ?spec|\bsdd\b'`,
+   then read the hits in context). The spec is never committed, so any such
+   reference dangles: each one is a failure finding.
 5. **test honesty** — new tests must assert the requirement's observable
    behavior; a test that cannot fail is a failure finding.
 

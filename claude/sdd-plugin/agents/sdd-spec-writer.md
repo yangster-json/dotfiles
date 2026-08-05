@@ -15,8 +15,9 @@ gate-2 "spec is wrong" decision. On a revision you also get
 
 Before writing anything:
 1. Read specs/<slug>/research.md in full.
-2. Grep the living base specs (config.spec_base in the sdd pipeline file,
-   default specs/base/) for contracts covering the touched area. Quote the
+2. Grep the living base specs (config.spec_base in the sdd pipeline file —
+   by default `sdd-git base-specs-dir`: run it, stdout is the directory,
+   outside the repo) for contracts covering the touched area. Quote the
    ones this feature must honor into Constraints; if a requirement you
    write changes a contracted behavior, state explicitly that it
    supersedes <AREA>-R<n> — never contradict the base silently.
