@@ -194,3 +194,10 @@ export PATH="/home/jasyang/datastore-ai-tools:$PATH"
 
 # sdd-plugin CLI tools (sdd-watch, sdd-status, sdd-cost, ...)
 export PATH="$HOME/dotfiles/claude/sdd-plugin/bin:$PATH"
+
+# Everpure Azure AI Foundry (opencode + pi + codex + claude-foundry)
+[ -f /u/jasyang/.config/everpure-foundry/foundry.env ] && . /u/jasyang/.config/everpure-foundry/foundry.env
+
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
+[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
