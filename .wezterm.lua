@@ -17,20 +17,25 @@ config.window_padding = {
   bottom = 0,
 }
 config.window_close_confirmation = 'NeverPrompt'
-config.front_end = "OpenGL" 
+config.front_end = "OpenGL"
 config.adjust_window_size_when_changing_font_size = false
 config.keys = {
   -- Unbind CTRL + PageDown so it passes straight through to Neovim
-  { 
-    key = 'PageDown', 
-    mods = 'CTRL', 
-    action = wezterm.action.DisableDefaultAssignment 
+  {
+    key = 'PageDown',
+    mods = 'CTRL',
+    action = wezterm.action.DisableDefaultAssignment
   },
   -- Unbind CTRL + PageUp as well if you use it in Neovim
-  { 
-    key = 'PageUp', 
-    mods = 'CTRL', 
-    action = wezterm.action.DisableDefaultAssignment 
+  {
+    key = 'PageUp',
+    mods = 'CTRL',
+    action = wezterm.action.DisableDefaultAssignment
+  },
+  {
+    key = 'w',
+    mods = 'CTRL|SHIFT|ALT',
+    action = wezterm.action.CloseCurrentPane { confirm = false },
   },
 }
 
