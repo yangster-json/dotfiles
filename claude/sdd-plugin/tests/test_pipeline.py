@@ -1,7 +1,7 @@
 """tests for the sdd-pipeline resolver.
 
 the resolver replaces an in-context Read of the whole pipeline file, so the
-thing that matters is that it merges exactly like run.md's "## extends" section
+thing that matters is that it merges exactly like README's "profiles and project overrides"
 says — outermost layer last, `config:` by key, `pipeline:` by stage name with
 base order preserved and unknown names appended — and that it refuses a cycle
 instead of looping. the real profile in sdd-profiles/ only exercises a

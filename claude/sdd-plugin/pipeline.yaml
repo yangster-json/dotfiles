@@ -161,7 +161,7 @@ config:
 
   # optional sibling key, not set here: internal_docs — see run.md's
   # "## internal docs" for what it does. a profile that extends this file
-  # (see run.md's "## extends") can set it to wire in project-specific
+  # (see README's "profiles and project overrides") can set it to wire in project-specific
   # research sources (Glean, Jira, Drive, Confluence, Jenkins, ...).
 
   # deterministic fan-out stages run as Workflow scripts (plain js). the
@@ -193,7 +193,7 @@ config:
 
   # optional sibling key, not set here: hw_test_heuristic (list of
   # keywords) — see run.md's "## hw-test heuristic" for what it does. a
-  # profile that extends this file (see run.md's "## extends") can set it
+  # profile that extends this file (see README's "profiles and project overrides") can set it
   # to force testbed/bay at intake when the feature reads as hardware-related.
 
   worktree:

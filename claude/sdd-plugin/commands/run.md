@@ -6,13 +6,13 @@ argument-hint: <feature description> [jira=FW-XXXXX] [upstream=<branch>] [testbe
 Run the SDD pipeline for: $ARGUMENTS
 
 You are the orchestrator. Get the pipeline FIRST by running
-`sdd-pipeline --section config` — never by Reading pipeline.yaml. The resolver
-picks the project's `.claude/sdd/pipeline.yaml` over the plugin's bundled copy,
-merges the whole `extends:` chain, and strips the comments, so you read data
-instead of the ~54KB of documentation written for whoever edits the file. Then
-pull each stage's own block with `sdd-pipeline --stage <name>` as you reach it,
-rather than carrying all seven for the whole run. `--json` if you want it
-parsed; `--chain` to show which files a resolution came from.
+`sdd-pipeline --section config` — never by Reading pipeline.yaml, which is
+mostly comments written for whoever edits it. The resolver picks the project's
+`.claude/sdd/pipeline.yaml` over the bundled copy, merges the `extends:` chain,
+and strips comments. Then pull each stage's own block with
+`sdd-pipeline --stage <name>` as you reach it, rather than carrying all seven
+for the whole run. `--json` to parse; `--chain` to show which files a
+resolution came from.
 
 The pipeline defines the stages, agent assignments, the two gates, and their
 routing. Agents are invocable as `sdd:sdd-<name>`. EFFORT is pinned in each
@@ -21,24 +21,6 @@ overrides frontmatter — see "## model routing" below), otherwise from
 frontmatter. This command only tells you how to interpret the pipeline; the
 pipeline is authoritative and the user edits it, so re-run the resolver each
 run and never assume it still says what it said last time.
-
-## extends (personal / team profile layering)
-
-A pipeline file with a top-level `extends:` key carries only a delta and
-inherits the rest from a base — `extends: plugin` for the bundled default (a
-sentinel, so it survives `/plugin update` moving that file into a versioned
-cache), or a filesystem path for a team-shared base. Chaining is allowed, so
-`<project> extends <profile> extends plugin` resolves plugin → profile →
-project, outermost applied last. `config:` merges by top-level key and
-`pipeline:` by `stage:` name: an entry present in the outer file replaces the
-base's value entirely, one that is absent inherits unchanged with the base's
-stage order preserved, and an unrecognized `stage:` name appends at the end.
-
-`sdd-pipeline` implements all of that — you do not walk the chain or merge
-layers yourself, and a cycle comes back as an error rather than a loop. The
-rules are documented here because the user hand-writes these files (e.g.
-`sdd-profiles/datastore-fw/pipeline.yaml`, kept outside the plugin so
-`/plugin update` never touches it), not because you execute them.
 
 ## start or resume
 
@@ -134,15 +116,14 @@ rules are documented here because the user hand-writes these files (e.g.
   several of those edits at once (a task passes: status flips, a counter
   bumps, a line is logged). Do them in a SINGLE
   `sdd-state event --task T3=done --bump verify_retries --log "…"`, not three
-  consecutive `state` calls. This is not cosmetic: every tool call re-sends
-  your whole context window, so at a normal mid-run occupancy three calls to
-  write three lines cost three windows — bookkeeping was ~20% of the
-  orchestrator's spend on measured runs. `event` takes repeated
-  `--set k=v` / `--task id=status` / `--bump counter[=n]` / `--log message`,
-  applies them set → task → bump → log whatever order you pass, and writes
-  once. It does NOT weaken "log as you go" (see "## logging"): batch the
-  edits that belong to the same event, never events that happened at
-  different times.
+  consecutive `state` calls. This is not cosmetic — every tool call re-sends
+  your whole context window, so three calls to write three lines cost three
+  windows, and bookkeeping measured ~20% of orchestrator spend before this
+  existed. `event` takes repeated `--set k=v` / `--task id=status` /
+  `--bump counter[=n]` / `--log message`, applies them set → task → bump → log
+  whatever order you pass, and writes once. It does NOT weaken "log as you go"
+  (see "## logging"): batch the edits that belong to the same event, never
+  events that happened at different times.
 - Batch the read-only probes the same way: the two `sdd-cost` calls at a
   stage end are one `sdd-cost --brief; sdd-cost --context` invocation.
 - Keep the `## metrics` counters current with
@@ -156,31 +137,26 @@ rules are documented here because the user hand-writes these files (e.g.
   loudly (exit 1; exit 2 = merge conflict, already aborted); treat a
   refusal as a stop signal to diagnose, never something to work around
   with raw git.
-- The ONLY times you take user input are: the intake menu at the very
-  start, GATE 1 (after plan), and GATE 2 (after review) — and either gate is
-  dropped when config.autopilot skips it (its decision then moves to the
-  final report per the commit stage's close; with both skipped, intake is the
-  sole touchpoint). Nothing between those points pauses for the user — not a behavioral ambiguity, not a
-  file-list miss, not a blocked task. When a mid-pipeline decision you might
-  once have asked about comes up, RESOLVE IT YOURSELF with best judgment
-  (the spec's summary / non-goals / constraints and the surrounding code are
-  the tiebreakers), record it as an amendment in state.md flagged
-  `(assumption)`, and surface it at the NEXT gate for veto — the same way
-  intake "you decide" choices and a gate-1 auto-approval are restated at
-  their gate. Past gate 2 (a fix or test-fix task) there is no later gate,
-  so such assumptions go in the final report instead. This is a hard rule:
-  do NOT invent confirmation prompts, "just checking" questions, or approval
-  steps the gates below don't define. A needs_files report is yours to
-  adjudicate per the implement stage's scope_stop rule; a behavioral
-  ambiguity per its ambiguity rule (assume + amend + surface, never ask).
-  Dead ends are minimized, not eliminated: a failing task or test first
-  climbs the bounded rescue ladder in config.recovery (escalating retries,
-  merge-conflict serial re-run, diagnosis-first test rounds) before it gives
-  up. Only when that ladder is exhausted does the pipeline STOP and report
-  (still-red tests after the last fix round, a task that failed every
-  attempt, a missing external dependency) — and that is an error
-  termination, not a request for input. config.gate1_skip_if_simple can even
-  resolve GATE 1 itself (see "## gate 1 auto-approve" below).
+- The ONLY times you take user input are: the intake menu at the very start,
+  GATE 1 (after plan), and GATE 2 (after review) — and either gate is dropped
+  when config.autopilot skips it (its decision then moves to the final report
+  per the commit stage's close; with both skipped, intake is the sole
+  touchpoint), or gate 1 by config.gate1_skip_if_simple. Nothing between those
+  points pauses for the user — not a behavioral ambiguity, not a file-list
+  miss, not a blocked task, and you do NOT invent confirmation prompts, "just
+  checking" questions, or approval steps the gates don't define. When a
+  mid-pipeline decision comes up, RESOLVE IT YOURSELF with best judgment (the
+  spec's summary / non-goals / constraints and the surrounding code are the
+  tiebreakers), record it as an amendment in state.md flagged `(assumption)`,
+  and surface it at the NEXT gate for veto — the same way intake "you decide"
+  choices and a gate-1 auto-approval are restated at their gate. Past gate 2
+  there is no later gate, so such assumptions go in the final report instead. A
+  needs_files report is yours to adjudicate per the implement stage's
+  scope_stop rule; a behavioral ambiguity per its ambiguity rule (assume +
+  amend + surface, never ask). A failing task or test first climbs the bounded
+  rescue ladder in config.recovery (escalating retries, merge-conflict serial
+  re-run, diagnosis-first test rounds); only when that is exhausted does the
+  pipeline STOP and report — an error termination, not a request for input.
 - Run gates with AskUserQuestion; the routes listed in the pipeline file are
   the options (they are sized to fit one menu). Free-text answers may
   combine routes ("fix F1/F2, waive F3, testbed fw-comet02 bay 19") —
@@ -191,6 +167,9 @@ rules are documented here because the user hand-writes these files (e.g.
   one line — the user decides routing with the spend in front of them.
 - After a gate routes backward (spec-writer / planner / implementer), re-run
   only the affected downstream work (delta), not the whole pipeline.
+- Record every gate outcome and stage completion in state.md BEFORE
+  continuing — never hold pipeline state only in conversation. That is what
+  makes a gate a safe clear point (see "## clear points").
 
 ## model routing (config.models)
 
@@ -206,16 +185,14 @@ one edit there instead of a sweep across `agents/*.md`, and it layers through
   `model`. No entry (or no `config.models` block at all) -> pass no model and
   let the agent's frontmatter default stand. EFFORT always comes from
   frontmatter — never override it here.
-- Workflow spawns (research, review, implement): the scripts spawn via `agentType` and
-  cannot read the pipeline file, so THREAD the map in. Add `models:
-  config.models` (the whole map, as real json) to the `args` you pass the
-  Workflow tool. Each script applies `models[<agent-name>]` as that agent's
-  model override and falls back to frontmatter when the map lacks the key —
-  so passing nothing preserves today's behavior.
+- Workflow spawns (research, review, implement): the scripts spawn via
+  `agentType` and cannot read the pipeline file, so THREAD the map in. Add
+  `models: config.models` (the whole map, as real json) to the `args` you pass
+  the Workflow tool. Each script applies `models[<agent-name>]` as that agent's
+  model override and falls back to frontmatter when the map lacks the key.
 
-This is override-with-fallback: `config.models` wins where it speaks,
-frontmatter fills every gap. Deleting the block restores pre-config behavior
-exactly. When config.auto_route is on, the map you apply here is the
+Override-with-fallback: `config.models` wins where it speaks, frontmatter fills
+every gap. When config.auto_route is on, the map you apply here is the
 OFFSET-SHIFTED effective map, not config.models verbatim — see "## model tier
 auto-routing".
 
@@ -267,32 +244,24 @@ already in your context — do not read it again.** Concretely:
 
 ## clear points (context, not compaction)
 
-Your window fills as the run proceeds and nothing evicts it until `/clear` or
-auto-compact. sdd prefers a **clear point**: the run's state is already on disk
-(state.md, spec.md, tasks.md, subspecs), so `/sdd:run` with no arguments
-resumes from `phase:` and loses nothing. Auto-compact, by contrast, replaces
-the conversation with a lossy summary. A clear point is strictly better —
-but only the user can take one, so your job is to make it visible.
+The run's state is already on disk (state.md, spec.md, tasks.md, subspecs), so
+`/sdd:run` with no arguments resumes from `phase:` and loses nothing, where
+auto-compact replaces the conversation with a lossy summary. A **clear point**
+is strictly better — but only the user can take one, so your job is to make it
+visible.
 
-- **You cannot compact or clear yourself.** No tool does it: `/clear` and
-  `/compact` are user-typed commands, and no hook can trigger them (a
-  PreCompact hook only observes one that already started). Never claim to have
+- **You cannot compact or clear yourself.** `/clear` and `/compact` are
+  user-typed commands and no hook can trigger them. Never claim to have
   compacted, and never spend a turn trying. What sdd does instead is end the
-  turn at a stage boundary so the NEXT stage starts in a fresh window — better
-  than compaction, because nothing is summarized and nothing is lost.
+  turn at a stage boundary so the NEXT stage starts in a fresh window.
 - **Measure at every `stage_end`**, with `sdd-cost --context` (one line:
   occupancy, window, peak, requests). Include its figure in the stage_end log
   line next to the cost delta, so consecutive lines show context growth per
-  stage the same way they show spend. The figure is your own window's: the
-  reading pins to `CLAUDE_CODE_SESSION_ID`, so it is right even when the
-  feature lives in another repo than the session (a cross-repo run used to
-  read "no transcript data" while its window was 44% full).
-- **The measurement is also enforced, not just asked for.**
-  `hooks/context-guard.py` fires on every `sdd-state` write that SETS `phase`
-  — a stage boundary by definition — and feeds the occupancy figure back to
-  you with the verdict already applied (note / recommend / stop). It exists
-  because this was prose-only and a measured run reached 44% having never
-  logged a single figure. Treat its line as the measurement: log it, act on
+  stage the same way they show spend. The figure is your own window's.
+- **The measurement is also enforced.** `hooks/context-guard.py` fires on every
+  `sdd-state` write that SETS `phase` — a stage boundary by definition — and
+  feeds the occupancy figure back to you with the verdict already applied
+  (note / recommend / stop). Treat its line as the measurement: log it, act on
   it, and do not re-run `sdd-cost --context` to double-check the same
   boundary.
 - **Announce the boundary** when `config.context.announce_clear_points`: on
@@ -306,25 +275,19 @@ but only the user can take one, so your job is to make it visible.
   occupancy figure, and continue working. Do not stop, do not ask — a gate is
   the only place you take input, and context pressure is not a gate.
 - **Stop at EVERY stage boundary when `config.context.stop_at_every_stage`**
-  (default true). This is the "compact between stages" rule, done the lossless
+  (default false). This is the "compact between stages" rule, done the lossless
   way: on entering a stage — with the new `phase:` already written, which is
   what makes resume exact — log a `stop` event naming that phase and end the
   turn with the resume instruction. No stage then pays for the previous one's
-  agent returns. It costs one `/clear` + `/sdd:run` per stage; set the key
-  false for threshold-only stops (the right choice for an unattended run,
-  unless something outside the session re-launches it). Two boundaries are
-  exempt: occupancy below `config.context.stop_floor_pct` (default 8 — an
-  almost-empty window costs more to re-establish than it saves, which is the
-  first boundary of a run and all of `/sdd:quick`), and `phase: done`, which
+  agent returns, at one `/clear` + `/sdd:run` per stage. Two boundaries are
+  exempt: occupancy below `config.context.stop_floor_pct` (default 8 — the
+  first boundary of a run, and all of `/sdd:quick`), and `phase: done`, which
   has no next stage.
 - **Stop if `config.context.hard_stop_at_pct` is >0 and occupancy is past it**
   (default 35). Same shape, threshold-triggered: finish the current stage, log
   a `stop` event naming the resume phase, and end the turn with the resume
-  instruction. This is the backstop for unattended runs, where nobody acts on
-  the recommendation — but it is not conditional on autopilot, so an attended
-  run stops too. That is deliberate: past this figure every further request
-  re-reads a window that large, and `/clear` + `/sdd:run` resumes losslessly
-  from `phase:`. Present it as the cheap next step it is, not as a failure.
+  instruction. Not conditional on autopilot — an attended run stops too.
+  Present it as the cheap next step it is, not as a failure.
 - **While a stop is in force, new spawns are BLOCKED.** The same guard hook
   denies `Task` and `Workflow` calls until the window is actually cleared, so
   "finish the stage anyway" is not available to you at a boundary stop. If you
@@ -342,34 +305,22 @@ Two scopes, same file shape (template: project `specs/templates/learning.md`
 if present, else `$(sdd-path templates/learning.md)`):
 
 - **project** (config.learnings.project) — this codebase's quirks (naming,
-  testbed, conventions, file layout). Run `sdd-git learnings-dir`
-  to get its directory — it prints (and creates)
-  `<claude-config>/sdd-learnings/<munged-repo>`, keyed by the main
-  checkout's absolute path (same convention `sdd-cost` uses for its
-  per-project transcripts), so a feature or task worktree all resolve the same
-  directory. Its index is `<that-dir>/INDEX.md`. NEVER written into the
-  project's own tree — nothing to gitignore there, and it persists across
-  every worktree and every feature regardless of the project's own git
-  history.
+  testbed, conventions, file layout). `sdd-git learnings-dir` prints (and
+  creates) its directory; the index is `<that-dir>/INDEX.md`. Never written
+  into the project's own tree.
 - **global** (config.learnings.global) — pipeline/agent-behavior lessons
   that would recur on ANY codebase (a stage misjudging scope, a reviewer
-  stance over-triggering, a gate route that surprised the user). Run
-  `sdd-git learnings-dir --global` for its directory
-  (`<claude-config>/sdd-learnings/_global`); its index is
-  `<that-dir>/INDEX.md`. Lives outside the plugin cache, so it survives
-  `/plugin update` and is shared across every project.
+  stance over-triggering, a gate route that surprised the user).
+  `sdd-git learnings-dir --global` prints its directory; same `INDEX.md`.
 
-- **Reading (stays cheap on context):** at pipeline start, read both
-  INDEX.md files if they exist — each is one short line per entry, so both
-  together cost a handful of lines even with a long history. Skip a scope
-  whose directory doesn't exist yet. Grep the two indexes for entries
-  matching THIS feature's subsystem, files, or stage, merge the hits, and
-  pass only the matched entry files (not the full indexes, not unrelated
-  entries) as inputs to the agents the pipeline file marks (scouts,
-  spec-writer, planner) — fold implementation-stage matches into the
-  relevant subspec notes instead. An agent whose stage has no matching
-  entry in either index gets nothing extra: the index is what keeps this
-  from turning into "paste every past lesson into every prompt."
+- **Reading:** at pipeline start, read both INDEX.md files if they exist (one
+  short line per entry). Skip a scope whose directory doesn't exist yet. Grep
+  the two indexes for entries matching THIS feature's subsystem, files, or
+  stage, merge the hits, and pass only the matched entry files (not the full
+  indexes, not unrelated entries) as inputs to the agents the pipeline file
+  marks (scouts, spec-writer, planner) — fold implementation-stage matches into
+  the relevant subspec notes instead. An agent whose stage has no matching
+  entry in either index gets nothing extra.
 - **Writing:** when a gate reroutes, a task double-fails or a merge
   conflicts, the user vetoes an auto-decision, or a finding is waived,
   write one learning file and add its INDEX.md line
@@ -435,15 +386,6 @@ entries per stage stay ordered and timeable.
 - The counters in `## metrics` are not a substitute: bump them AND log the
   event. `sdd-quality` aggregates the counters; the log is what explains them.
 
-## gates are context-reset points
-
-Record every gate outcome (and each stage completion) in state.md BEFORE
-continuing — never hold pipeline state only in conversation. That makes
-gates safe reset points: after resolving a gate on a large feature, tell the
-user they can `/clear` and re-run `/sdd:run` to continue with a fresh
-context — resume is lossless from state.md and sheds every accumulated agent
-return.
-
 ## fw-skills
 
 Where a stage names a skill (see config.fw_skills), check whether it is
@@ -459,8 +401,7 @@ workflow — these are session MCP tools and one-off agent spawns (Glean,
 Google Drive, Confluence, jira-analyst, jenkins-analyst), not part of
 research.js's scout roster, so they never go through the workflow script.
 Fold any hits into research.md's context section alongside the scout
-reports. Not set → the research stage runs exactly as described below, no
-extra step.
+reports.
 
 ## workflow stages (deterministic fan-outs)
 
@@ -491,38 +432,30 @@ executed by a Workflow script, not by you spawning agents:
 
 ## hw-test heuristic (optional config.hw_test_heuristic)
 
-If config.hw_test_heuristic is set (a list of keywords), scan the feature
-description for a case-insensitive match before building the intake menu
-(start-or-resume step 2). A match drops the hw_test question's "decide at
-gate 2" option — down to testbed+bay now / no hw tests — and the gate-1
-auto-decision restatement notes which keyword(s) matched. Not set → the
-hw_test question keeps all three options, unchanged from today.
+If set (a list of keywords), scan the feature description for a
+case-insensitive match before building the intake menu (start-or-resume step
+2). A match drops the hw_test question's "decide at gate 2" option — down to
+testbed+bay now / no hw tests — and the gate-1 auto-decision restatement notes
+which keyword(s) matched.
 
 ## gate 1 auto-approve (config.gate1_skip_if_simple, default true)
 
-The plan stage's `gate:` block spells out the check; the summary here is
-for orientation. When config.gate1_skip_if_simple is true (the default)
-and the plan that just came back is trivial — every task row in tasks.md
-tagged `complexity: simple`, zero unplannable requirements, no unresolved
-spec-critic blocker — resolve gate 1 yourself instead of stopping:
-`state set plan_approved yes`, `state set gate1_auto_approved yes`, and a
-`state log` line naming the tasks. Continue straight into implement. Any
-task tagged `standard`, or any unplannable requirement, or any unresolved
-blocker, forces the normal human gate regardless of the flag — this is a
-narrow bypass for genuinely small plans, not a way to wave through
-anything the planner produces.
-
-Because the user never saw the plan, GATE 2 restates the auto-approval
-(task count/titles) in its summary — their first look at the plan is that
-gate, and an objection there routes exactly like any other "spec or plan
-wrong" gate-2 finding. A project or profile can set this false in its
-pipeline.yaml to restore the always-ask gate 1.
+The plan stage's `gate:` block is authoritative; read it there. In outline:
+when the flag is true and the plan is trivial — every task tagged `complexity:
+simple`, zero unplannable requirements, no unresolved spec-critic blocker —
+resolve gate 1 yourself (`state set plan_approved yes`,
+`state set gate1_auto_approved yes`, a `state log` line naming the tasks) and
+continue into implement. Any `standard` task, unplannable requirement, or
+unresolved blocker forces the normal human gate regardless of the flag.
+Because the user never saw the plan, GATE 2 restates the auto-approval (task
+count/titles); an objection there routes like any other "spec or plan wrong"
+gate-2 finding.
 
 ## adaptive stage selection (config.adaptive)
 
-Between "full `/sdd:run`" and "hand off to `/sdd:quick`" there is a middle
-ground: run `/sdd:run` but SKIP the optional stages this feature does not need.
-When `config.adaptive.enabled` (default true), you own that judgment — never
+Between "full `/sdd:run`" and "hand off to `/sdd:quick`": run `/sdd:run` but
+SKIP the optional stages this feature does not need. When
+`config.adaptive.enabled` (default true), you own that judgment — never
 silently. The rules:
 
 - **What is skippable.** Only a stage (or substep) that carries `optional:
@@ -550,16 +483,12 @@ silently. The rules:
   intake answer does the same per-run: `full` forces the full graph regardless
   of config; `tailor`/`you decide` runs the normal proposal above.
 
-This is discretion with a receipt: the model tailors the graph, the human keeps
-the veto, and nothing is dropped without a recorded reason.
-
 ## model tier auto-routing (config.auto_route)
 
 `config.models` is the BASELINE role -> tier map. When
-`config.auto_route.enabled` (default false — off leaves that map untouched and
-this whole section inert), you take ONE difficulty read for the feature at intake
-and shift the whole map up or down a rung for this run. Like the adaptive
-skip-list, this is your judgment, never silent.
+`config.auto_route.enabled` (default false), you take ONE difficulty read for the
+feature at intake and shift the whole map up or down a rung for this run. Like
+the adaptive skip-list, this is your judgment, never silent.
 
 - **The ladder and the offset.** Tiers rank `haiku < sonnet < opus`. The read
   yields an offset applied to EVERY role in config.models and clamped at the ends:
@@ -579,9 +508,8 @@ skip-list, this is your judgment, never silent.
   EFFECTIVE map once — apply the offset to config.models with ladder clamping —
   and use that effective map everywhere config.models is used per "## model
   routing": as each Agent-tool spawn's `model`, and as the `models:` arg threaded
-  to the research / review / implement workflows. The scripts stay unchanged; they
-  receive an already-shifted plain map. Offset 0 => the effective map IS
-  config.models.
+  to the research / review / implement workflows — the scripts receive an
+  already-shifted plain map. Offset 0 => the effective map IS config.models.
 - **Composition with complexity.** Orthogonal: the per-task `complexity` tag
   picks WHICH agent (implementer-lite vs implementer), this offset then shifts
   that agent's tier. A heavy feature runs a simple task's lite implementer at

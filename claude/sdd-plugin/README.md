@@ -230,8 +230,22 @@ Personal or team **deltas** live outside the plugin, in
 `<claude-config>/sdd-profiles/<name>/` — a profile carries only its overrides
 and inherits the rest via `extends: plugin`, so `/plugin update` never touches
 it. A project opts in with a local, git-excluded `.claude/sdd/pipeline.yaml`
-that `extends:` the profile. See run.md's "## extends" for the merge and
-chaining rules.
+that `extends:` the profile.
+
+The merge rules, which `sdd-pipeline` implements (the orchestrator never walks
+the chain itself, and a cycle is an error rather than a loop):
+
+- `extends: plugin` is a **sentinel** for the bundled default, so it survives
+  `/plugin update` moving that file into a versioned cache. A filesystem path
+  points at a team-shared base instead.
+- Chaining is allowed: `<project> extends <profile> extends plugin` resolves
+  plugin → profile → project, **outermost applied last**.
+- `config:` merges by top-level key, `pipeline:` by `stage:` name. An entry
+  present in the outer file replaces the base's value **entirely**; one that is
+  absent inherits unchanged, with the base's stage order preserved; an
+  unrecognized `stage:` name appends at the end.
+
+`sdd-pipeline --chain` shows which file each resolved value came from.
 
 ---
 
