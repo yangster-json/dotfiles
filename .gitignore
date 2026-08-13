@@ -2,6 +2,8 @@
 # .mcp.json contains jira/confluence personal access tokens
 claude/.credentials.json
 claude/.mcp.json
+# jira/confluence PATs used by skills/atlassian
+claude/.atlassian.env
 
 # --- claude: machine-local settings ---
 claude/settings.local.json
@@ -45,6 +47,18 @@ claude/sdd-learnings/*/
 
 # python bytecode from the sdd script tests
 __pycache__/
+
+# --- pi: secrets, runtime state, and installed packages ---
+pi/agent/.atlassian.env
+pi/agent/.atlassian-cloud.env
+pi/agent/auth.json
+pi/agent/models-store.json
+pi/agent/trust.json
+pi/agent/sessions/
+pi/agent/npm/
+pi/node_modules/
+pi/package.json
+pi/package-lock.json
 
 # --- oh-my-zsh: upstream git clones — reinstall on new machines: ---
 # git clone https://github.com/jeffreytse/zsh-vi-mode ~/.oh-my-zsh/custom/plugins/zsh-vi-mode

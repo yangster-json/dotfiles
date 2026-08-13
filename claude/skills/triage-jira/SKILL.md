@@ -1,6 +1,6 @@
 ---
 name: triage-jira
-description: WSSD firmware Jira ticket triage — the full systematic method for FAIL-xxxxx / FW-xxxxx failure tickets: deriving the /mnt/tlogs path from the ticket TITLE (not the ticket number), inventorying artifacts, examining *_FAILED_debug_dump.log, classifying watchdogs, assertions, media/flash errors, PCIe and boot failures, and writing the Jira triage comment in the required format. Use whenever asked to triage, investigate, or root-cause a firmware Jira ticket, or when a FAIL-/FW- ticket id appears in the request.
+description: "WSSD firmware Jira ticket triage — the full systematic method for FAIL-xxxxx / FW-xxxxx failure tickets: deriving the /mnt/tlogs path from the ticket TITLE (not the ticket number), inventorying artifacts, examining *_FAILED_debug_dump.log, classifying watchdogs, assertions, media/flash errors, PCIe and boot failures, and writing the Jira triage comment in the required format. Use whenever asked to triage, investigate, or root-cause a firmware Jira ticket, or when a FAIL-/FW- ticket id appears in the request."
 ---
 
 # WSSD Firmware Jira Ticket Triage Rules
@@ -80,9 +80,14 @@ The log location is derived from the JIRA ticket TITLE, not the ticket number. Y
 
 **Before searching for logs, you MUST access the JIRA ticket to get log location information.**
 
-1. **Open the JIRA ticket in browser:**
-   - URL pattern: `https://jira.purestorage.com/browse/FAIL-XXXXXXX`
-   - Use the `open-browser` tool or ask user to provide ticket details
+1. **Fetch the ticket** with the `atlassian` skill:
+   ```bash
+   A=~/.claude/skills/atlassian/atl.py
+   python3 $A issue FAIL-XXXXXXX --comments
+   ```
+   Always pass `--comments` — PTA Bot analysis and prior human triage live there.
+   Attachments (e.g. `*_atlas_full_analysis.md`) come down with
+   `python3 $A attachments FAIL-XXXXXXX <dest>`.
 
 2. **From the JIRA ticket title, extract:**
    - Jenkins host (e.g., `fwjenkins2`)
@@ -97,7 +102,8 @@ The log location is derived from the JIRA ticket TITLE, not the ticket number. Y
 
 ### If JIRA Access is Unavailable
 
-If you cannot access JIRA directly (API returns 401/403, or browser not available):
+If `atl.py` returns HTTP 401/403 the PAT in `~/.claude/.atlassian.env` has expired —
+say so and regenerate it. If Jira is otherwise unreachable:
 
 1. **Ask the user** to provide:
    - The JIRA ticket title (contains jenkins host, job name, build number)
@@ -440,8 +446,16 @@ grep -i "pcie\|ddr\|flash.*init" /path/to/logs/*.log
 
 **Search for similar issues:**
 ```bash
-# Search Jira for similar failures
-# Use Jira search with relevant keywords from the error message
+A=~/.claude/skills/atlassian/atl.py
+
+# same error text, still open
+python3 $A search 'text ~ "<error msg>" AND project = FW AND status != Closed ORDER BY created DESC' --limit 5
+
+# same jenkins job
+python3 $A search 'summary ~ "<job name>" AND project = FW ORDER BY created DESC' --limit 10
+
+# same testbed
+python3 $A search 'text ~ "<testbed>" AND project = FW ORDER BY created DESC' --limit 5
 ```
 
 ### Step 9: Categorize the Failure

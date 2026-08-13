@@ -2,12 +2,13 @@
   "env": {
     "CLAUDE_CODE_SCROLL_SPEED": "5",
     "EDITOR": "nvim",
-    "VISUAL": "nvim"
+    "VISUAL": "nvim",
+    "ENABLE_TOOL_SEARCH": "true"
   },
   "permissions": {
     "defaultMode": "bypassPermissions"
   },
-  "model": "opus[1m]",
+  "model": "sonnet",
   "hooks": {
     "PostToolUse": [
       {
@@ -41,7 +42,7 @@
     "command": "~/.claude/statusline-command.py"
   },
   "enabledPlugins": {
-    "sdd@jasyang-dotfiles": true
+    "sdd@jasyang-dotfiles": false
   },
   "extraKnownMarketplaces": {
     "jasyang-dotfiles": {
@@ -57,5 +58,5 @@
   "skipDangerousModePermissionPrompt": true,
   "theme": "auto",
   "editorMode": "vim",
-  "autoCompactEnabled": true
+  "autoCompactEnabled": false
 }
