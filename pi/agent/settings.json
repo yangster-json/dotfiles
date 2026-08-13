@@ -1,0 +1,18 @@
+{
+  "defaultProvider": "everpure-foundry",
+  "defaultModel": "cascade/gpt-5.6-terra",
+  "lastChangelogVersion": "0.84.1",
+  "compaction": {
+    "enabled": false
+  },
+  "defaultThinkingLevel": "high",
+  "theme": "dark",
+  "packages": [
+    {
+      "source": "npm:pi-ketch@0.1.6",
+      "extensions": [],
+      "skills": []
+    },
+    "npm:pi-mcp-adapter@2.23.0"
+  ]
+}
