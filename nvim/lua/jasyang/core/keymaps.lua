@@ -9,6 +9,9 @@ local keymap = vim.keymap -- for conciseness
 -- clear search highlights
 keymap.set("n", "<leader>nh", ":nohl<CR>", { desc = "Clear search highlights" })
 
+-- show file info
+keymap.set("n", "<leader>fi", "<C-g>", { desc = "Show file info" })
+
 -- disable mouse click navigation (keep scroll wheel, split resizing, hover, UI clicks)
 for _, click in ipairs({
   "<LeftMouse>",
