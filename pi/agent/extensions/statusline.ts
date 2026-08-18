@@ -53,15 +53,134 @@ function formatDuration(durationMs: number): string {
 		: `${minutes}m${String(secs).padStart(2, "0")}s`;
 }
 
+type UsageTotals = {
+	input: number;
+	output: number;
+	cost: number;
+};
+
+type RawUsage = {
+	input?: unknown;
+	output?: unknown;
+	cost?: unknown;
+};
+
+type CompletionPayload = {
+	totalTokens?: { input?: unknown; output?: unknown };
+	totalCost?: { costUsd?: unknown };
+	details?: {
+		totalTokens?: { input?: unknown; output?: unknown };
+		totalCost?: { costUsd?: unknown };
+	};
+};
+
+const SUBAGENT_ASYNC_COMPLETE = "subagent:async-complete";
+const SUBAGENT_DELEGATION_RESPONSE = "prompt-template:subagent:response";
+
+function numberOrZero(value: unknown): number {
+	return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+// async-complete/status payloads report per-run cumulative totals
+function usageFromCompletion(value: CompletionPayload): UsageTotals {
+	const tokens = value.totalTokens ?? value.details?.totalTokens;
+	const cost = value.totalCost ?? value.details?.totalCost;
+	return {
+		input: numberOrZero(tokens?.input),
+		output: numberOrZero(tokens?.output),
+		cost: numberOrZero(cost?.costUsd),
+	};
+}
+
+function usageFromRaw(value: RawUsage | undefined): UsageTotals {
+	return {
+		input: numberOrZero(value?.input),
+		output: numberOrZero(value?.output),
+		cost: numberOrZero(value?.cost),
+	};
+}
+
+function runIdOf(value: { runId?: unknown; id?: unknown }): string | null {
+	if (typeof value.runId === "string") return value.runId;
+	if (typeof value.id === "string") return value.id;
+	return null;
+}
+
 export default function (pi: ExtensionAPI) {
 	let enabled = true;
 	let sessionStart = Date.now();
+	// one entry per run, replaced (never summed) so a run counts once
+	const runUsage = new Map<string, UsageTotals>();
+	// children rolled into a parent total; ignored on their own
+	const subsumedRuns = new Set<string>();
+
+	function resetSubagentUsage(): void {
+		runUsage.clear();
+		subsumedRuns.clear();
+	}
+
+	function recordRun(runId: string, usage: UsageTotals): void {
+		if (subsumedRuns.has(runId)) return;
+		runUsage.set(runId, usage);
+	}
+
+	function subsumeChildren(children: Array<{ runId?: unknown; id?: unknown }>): void {
+		for (const child of children) {
+			const id = runIdOf(child);
+			if (!id) continue;
+			subsumedRuns.add(id);
+			runUsage.delete(id);
+		}
+	}
+
+	function childUsage(): UsageTotals {
+		const totals: UsageTotals = { input: 0, output: 0, cost: 0 };
+		for (const usage of runUsage.values()) {
+			totals.input += usage.input;
+			totals.output += usage.output;
+			totals.cost += usage.cost;
+		}
+		return totals;
+	}
+
+	// background runs: parent total already covers its parallel children
+	pi.events.on(SUBAGENT_ASYNC_COMPLETE, (event) => {
+		const completion = event as CompletionPayload & { runId?: unknown; results?: unknown };
+		if (typeof completion.runId !== "string") return;
+		if (Array.isArray(completion.results)) subsumeChildren(completion.results);
+		recordRun(completion.runId, usageFromCompletion(completion));
+	});
+
+	// delegated runs: keyed by runId only, so async-complete replaces rather than adds
+	pi.events.on(SUBAGENT_DELEGATION_RESPONSE, (event) => {
+		const response = event as { runId?: unknown; usage?: RawUsage };
+		if (typeof response.runId !== "string") return;
+		recordRun(response.runId, usageFromRaw(response.usage));
+	});
+
+	// foreground runs: no async-complete, so children are counted individually
+	pi.on("tool_result", (event) => {
+		if (event.toolName !== "subagent") return;
+		const details = event.details as {
+			results?: Array<{ runId?: unknown; id?: unknown; usage?: RawUsage }>;
+		};
+		for (const result of details.results ?? []) {
+			const id = runIdOf(result);
+			if (!id) continue;
+			recordRun(id, usageFromRaw(result.usage));
+		}
+	});
 
 	function applyFooter(ctx: ExtensionContext) {
 		ctx.ui.setFooter((tui, _theme, footerData) => {
 			const unsub = footerData.onBranchChange(() => tui.requestRender());
+			const timer = setInterval(() => tui.requestRender(), 1000);
+			timer.unref();
 			return {
-				dispose: unsub,
+				dispose() {
+					clearInterval(timer);
+					unsub();
+				},
 				invalidate() {},
 				render(width: number): string[] {
 					let totalInput = 0;
@@ -81,6 +200,11 @@ export default function (pi: ExtensionAPI) {
 						}
 					}
 
+					const child = childUsage();
+					const childCost = child.cost;
+					const displayedInput = totalInput + child.input;
+					const displayedOutput = totalOutput + child.output;
+					const displayedCost = totalCost + childCost;
 					const contextUsage = ctx.getContextUsage();
 					const contextWindow = contextUsage?.contextWindow ?? ctx.model?.contextWindow ?? 200000;
 					const ctxTokens = contextUsage?.tokens ?? totalInput + totalCacheRead + totalCacheWrite;
@@ -91,7 +215,7 @@ export default function (pi: ExtensionAPI) {
 					const model = ctx.model?.id ?? "unknown";
 					const elapsed = Date.now() - sessionStart;
 
-					const costColor = totalCost >= 2.0 ? RED : totalCost >= 0.5 ? PEACH : GREEN;
+					const costColor = displayedCost >= 2.0 ? RED : displayedCost >= 0.5 ? PEACH : GREEN;
 					const ctxColor = ctxPct >= 80 ? RED : ctxPct >= 50 ? YELLOW : BLUE;
 
 					const parts: string[] = [];
@@ -100,10 +224,11 @@ export default function (pi: ExtensionAPI) {
 					parts.push(
 						`${ctxColor}📊 Ctx: ${formatTokens(ctxTokens)}/${formatTokens(contextWindow)} (${ctxPct}%)${RESET}`,
 					);
-					parts.push(`${costColor}💰 ${formatCost(totalCost)}${RESET}`);
+					parts.push(`${costColor}💰 ${formatCost(displayedCost)}${RESET}`);
+					if (childCost > 0) parts.push(`${PINK}🤝 ${formatCost(childCost)}${RESET}`);
 					parts.push(`${SAPPHIRE}📦 Cached: ${formatTokens(totalCacheRead)}${RESET}`);
 					parts.push(
-						`${SKY}📥 In: ${formatTokens(totalInput)}${RESET}  ${TEAL}📤 Out: ${formatTokens(totalOutput)}${RESET}`,
+						`${SKY}📥 In: ${formatTokens(displayedInput)}${RESET}  ${TEAL}📤 Out: ${formatTokens(displayedOutput)}${RESET}`,
 					);
 					parts.push(`${OVERLAY0}⏱ ${formatDuration(elapsed)}${RESET}`);
 
@@ -116,6 +241,7 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("session_start", async (_event, ctx) => {
 		sessionStart = Date.now();
+		resetSubagentUsage();
 		if (!ctx.hasUI) return;
 		if (enabled) applyFooter(ctx);
 	});
