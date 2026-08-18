@@ -1,0 +1,4 @@
+{
+  "defaultSessionDir": "~/.pi/agent/sessions/subagent/",
+  "artifactDir": "session"
+}
