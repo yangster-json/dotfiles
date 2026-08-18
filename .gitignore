@@ -55,10 +55,19 @@ pi/agent/auth.json
 pi/agent/models-store.json
 pi/agent/trust.json
 pi/agent/sessions/
+pi/agent/missions/
+pi/agent/run-history.jsonl
 pi/agent/npm/
 pi/node_modules/
 pi/package.json
 pi/package-lock.json
+
+# --- pi: local package runtime state ---
+.claude/
+pi/continuous-learning/analyzer.log
+pi/continuous-learning/projects.json
+pi/continuous-learning/prompt-frequency.json
+pi/continuous-learning/projects/
 
 # --- oh-my-zsh: upstream git clones — reinstall on new machines: ---
 # git clone https://github.com/jeffreytse/zsh-vi-mode ~/.oh-my-zsh/custom/plugins/zsh-vi-mode
