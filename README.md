@@ -8,6 +8,7 @@ contains symlinks pointing into this repo.
 | Repo path            | Symlink location        | What it is                          |
 | -------------------- | ----------------------- | ----------------------------------- |
 | `zshrc`              | `~/.zshrc`              | zsh config (oh-my-zsh based)        |
+| `zshenv`             | `~/.zshenv`             | env for *all* zsh, incl. non-interactive (Foundry vars pi needs) |
 | `oh-my-zsh-custom/`  | `~/.oh-my-zsh/custom`   | oh-my-zsh custom plugins/themes     |
 | `tmux.conf`          | `~/.tmux.conf`          | tmux config (TPM + catppuccin)      |
 | `herdr/config.toml`  | `~/.config/herdr/`      | herdr config (tmux-alternative multiplexer) |
@@ -25,6 +26,7 @@ git clone <this-repo-url> ~/dotfiles
 cd ~/dotfiles
 
 ln -s ~/dotfiles/zshrc          ~/.zshrc
+ln -s ~/dotfiles/zshenv         ~/.zshenv
 ln -s ~/dotfiles/tmux.conf      ~/.tmux.conf
 ln -s ~/dotfiles/nvim           ~/.config/nvim
 ln -s ~/dotfiles/claude         ~/.claude

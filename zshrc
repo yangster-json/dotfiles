@@ -192,6 +192,9 @@ export PATH="$HOME/.local/bin:$PATH"
 # fw-agent
 export PATH="/home/jasyang/datastore-ai-tools:$PATH"
 
+# Pi package command-line tools
+export PATH="$HOME/.pi/agent/npm/node_modules/.bin:$PATH"
+
 # sdd-plugin CLI tools (sdd-watch, sdd-status, sdd-cost, ...)
 export PATH="$HOME/dotfiles/claude/sdd-plugin/bin:$PATH"
 
