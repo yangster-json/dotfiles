@@ -6,7 +6,6 @@ source-only
 .zshrc
 .zshenv
 .tmux.conf
-.wezterm.lua
 .claude
 .oh-my-zsh
 .config/nvim
