@@ -5,6 +5,7 @@ min_herdr_version = "0.7.0"
 description = "LA date and time in the workspace sidebar"
 platforms = ["linux", "macos"]
 
+# startup hooks must detach their poller
 [[startup]]
 command = ["sh", "-c", "nohup setsid sh status-pane.sh >/dev/null 2>&1 &"]
 

@@ -73,4 +73,3 @@ dot_pi/continuous-learning/projects/
 # git clone https://github.com/jeffreytse/zsh-vi-mode ~/.oh-my-zsh/custom/plugins/zsh-vi-mode
 dot_oh-my-zsh/private_custom/plugins/zsh-vi-mode/
 # git clone https://github.com/zsh-users/zsh-syntax-highlighting ~/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting
-dot_oh-my-zsh/private_custom/plugins/zsh-syntax-highlighting/

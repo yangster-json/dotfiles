@@ -1,7 +1,9 @@
+;; global configuration options
 (defcfg
 	process-unmapped-keys yes
 )
 
+;; global config options
 (defsrc
     bspc
     tab q w e r t y u i o p
@@ -10,6 +12,7 @@
     spc
 )
 
+;; default/base layer
 (deflayer default
     _
     @tab _ _ _ _ _ _ _ _ _ _
@@ -18,11 +21,13 @@
     @spc
 )
 
+;; values used by multiple
 (defvar
     tap-time 150
     hold-time 200
 )
 
+;; shifted layer by holding space
 (deflayer nums
     _
     @tab S-1 S-2 S-3 S-4 S-5 S-6 S-7 S-8 S-- S-=
@@ -31,6 +36,7 @@
     @spc
 )
 
+;; shifted layer by holding tab
 (deflayer move
     del
     @tab _ _ _ _ _ home pgdn pgup end _
@@ -39,6 +45,7 @@
     @spc
 )
 
+;; remapping between keys and functionality
 (defalias
     tab (tap-hold-press $tap-time $hold-time tab (layer-toggle move))
     caps (tap-hold-press $tap-time $hold-time esc lctl)

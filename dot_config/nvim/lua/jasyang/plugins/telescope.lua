@@ -17,8 +17,8 @@ return {
         borderchars = { "─", "│", "─", "│", "╭", "╮", "╯", "╰" },
         mappings = {
           i = {
-            ["<C-k>"] = actions.move_selection_previous,
-            ["<C-j>"] = actions.move_selection_next,
+            ["<C-k>"] = actions.move_selection_previous, -- move to prev result
+            ["<C-j>"] = actions.move_selection_next, -- move to next result
             ["<C-q>"] = actions.send_selected_to_qflist + actions.open_qflist,
           },
         },
@@ -27,7 +27,8 @@ return {
 
     telescope.load_extension("fzf")
 
-    local keymap = vim.keymap
+    -- set keymaps
+    local keymap = vim.keymap -- for conciseness
 
     keymap.set("n", "<leader>ff", "<cmd>Telescope find_files hidden=true<cr>", { desc = "Fuzzy find files in cwd (incl. hidden)" })
     keymap.set("n", "<leader>fa", "<cmd>Telescope find_files hidden=true no_ignore=true<cr>", { desc = "Find all files (incl. hidden + gitignored)" })
@@ -46,7 +47,7 @@ return {
         return
       end
       for i, f in ipairs(files) do
-        files[i] = root .. "/" .. f
+        files[i] = root .. "/" .. f -- absolute so search paths are cwd-independent
       end
       require("telescope.builtin").live_grep({ search_dirs = files, prompt_title = "Live Grep (committed)" })
     end, { desc = "Find string in committed files (HEAD)" })

@@ -338,7 +338,7 @@ export function killLiveAgent(id: string): string {
 	try {
 		send(agent.proc, { type: "abort" });
 	} catch {
-
+		// process teardown continues below
 	}
 	agent.proc.kill("SIGTERM");
 	setTimeout(() => agent.proc && !agent.proc.killed && agent.proc.kill("SIGKILL"), 5000).unref();

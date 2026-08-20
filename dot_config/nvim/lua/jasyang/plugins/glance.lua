@@ -10,7 +10,7 @@ return {
       },
       hooks = {
         before_open = function(results, open, jump, method)
-
+          -- Jump directly if there's only one result
           if #results == 1 then
             jump(results[1])
           else

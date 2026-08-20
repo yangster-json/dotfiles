@@ -1,11 +1,11 @@
-
+-- Pull in the wezterm API
 local wezterm = require 'wezterm'
 
+-- Hold the configuration builder object
 local config = wezterm.config_builder()
 config.color_scheme = 'Catppuccin Mocha'
 config.font = wezterm.font('JetBrainsMono Nerd Font')
 config.font_size = 11
-config.default_cursor_style = 'SteadyBar'
 config.window_background_opacity = 0.93
 config.window_decorations = "INTEGRATED_BUTTONS|RESIZE"
 config.enable_tab_bar= false
@@ -20,13 +20,13 @@ config.window_close_confirmation = 'NeverPrompt'
 config.front_end = "OpenGL"
 config.adjust_window_size_when_changing_font_size = false
 config.keys = {
-
+  -- Unbind CTRL + PageDown so it passes straight through to Neovim
   {
     key = 'PageDown',
     mods = 'CTRL',
     action = wezterm.action.DisableDefaultAssignment
   },
-
+  -- Unbind CTRL + PageUp as well if you use it in Neovim
   {
     key = 'PageUp',
     mods = 'CTRL',

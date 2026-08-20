@@ -1,4 +1,7 @@
-
+-- herdr's tmux.nvim counterpart: nav + resize across nvim splits and herdr
+-- panes. only loads inside herdr, so tmux.nvim stays the tmux-side owner of
+-- <C-hjkl> (see plugins/tmux.lua)
+-- needs the herdr-side half: herdr plugin install lmilojevicc/herdr-splits.nvim
 return {
   "lmilojevicc/herdr-splits.nvim",
   cond = vim.env.HERDR_ENV == "1",
@@ -6,8 +9,8 @@ return {
 
   config = function()
     require("herdr-splits").setup({
-      at_edge = "stop",
-      neovim_amount = 3,
+      at_edge = "stop",        -- wrapping past an edge is disorienting with 3+ panes
+      neovim_amount = 3,       -- matches the old resize-pane -L 3 binds
       ignored_filetypes = {
         "NvimTree",
         "Trouble",
@@ -15,6 +18,8 @@ return {
       },
     })
 
+    -- mirror the nav keys into terminal buffers so you can leave a claude or
+    -- lazygit terminal, same reason tmux.lua does it
     local nav = {
       ["<C-h>"] = "move_cursor_left",
       ["<C-j>"] = "move_cursor_down",

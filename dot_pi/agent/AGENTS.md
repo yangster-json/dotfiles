@@ -6,6 +6,15 @@ Honor an explicit path supplied by the user. Do not broaden a home-directory sea
 into `/` as a fallback. This applies to `find`, `rg`, `grep`, `du`, and similar
 commands.
 
+# Chunked reads
+
+Read precise line ranges. Never load entire files larger than 100 lines.
+
+# No repetition
+
+Reuse previous tool outputs. Never run identical or highly similar search and
+read queries.
+
 # Re-reading files
 
 Re-read only if something changed the file: your Edit/Write, a Bash command, a

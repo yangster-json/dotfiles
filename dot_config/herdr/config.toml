@@ -35,6 +35,7 @@ workspace_picker = ["prefix+s", "prefix+w"]
 new_workspace    = "prefix+shift+n"
 rename_workspace = ['prefix+$', 'prefix+shift+w']
 goto             = "prefix+g"
+new_worktree     = "prefix+shift+g"
 toggle_sidebar   = "prefix+b"
 settings         = "prefix+shift+s"
 
@@ -137,7 +138,6 @@ auto_switch = false
 new_cwd = "follow"
 
 [ui]
-host_cursor = "auto"
 mouse_capture = true
 copy_on_select = false
 pane_borders = true
@@ -147,8 +147,7 @@ prompt_new_tab_name = false
 [ui.sidebar.spaces]
 rows = [
   ["state_icon", "workspace"],
-  ["branch", "git_status"],
-  [{ token = "$sys_date", dim = true }, { token = "$sys_time", bold = true }],
+  [{ token = "$sys_time", bold = true }],
 ]
 
 [ui.sidebar.agents]

@@ -1,4 +1,5 @@
 #!/bin/sh
+# usage: status-pane.sh [--once]
 
 HERDR="${HERDR_BIN_PATH:-herdr}"
 STATE="${HERDR_PLUGIN_STATE_DIR:-/tmp}"
@@ -33,6 +34,7 @@ if [ "${1:-}" = "--once" ]; then
     exit 0
 fi
 
+# keep one updater per server
 if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE" 2>/dev/null)" 2>/dev/null; then
     exit 0
 fi

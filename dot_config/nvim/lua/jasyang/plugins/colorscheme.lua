@@ -25,7 +25,7 @@ return {
             return {
               WinSeparator       = { fg = colors.surface1 },
               WinSeparatorActive = { fg = colors.teal },
-
+              -- Telescope: background matches editor, subtle rounded border
               TelescopeNormal        = { bg = colors.base },
               TelescopeBorder        = { fg = colors.surface1, bg = colors.base },
               TelescopePromptNormal  = { bg = colors.base },
@@ -42,6 +42,10 @@ return {
       })
       vim.cmd([[colorscheme catppuccin]])
 
+      -- Active split separator = teal, matching tmux active pane border color.
+      -- Skip floating windows (Telescope, cmp, etc.): they have borders, not
+      -- WinSeparators, and blindly setting winhighlight would clobber the
+      -- Normal:Telescope*Normal mappings those plugins rely on.
       local group = vim.api.nvim_create_augroup("ActiveWinSeparator", { clear = true })
       local function is_floating()
         return vim.api.nvim_win_get_config(0).relative ~= ""
