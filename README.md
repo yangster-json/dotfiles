@@ -13,6 +13,29 @@ Then install the dependencies documented below and recreate machine-local
 secrets. Managed files are copied into `$HOME`; edit them with `chezmoi edit
 <target>` and inspect or apply changes with `chezmoi diff` and `chezmoi apply`.
 
+### Windows
+
+On Windows, chezmoi intentionally deploys only Pi and Kanata configuration.
+Install the supporting applications separately:
+
+```powershell
+winget install twpayne.chezmoi OpenJS.NodeJS.LTS Microsoft.Git
+chezmoi init --apply https://github.com/yangster-json/dotfiles.git
+npm install -g --ignore-scripts @earendil-works/pi-coding-agent
+pi
+```
+
+Use Pi's `/login` to create Windows-local authentication. Install Kanata from
+its Windows release and test it from an elevated PowerShell before arranging
+startup:
+
+```powershell
+kanata.exe --cfg "$HOME\.config\kanata\kanata.kbd"
+```
+
+Windows does not deploy the zsh, tmux, WezTerm, Neovim, Claude, oh-my-zsh, or
+herdr configuration.
+
 ## Managed targets
 
 | Source state | Target |

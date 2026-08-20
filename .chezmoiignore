@@ -1,3 +1,14 @@
 README.md
 .gitignore
 source-only
+
+{{ if eq .chezmoi.os "windows" -}}
+.zshrc
+.zshenv
+.tmux.conf
+.wezterm.lua
+.claude
+.oh-my-zsh
+.config/nvim
+.config/herdr
+{{ end -}}
