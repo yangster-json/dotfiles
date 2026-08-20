@@ -2,6 +2,15 @@ README.md
 .gitignore
 source-only
 
+# local worktrees are not portable
+.claude/skills/docs
+.claude/skills/inner-loop
+.claude/skills/logs-search
+.claude/skills/testbed-recovery
+.claude/skills/tpe
+.claude/skills/triage
+.pi/agent/extensions/everpure-foundry
+
 {{ if eq .chezmoi.os "windows" -}}
 .zshrc
 .zshenv
