@@ -50,7 +50,7 @@
     "npm:pi-experiences",
     "npm:@narumitw/pi-btw",
     "npm:pi-continuous-learning",
-    "npm:pi-subagents@0.50.0"
+    "npm:pi-subagents"
   ],
   "terminal": {
     "showTerminalProgress": true

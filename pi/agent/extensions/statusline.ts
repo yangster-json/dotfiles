@@ -30,6 +30,17 @@ const GREEN = rgb(166, 227, 161);
 const OVERLAY0 = rgb(108, 112, 134);
 const RESET = "\x1b[0m";
 const SEP = `${OVERLAY0} | ${RESET}`;
+const MODE_WIDTH = 13;
+
+function vimModeLabel(statuses: ReadonlyMap<string, string>): string {
+	const mode = statuses.get("vim-mode") ?? "INSERT";
+	const padding = Math.max(0, MODE_WIDTH - mode.length);
+	const text = " ".repeat(Math.floor(padding / 2)) + mode + " ".repeat(Math.ceil(padding / 2));
+	if (mode === "INSERT") return `\x1b[1;38;2;30;30;46;48;2;166;227;161m${text}\x1b[0m`;
+	if (mode === "NORMAL") return `\x1b[1;38;2;30;30;46;48;2;137;180;250m${text}\x1b[0m`;
+	if (mode === "VISUAL") return `\x1b[1;38;2;30;30;46;48;2;249;226;175m${text}\x1b[0m`;
+	return `\x1b[1;38;2;30;30;46;48;2;203;166;247m${text}\x1b[0m`;
+}
 
 function formatTokens(count: number): string {
 	if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
@@ -219,20 +230,20 @@ export default function (pi: ExtensionAPI) {
 					const ctxColor = ctxPct >= 80 ? RED : ctxPct >= 50 ? YELLOW : BLUE;
 
 					const parts: string[] = [];
-					if (branch) parts.push(`${MAUVE}⎇ ${branch}${RESET}`);
-					parts.push(`${PINK}🤖 ${model}${RESET}`);
+					if (branch) parts.push(`${MAUVE}${branch}${RESET}`);
+					parts.push(`${PINK}${model}${RESET}`);
 					parts.push(
-						`${ctxColor}📊 Ctx: ${formatTokens(ctxTokens)}/${formatTokens(contextWindow)} (${ctxPct}%)${RESET}`,
+						`${ctxColor}Ctx: ${formatTokens(ctxTokens)}/${formatTokens(contextWindow)} (${ctxPct}%)${RESET}`,
 					);
-					parts.push(`${costColor}💰 ${formatCost(displayedCost)}${RESET}`);
-					if (childCost > 0) parts.push(`${PINK}🤝 ${formatCost(childCost)}${RESET}`);
-					parts.push(`${SAPPHIRE}📦 Cached: ${formatTokens(totalCacheRead)}${RESET}`);
+					parts.push(`${costColor}${formatCost(displayedCost)}${RESET}`);
+					if (childCost > 0) parts.push(`${PINK}Child: ${formatCost(childCost)}${RESET}`);
+					parts.push(`${SAPPHIRE}Cached: ${formatTokens(totalCacheRead)}${RESET}`);
 					parts.push(
-						`${SKY}📥 In: ${formatTokens(displayedInput)}${RESET}  ${TEAL}📤 Out: ${formatTokens(displayedOutput)}${RESET}`,
+						`${SKY}In: ${formatTokens(displayedInput)}${RESET}  ${TEAL}Out: ${formatTokens(displayedOutput)}${RESET}`,
 					);
-					parts.push(`${OVERLAY0}⏱ ${formatDuration(elapsed)}${RESET}`);
+					parts.push(`${OVERLAY0}${formatDuration(elapsed)}${RESET}`);
 
-					const line = "  " + parts.join(SEP);
+					const line = vimModeLabel(footerData.getExtensionStatuses()) + " " + parts.join(SEP);
 					return [truncateToWidth(line, width, "")];
 				},
 			};

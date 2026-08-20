@@ -28,6 +28,24 @@ return {
         opts.desc = "Show LSP references"
         keymap.set("n", "gR", "<cmd>Glance references<CR>", opts)
 
+        opts.desc = "Show document symbols"
+        keymap.set("n", "gO", vim.lsp.buf.document_symbol, opts)
+
+        opts.desc = "LSP code action"
+        keymap.set({ "n", "x" }, "gra", vim.lsp.buf.code_action, opts)
+
+        opts.desc = "LSP rename symbol"
+        keymap.set("n", "grn", vim.lsp.buf.rename, opts)
+
+        opts.desc = "LSP references"
+        keymap.set("n", "grr", vim.lsp.buf.references, opts)
+
+        opts.desc = "LSP implementations"
+        keymap.set("n", "gri", vim.lsp.buf.implementation, opts)
+
+        opts.desc = "LSP type definition"
+        keymap.set("n", "grt", vim.lsp.buf.type_definition, opts)
+
         opts.desc = "Go to declaration"
         keymap.set("n", "gD", vim.lsp.buf.declaration, opts)
 

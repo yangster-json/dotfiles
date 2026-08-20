@@ -26,22 +26,34 @@ herdr tab create --workspace "$HERDR_WORKSPACE_ID" --cwd "$PWD" \
   --label "<test-name>-<node>-bay<bay>" --no-focus
 ```
 
-Run through Bash, not the pane's unspecified default shell. Record both the
-shell status and test report: testlauncher can return zero even when its report
-is `RESULT: FAIL`.
+Run a saved Bash wrapper, not the pane's unspecified default shell and not
+an inline `bash -lc` script. Some Herdr versions do not preserve a multiline
+`-c` argument reliably; that can run the body but lose the final exit marker,
+leaving `wait-output` blocked. Record both the shell status and test report:
+testlauncher can return zero even when its report is `RESULT: FAIL`.
+
+Create the wrapper locally, then pass its path as a normal positional argument:
 
 ```bash
-herdr pane run <pane-id> bash -lc '
+script_path=/tmp/run-<test-name>-<node>-bay<bay>.sh
+cat >"$script_path" <<'EOF'
+#!/usr/bin/env bash
 set -o pipefail
 log_path=/tmp/<test-name>-<node>-bay<bay>.log
 drun build/wssd-testkit/testlauncher \
   --testbed <node> --slot <slot> --user "$USER" --repeat 1 \
   wssd.<test-name> 2>&1 | tee "$log_path"
-shell_status=$?
+shell_status=${PIPESTATUS[0]}
 test_result=$(grep -E "RESULT: (PASS|FAIL)" "$log_path" | tail -1 || true)
 printf "\nTESTLAUNCHER_EXIT=%s\n%s\n" "$shell_status" "$test_result" | tee -a "$log_path"
-'
+EOF
+chmod 700 "$script_path"
+herdr pane run <pane-id> bash "$script_path"
 ```
+
+The marker must contain a numeric status. If it is blank or absent, do not wait
+indefinitely: inspect the saved log and check whether the underlying process is
+still active.
 
 `RESULT: FAIL`, missing `RESULT`, or a nonzero shell status is failure. Add
 `--update-fw` only when explicitly requested. Run several hardware tests
