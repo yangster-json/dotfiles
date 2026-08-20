@@ -163,14 +163,20 @@ alias vim='vim -X'
 alias findtext="grep -rnw . -ie" # for recursively searching text within files
 alias listssh="ps -AF | grep ssh" # for listing ssh sessions that hang
 
-eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
-eval "$(zoxide init --cmd cd zsh)"
-zvm_after_init_commands+=('source <(fzf --zsh)')
+if command -v brew >/dev/null 2>&1; then
+  eval "$(brew shellenv)"
+fi
+if command -v zoxide >/dev/null 2>&1; then
+  eval "$(zoxide init --cmd cd zsh)"
+fi
+if command -v fzf >/dev/null 2>&1; then
+  zvm_after_init_commands+=('source <(fzf --zsh)')
+fi
 # Load zsh-syntax-highlighting AFTER zsh-vi-mode finishes remapping ZLE widgets
 # (loading it via the omz plugins array would let zvm strip its hooks), then
 # apply the Catppuccin Mocha palette on top so its styles override the defaults.
-zvm_after_init_commands+=('source $ZSH_CUSTOM/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh')
-zvm_after_init_commands+=('source $ZSH_CUSTOM/catppuccin/catppuccin_mocha-zsh-syntax-highlighting.zsh')
+[[ -f $ZSH_CUSTOM/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh ]] && zvm_after_init_commands+=('source $ZSH_CUSTOM/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh')
+[[ -f $ZSH_CUSTOM/catppuccin/catppuccin_mocha-zsh-syntax-highlighting.zsh ]] && zvm_after_init_commands+=('source $ZSH_CUSTOM/catppuccin/catppuccin_mocha-zsh-syntax-highlighting.zsh')
 # zsh-vi-mode rebuilds the ZLE keymaps on init; re-assert the native
 # bracketed-paste binding in the vi keymaps so paste markers are consumed.
 # (With ZVM_READKEY_ENGINE=zle set above, this binding actually fires.)
@@ -179,27 +185,15 @@ zvm_after_init_commands+=('bindkey -M vicmd "^[[200~" bracketed-paste')
 
 export PYENV_ROOT="$HOME/.pyenv"
 [[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"
-eval "$(pyenv init -)"
-
-
-# Created by `pipx` on 2024-10-01 17:57:52
-export PATH="$PATH:/home/jasyang/.local/bin"
-export XDG_DATA_DIRS="/home/linuxbrew/.linuxbrew/share:$XDG_DATA_DIRS"
-export PATH="$PATH:/opt/nvim-linux-x86_64/bin"
+if command -v pyenv >/dev/null 2>&1; then
+  eval "$(pyenv init -)"
+fi
 
 export PATH="$HOME/.local/bin:$PATH"
-
-# fw-agent
-export PATH="/home/jasyang/datastore-ai-tools:$PATH"
-
-# Pi package command-line tools
-export PATH="$HOME/.pi/agent/npm/node_modules/.bin:$PATH"
-
-# sdd-plugin CLI tools (sdd-watch, sdd-status, sdd-cost, ...)
-export PATH="$HOME/dotfiles/claude/sdd-plugin/bin:$PATH"
-
-# Everpure Azure AI Foundry (opencode + pi + codex + claude-foundry)
-[ -f /u/jasyang/.config/everpure-foundry/foundry.env ] && . /u/jasyang/.config/everpure-foundry/foundry.env
+[[ -d /opt/nvim-linux-x86_64/bin ]] && export PATH="$PATH:/opt/nvim-linux-x86_64/bin"
+[[ -d "$HOME/datastore-ai-tools" ]] && export PATH="$HOME/datastore-ai-tools:$PATH"
+[[ -d "$HOME/.pi/agent/npm/node_modules/.bin" ]] && export PATH="$HOME/.pi/agent/npm/node_modules/.bin:$PATH"
+[[ -d "$HOME/.claude/sdd-plugin/bin" ]] && export PATH="$HOME/.claude/sdd-plugin/bin:$PATH"
 
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
