@@ -1,76 +1,76 @@
 # --- claude: secrets — never commit ---
 # .mcp.json contains jira/confluence personal access tokens
-claude/.credentials.json
-claude/.mcp.json
+dot_claude/.credentials.json
+dot_claude/.mcp.json
 # jira/confluence PATs used by skills/atlassian
-claude/.atlassian.env
+dot_claude/.atlassian.env
 
 # --- claude: machine-local settings ---
-claude/settings.local.json
-claude/.claude/
+dot_claude/settings.local.json
+dot_claude/.claude/
 
 # --- claude: runtime state, caches, session data ---
-claude/projects/
-claude/sessions/
-claude/session-env/
-claude/shell-snapshots/
-claude/file-history/
-claude/history.jsonl
-claude/cache/
-claude/paste-cache/
-claude/backups/
-claude/downloads/
-claude/jobs/
-claude/daemon*
-claude/statsig/
-claude/todos/
-claude/plugins/marketplaces/
-claude/plugins/cache/
-claude/plugins/installed_plugins.json
-claude/plugins/plugin-catalog-cache.json
-claude/statusline-cache/
-claude/tasks/
-claude/plans/
-claude/-augment.log
-claude/stats-cache.json
-claude/mcp-needs-auth-cache.json
-claude/policy-limits.json
-claude/remote-settings.json
-claude/.cost-actuals.json
-claude/.last-cleanup
-claude/.last-update-result.json
+dot_claude/projects/
+dot_claude/sessions/
+dot_claude/session-env/
+dot_claude/shell-snapshots/
+dot_claude/file-history/
+dot_claude/history.jsonl
+dot_claude/cache/
+dot_claude/paste-cache/
+dot_claude/backups/
+dot_claude/downloads/
+dot_claude/jobs/
+dot_claude/daemon*
+dot_claude/statsig/
+dot_claude/todos/
+dot_claude/plugins/marketplaces/
+dot_claude/plugins/cache/
+dot_claude/plugins/installed_plugins.json
+dot_claude/plugins/plugin-catalog-cache.json
+dot_claude/statusline-cache/
+dot_claude/tasks/
+dot_claude/plans/
+dot_claude/-augment.log
+dot_claude/stats-cache.json
+dot_claude/mcp-needs-auth-cache.json
+dot_claude/policy-limits.json
+dot_claude/remote-settings.json
+dot_claude/.cost-actuals.json
+dot_claude/.last-cleanup
+dot_claude/.last-update-result.json
 # sdd's per-project learnings cache, keyed by munged repo path — same
-# convention as cost-actuals.json. claude/sdd-learnings/_global/ is the
+# convention as cost-actuals.json. dot_claude/sdd-learnings/_global/ is the
 # GLOBAL scope and stays tracked.
-claude/sdd-learnings/*/
-!claude/sdd-learnings/_global/
+dot_claude/sdd-learnings/*/
+!dot_claude/sdd-learnings/_global/
 
 # python bytecode from the sdd script tests
 __pycache__/
 
 # --- pi: secrets, runtime state, and installed packages ---
-pi/agent/.atlassian.env
-pi/agent/.atlassian-cloud.env
-pi/agent/auth.json
-pi/agent/models-store.json
-pi/agent/trust.json
-pi/agent/sessions/
-pi/agent/missions/
-pi/agent/run-history.jsonl
-pi/agent/npm/
-pi/node_modules/
-pi/package.json
-pi/package-lock.json
+dot_pi/agent/.atlassian.env
+dot_pi/agent/.atlassian-cloud.env
+dot_pi/agent/auth.json
+dot_pi/agent/models-store.json
+dot_pi/agent/trust.json
+dot_pi/agent/sessions/
+dot_pi/agent/missions/
+dot_pi/agent/run-history.jsonl
+dot_pi/agent/npm/
+dot_pi/node_modules/
+dot_pi/package.json
+dot_pi/package-lock.json
 
 # --- pi: local package runtime state ---
-.claude/
-pi/continuous-learning/analyzer.log
-pi/continuous-learning/projects.json
-pi/continuous-learning/prompt-frequency.json
-pi/continuous-learning/projects/
+.dot_claude/
+dot_pi/continuous-learning/analyzer.log
+dot_pi/continuous-learning/projects.json
+dot_pi/continuous-learning/prompt-frequency.json
+dot_pi/continuous-learning/projects/
 
 # --- oh-my-zsh: upstream git clones — reinstall on new machines: ---
 # git clone https://github.com/jeffreytse/zsh-vi-mode ~/.oh-my-zsh/custom/plugins/zsh-vi-mode
-oh-my-zsh-custom/plugins/zsh-vi-mode/
+dot_oh-my-zsh/private_custom/plugins/zsh-vi-mode/
 # git clone https://github.com/zsh-users/zsh-syntax-highlighting ~/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting
-oh-my-zsh-custom/plugins/zsh-syntax-highlighting/
+dot_oh-my-zsh/private_custom/plugins/zsh-syntax-highlighting/
