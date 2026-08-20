@@ -25,7 +25,6 @@ source-only
 .pi/agent/extensions/compat-provider-bridge.ts
 .pi/agent/skills/fw-herdr-hw-test
 .pi/agent/skills/remote-testbed
-.pi/agent/skills/remote-testbed-logs
 .pi/agent/skills/triage-jira
 .pi/agent/skills/triage-local-logs
 {{ end -}}
