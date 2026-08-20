@@ -11,20 +11,18 @@ return {
     } },
   },
   config = function()
-    -- import cmp-nvim-lsp plugin
+
     local cmp_nvim_lsp = require("cmp_nvim_lsp")
 
-    local keymap = vim.keymap -- for conciseness
+    local keymap = vim.keymap
 
     vim.api.nvim_create_autocmd("LspAttach", {
       group = vim.api.nvim_create_augroup("UserLspConfig", {}),
       callback = function(ev)
-        -- Buffer local mappings.
-        -- See `:help vim.lsp.*` for documentation on any of the below functions
+
         local opts = { buffer = ev.buf, silent = true }
         local client = vim.lsp.get_client_by_id(ev.data.client_id)
 
-        -- set keybinds
         opts.desc = "Show LSP references"
         keymap.set("n", "gR", "<cmd>Glance references<CR>", opts)
 
@@ -59,30 +57,29 @@ return {
         keymap.set("n", "gt", "<cmd>Glance type_definitions<CR>", opts)
 
         opts.desc = "See available code actions"
-        keymap.set({ "n", "v" }, "<leader>ca", vim.lsp.buf.code_action, opts) -- see available code actions, in visual mode will apply to selection
+        keymap.set({ "n", "v" }, "<leader>ca", vim.lsp.buf.code_action, opts)
 
         opts.desc = "Smart rename"
-        keymap.set("n", "<leader>rn", vim.lsp.buf.rename, opts) -- smart rename
+        keymap.set("n", "<leader>rn", vim.lsp.buf.rename, opts)
 
         opts.desc = "Show buffer diagnostics"
-        keymap.set("n", "<leader>D", "<cmd>Telescope diagnostics bufnr=0<CR>", opts) -- show  diagnostics for file
+        keymap.set("n", "<leader>D", "<cmd>Telescope diagnostics bufnr=0<CR>", opts)
 
         opts.desc = "Show line diagnostics"
-        keymap.set("n", "<leader>d", vim.diagnostic.open_float, opts) -- show diagnostics for line
+        keymap.set("n", "<leader>d", vim.diagnostic.open_float, opts)
 
         opts.desc = "Go to previous diagnostic"
-        keymap.set("n", "[d", function() vim.diagnostic.jump({ count = -1, float = true }) end, opts) -- jump to previous diagnostic in buffer
+        keymap.set("n", "[d", function() vim.diagnostic.jump({ count = -1, float = true }) end, opts)
 
         opts.desc = "Go to next diagnostic"
-        keymap.set("n", "]d", function() vim.diagnostic.jump({ count = 1, float = true }) end, opts) -- jump to next diagnostic in buffer
+        keymap.set("n", "]d", function() vim.diagnostic.jump({ count = 1, float = true }) end, opts)
 
         opts.desc = "Show documentation for what is under cursor"
-        keymap.set("n", "K", vim.lsp.buf.hover, opts) -- show documentation for what is under cursor
+        keymap.set("n", "K", vim.lsp.buf.hover, opts)
 
         opts.desc = "Restart LSP"
-        keymap.set("n", "<leader>rs", ":LspRestart<CR>", opts) -- mapping to restart lsp if necessary
+        keymap.set("n", "<leader>rs", ":LspRestart<CR>", opts)
 
-        -- Svelte: notify server when JS/TS files are saved
         if client and client.name == "svelte" then
           vim.api.nvim_create_autocmd("BufWritePost", {
             pattern = { "*.js", "*.ts" },
@@ -94,10 +91,8 @@ return {
       end,
     })
 
-    -- used to enable autocompletion (assign to every lsp server config)
     local capabilities = cmp_nvim_lsp.default_capabilities()
 
-    -- Change the Diagnostic symbols in the sign column (gutter)
     vim.diagnostic.config({
       float = { border = "rounded" },
       signs = {
@@ -110,12 +105,10 @@ return {
       },
     })
 
-    -- Default config for all LSP servers
     vim.lsp.config('*', {
       capabilities = capabilities,
     })
 
-    -- Server-specific configs
     vim.lsp.config('graphql', {
       filetypes = { "graphql", "gql", "svelte", "typescriptreact", "javascriptreact" },
     })
@@ -138,7 +131,6 @@ return {
       },
     })
 
-    -- Enable all LSP servers (installed via mason)
     vim.lsp.enable({
       'html',
       'cssls',

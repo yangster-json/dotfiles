@@ -1,7 +1,4 @@
 #!/bin/sh
-# keep a $time token on the focused space, so the sidebar shows a clock
-# mirrors the tmux catppuccin date_time module: LA time, box is on Mountain
-# usage: clock.sh [--once]
 
 HERDR="${HERDR_BIN_PATH:-herdr}"
 STATE="${HERDR_PLUGIN_STATE_DIR:-/tmp}"
@@ -33,7 +30,6 @@ if [ "$1" = "--once" ]; then
     exit 0
 fi
 
-# one updater per server; a live handoff re-runs the startup hook
 PIDFILE="$STATE/clock.pid"
 if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE" 2>/dev/null)" 2>/dev/null; then
     exit 0

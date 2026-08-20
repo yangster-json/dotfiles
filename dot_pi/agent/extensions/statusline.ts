@@ -1,18 +1,8 @@
-/**
- * Status line
- *
- * Mirrors ~/.claude/statusline-command.py: branch, model, context usage,
- * cost, cached tokens, in/out tokens, elapsed time — same Catppuccin Mocha
- * palette, same icons, same color thresholds. Replaces pi's built-in footer.
- *
- * Toggle with /statusline (on by default).
- */
 
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth } from "@earendil-works/pi-tui";
 
-// ---- Catppuccin Mocha palette (matches statusline-command.py) ----
 function rgb(r: number, g: number, b: number): string {
 	return `\x1b[38;2;${r};${g};${b}m`;
 }
@@ -92,7 +82,6 @@ function numberOrZero(value: unknown): number {
 	return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
-// async-complete/status payloads report per-run cumulative totals
 function usageFromCompletion(value: CompletionPayload): UsageTotals {
 	const tokens = value.totalTokens ?? value.details?.totalTokens;
 	const cost = value.totalCost ?? value.details?.totalCost;
@@ -120,9 +109,9 @@ function runIdOf(value: { runId?: unknown; id?: unknown }): string | null {
 export default function (pi: ExtensionAPI) {
 	let enabled = true;
 	let sessionStart = Date.now();
-	// one entry per run, replaced (never summed) so a run counts once
+
 	const runUsage = new Map<string, UsageTotals>();
-	// children rolled into a parent total; ignored on their own
+
 	const subsumedRuns = new Set<string>();
 
 	function resetSubagentUsage(): void {
@@ -154,7 +143,6 @@ export default function (pi: ExtensionAPI) {
 		return totals;
 	}
 
-	// background runs: parent total already covers its parallel children
 	pi.events.on(SUBAGENT_ASYNC_COMPLETE, (event) => {
 		const completion = event as CompletionPayload & { runId?: unknown; results?: unknown };
 		if (typeof completion.runId !== "string") return;
@@ -162,14 +150,12 @@ export default function (pi: ExtensionAPI) {
 		recordRun(completion.runId, usageFromCompletion(completion));
 	});
 
-	// delegated runs: keyed by runId only, so async-complete replaces rather than adds
 	pi.events.on(SUBAGENT_DELEGATION_RESPONSE, (event) => {
 		const response = event as { runId?: unknown; usage?: RawUsage };
 		if (typeof response.runId !== "string") return;
 		recordRun(response.runId, usageFromRaw(response.usage));
 	});
 
-	// foreground runs: no async-complete, so children are counted individually
 	pi.on("tool_result", (event) => {
 		if (event.toolName !== "subagent") return;
 		const details = event.details as {

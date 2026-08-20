@@ -21,7 +21,7 @@ return {
         graphql = { "prettier" },
       },
       format_on_save = function(bufnr)
-        -- skip format-on-save in projects that use pure_astyle
+
         if vim.fs.root(bufnr, { "pure_astyle" }) then
           return
         end

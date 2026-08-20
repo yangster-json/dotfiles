@@ -29,9 +29,7 @@ return {
       window = {
         padding = 0,
         margin = { vertical = 0, horizontal = 1 },
-        -- with margin.vertical = 0, overlap.borders (default true) would draw
-        -- the float on the border row above the window — which is the upper
-        -- pane's lualine when laststatus != 3
+
         overlap = { borders = false },
       },
     })

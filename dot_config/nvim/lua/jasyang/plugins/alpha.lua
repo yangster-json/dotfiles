@@ -25,7 +25,6 @@ return {
       return result
     end
 
-    -- Set header
     dashboard.section.header.val = {
       "                                                     ",
       "  ███╗   ██╗███████╗ ██████╗ ██╗   ██╗██╗███╗   ███╗ ",
@@ -37,7 +36,7 @@ return {
       "                                                     ",
     }
     dashboard.section.footer.val = "⚡ Total plugins: " .. require("lazy").stats().count
-    -- AlphaHeader/AlphaButtons/AlphaShortcut/AlphaFooter come from catppuccin
+
     dashboard.section.header.opts.hl = "AlphaHeader"
     dashboard.section.footer.opts.hl = "AlphaFooter"
     dashboard.section.buttons.val = {
@@ -65,7 +64,6 @@ return {
     }
     alpha.setup(dashboard.config)
 
-    -- update footer once lazy has measured startup time
     vim.api.nvim_create_autocmd("User", {
       pattern = "LazyVimStarted",
       callback = function()
@@ -76,7 +74,6 @@ return {
       end,
     })
 
-    -- Disable folding on alpha buffer
     vim.cmd([[autocmd FileType alpha setlocal nofoldenable]])
 
     vim.api.nvim_create_augroup("vimrc_alpha", { clear = true })
