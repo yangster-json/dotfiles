@@ -137,6 +137,7 @@ auto_switch = false
 new_cwd = "follow"
 
 [ui]
+host_cursor = "native"
 mouse_capture = true
 copy_on_select = false
 pane_borders = true
