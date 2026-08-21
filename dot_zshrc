@@ -31,6 +31,10 @@ function zvm_after_init() {
 }
 source ~/.config/zsh/plugins/zsh-vi-mode/zsh-vi-mode.zsh
 
+if [[ -x /home/linuxbrew/.linuxbrew/bin/brew ]]; then
+  eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+fi
+
 eval "$(starship init zsh)"
 
 if [[ -n $SSH_CONNECTION ]]; then
@@ -45,9 +49,6 @@ if command -v dircolors >/dev/null 2>&1; then
   [[ -f $HOME/.dircolors ]] && eval "$(dircolors -b $HOME/.dircolors)" || eval "$(dircolors -b)"
 fi
 
-if command -v brew >/dev/null 2>&1; then
-  eval "$(brew shellenv)"
-fi
 if command -v zoxide >/dev/null 2>&1; then
   eval "$(zoxide init --cmd cd zsh)"
 fi

@@ -63,11 +63,23 @@ sequentially; do not run conflicting tests concurrently.
 
 Default: wait and report final PASS/FAIL in this turn. Herdr's timeout is in
 milliseconds and is capped near 2,147,483,647; use 1,800,000 (30 minutes) per
-wait, then repeat if the test is still active:
+wait:
 
 ```bash
 herdr pane wait-output <pane-id> --match TESTLAUNCHER_EXIT= \
   --source recent-unwrapped --timeout 1800000
+```
+
+A `wait-output` timeout is **not** a test result. Immediately inspect both the
+saved log and process state. If the wrapper/testlauncher remains active, repeat
+the 30-minute wait and continue this loop until its numeric exit marker appears.
+Do not give an intermediate test step, expected injected fault, or a running
+status as the final result.
+
+```bash
+herdr pane process-info --pane <pane-id>
+rg -n 'RESULT:|TESTLAUNCHER_EXIT=|Test Passed|Test Failed|FAILED|FAILURES|Traceback' \
+  /tmp/<test-name>-<node>-bay<bay>.log | tail -100
 ```
 
 Herdr may reap a tab/pane as soon as its command exits. Therefore the saved log
@@ -75,11 +87,15 @@ is authoritative when `pane read`, `wait-output`, or `process-info --pane
 <pane-id>` reports `pane_not_found`:
 
 ```bash
-rg -n 'RESULT:|TESTLAUNCHER_EXIT=|Test Passed|Test Failed|Traceback' \
-  /tmp/<test-name>-<node>-bay<bay>.log | tail -80
+rg -n 'RESULT:|TESTLAUNCHER_EXIT=|Test Passed|Test Failed|FAILED|FAILURES|Traceback' \
+  /tmp/<test-name>-<node>-bay<bay>.log | tail -100
 ```
 
-If no exit marker exists, report that the test is still unconfirmed and include
+A nonzero `TESTLAUNCHER_EXIT`, `RESULT: FAIL`, `Test Failed`, `FAILED`, or
+`FAILURES` is a failure even when diagnostics/artifact collection also fails.
+Always report that failure promptly with its log path; artifact-collection errors
+must not mask the primary test failure. If no exit marker exists after checking
+both log and process state, report that the test is still unconfirmed and include
 the tab/pane ID plus log path. Do not claim completion solely because a pane
 disappeared.
 

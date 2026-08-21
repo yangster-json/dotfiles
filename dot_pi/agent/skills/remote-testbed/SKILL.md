@@ -9,25 +9,36 @@ This is the single entry point for remote firmware testbeds. Detailed platform
 workflows are ordinary references, not nested skills, so they remain hidden until
 the target and task are known.
 
-## Required first step: classify in RAS
+## Required first step: classify and check drive reservations
 
 Before SSH, `make cp`, `drun`, testlauncher, firmware update, or log searches:
 
 1. Query RAS for the supplied target. If its unprefixed name returns 404, try the
    canonical `lp-<name>` form. Do not guess that a `fw-*` nickname is an SSH host.
-2. Record the canonical RAS name, labels, environment, controllers, notes, claim,
-   and active jobs.
-3. Classify the platform and then read the appropriate reference below.
-4. If the target is claimed or has active work, report that before mutating it.
+2. Record the canonical RAS name, labels, environment, controllers, and notes.
+3. Query the authoritative drive inventory at
+   `https://drives.app.purestorage.com/` for the target bay/slot. Its active
+   **claim** or **deny** reservation controls whether a drive may be used;
+   do not use RAS claims or active jobs as a proxy for a per-drive reservation.
+4. If the user supplied a model number, use
+   `https://drives.app.purestorage.com/decode` to decode it. For a questionable
+   drive, use its serial number and bay in the drive inventory instead of relying
+   on the old Google-sheet deny list.
+5. Classify the platform and then read the appropriate reference below.
+6. Report an active drive claim or deny before mutating that bay. A deny means do
+   not use the bay. A claim means do not overlap work without the claimant's
+   authorization. RAS activity can be relevant context, but is not the
+   authoritative drive claim state.
 
-Use the standard-library resolver:
+Use the standard-library RAS topology resolver:
 
 ```bash
 python3 scripts/resolve-testbed.py <testbed>
 ```
 
-RAS is authoritative for the connection topology. Do not infer HLOB, FlashArray,
-or SSH user from the target's name.
+RAS is authoritative for connection topology. The Drives app is authoritative for
+per-drive claims, denies, and model decoding. Do not infer HLOB, FlashArray, or
+SSH user from the target's name.
 
 ## Route by requested action
 
