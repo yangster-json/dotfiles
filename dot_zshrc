@@ -1,5 +1,10 @@
 unset ZSH ZSH_THEME
 
+HISTFILE=$HOME/.zsh_history
+HISTSIZE=100000
+SAVEHIST=100000
+setopt APPEND_HISTORY SHARE_HISTORY HIST_EXPIRE_DUPS_FIRST HIST_IGNORE_DUPS HIST_IGNORE_SPACE
+
 autoload -Uz compinit up-line-or-beginning-search down-line-or-beginning-search
 compinit
 zle -N up-line-or-beginning-search
