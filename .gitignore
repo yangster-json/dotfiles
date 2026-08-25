@@ -61,6 +61,7 @@ dot_pi/agent/npm/
 dot_pi/node_modules/
 dot_pi/package.json
 dot_pi/package-lock.json
+U:/
 
 # --- pi: local package runtime state ---
 .dot_claude/
