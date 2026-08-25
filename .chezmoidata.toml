@@ -1,0 +1,16 @@
+[hostProfiles]
+dev-jasyang = "fw-work"
+
+[profiles.default.models]
+provider = "openai-codex"
+default = "gpt-5.6-terra"
+luna = "openai-codex/gpt-5.6-luna"
+terra = "openai-codex/gpt-5.6-terra"
+sol = "openai-codex/gpt-5.6-sol"
+
+[profiles.fw-work.models]
+provider = "everpure-foundry"
+default = "cascade/gpt-5.6-terra"
+luna = "everpure-foundry/cascade/gpt-5.6-luna"
+terra = "everpure-foundry/cascade/gpt-5.6-terra"
+sol = "everpure-foundry/cascade/gpt-5.6-sol"

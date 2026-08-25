@@ -1,6 +1,8 @@
+{{- $profile := index .hostProfiles .chezmoi.hostname | default "default" -}}
+{{- $models := index .profiles $profile "models" -}}
 {
-  "defaultProvider": "everpure-foundry",
-  "defaultModel": "cascade/gpt-5.6-terra",
+  "defaultProvider": "{{ $models.provider }}",
+  "defaultModel": "{{ $models.default }}",
   "lastChangelogVersion": "0.84.2",
   "compaction": {
     "enabled": false
@@ -9,31 +11,31 @@
   "subagents": {
     "agentOverrides": {
       "scout": {
-        "model": "everpure-foundry/cascade/gpt-5.6-luna",
+        "model": "{{ $models.luna }}",
         "thinking": "low"
       },
       "delegate": {
-        "model": "everpure-foundry/cascade/gpt-5.6-luna",
+        "model": "{{ $models.luna }}",
         "thinking": "low"
       },
       "researcher": {
-        "model": "everpure-foundry/cascade/gpt-5.6-terra",
+        "model": "{{ $models.terra }}",
         "thinking": "medium"
       },
       "worker": {
-        "model": "everpure-foundry/cascade/gpt-5.6-terra",
+        "model": "{{ $models.terra }}",
         "thinking": "medium"
       },
       "reviewer": {
-        "model": "everpure-foundry/cascade/gpt-5.6-terra",
+        "model": "{{ $models.terra }}",
         "thinking": "high"
       },
       "oracle": {
-        "model": "everpure-foundry/cascade/gpt-5.6-sol",
+        "model": "{{ $models.sol }}",
         "thinking": "high"
       },
       "advisor": {
-        "model": "everpure-foundry/cascade/gpt-5.6-sol",
+        "model": "{{ $models.sol }}",
         "thinking": "high"
       }
     }

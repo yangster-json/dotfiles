@@ -2,29 +2,20 @@ README.md
 .gitignore
 source-only
 
-# local worktrees are not portable
-.claude/skills/docs
-.claude/skills/inner-loop
-.claude/skills/logs-search
-.claude/skills/testbed-recovery
-.claude/skills/tpe
-.claude/skills/triage
-.pi/agent/extensions/everpure-foundry
-
 {{ if eq .chezmoi.os "windows" -}}
 .zshrc
 .zshenv
-.tmux.conf
-.claude
 .oh-my-zsh
 .config/nvim
 .config/herdr
+.pi/agent/skills/firmware-tlogs-search
+.pi/agent/skills/remote-testbed*
 {{ end -}}
 
-{{ if ne .chezmoi.hostname "dev-jasyang" -}}
+{{ if ne (index .hostProfiles .chezmoi.hostname | default "default") "fw-work" -}}
 .pi/agent/extensions/compat-provider-bridge.ts
 .pi/agent/skills/fw-herdr-hw-test
-.pi/agent/skills/remote-testbed
+.pi/agent/skills/remote-testbed*
 .pi/agent/skills/triage-jira
 .pi/agent/skills/triage-local-logs
 {{ end -}}
