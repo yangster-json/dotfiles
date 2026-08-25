@@ -19,11 +19,12 @@ test "${HERDR_ENV:-}" = 1
 pgrep -af 'testlauncher.*<test-name>'
 ```
 
-Create an unfocused tab and record the returned `root_pane.pane_id`:
+Create an unfocused sibling pane within the current tab, and record the
+returned `pane_id`. Do not open a new tab:
 
 ```bash
-herdr tab create --workspace "$HERDR_WORKSPACE_ID" --cwd "$PWD" \
-  --label "<test-name>-<node>-bay<bay>" --no-focus
+current_pane=$(herdr pane current --current)
+herdr pane split <current-pane-id> --direction right --cwd "$PWD" --no-focus
 ```
 
 Run a saved Bash wrapper, not the pane's unspecified default shell and not
