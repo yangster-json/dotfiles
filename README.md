@@ -44,13 +44,14 @@ herdr configuration.
 | `dot_zshenv` | `~/.zshenv` |
 | `dot_config/nvim/` | `~/.config/nvim/` |
 | `dot_pi/` | `~/.pi/` |
+| `dot_claude/` | `~/.claude/` |
 | `dot_wezterm.lua` | `~/.wezterm.lua` |
 | `dot_config/kanata/kanata.kbd` | `~/.config/kanata/kanata.kbd` |
 | `dot_config/herdr/config.toml` | `~/.config/herdr/config.toml` |
 | `dot_oh-my-zsh/private_custom/` | `~/.oh-my-zsh/custom/` |
 
 `source-only/` contains intentionally undeployed files. `legacy/` archives the
-former Claude and tmux configurations. `git/` contains optional Git hook tooling;
+former tmux configuration. `git/` contains optional Git hook tooling;
 configure it per repository:
 
 ```sh

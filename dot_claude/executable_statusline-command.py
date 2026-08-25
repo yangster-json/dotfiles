@@ -115,19 +115,19 @@ def build_line(data):
 
     parts = []
     if branch:
-        parts.append(f"{MAUVE}⎇ {branch}{RESET}")
-    parts.append(f"{PINK}🤖 {model}{RESET}")
+        parts.append(f"{MAUVE}{branch}{RESET}")
+    parts.append(f"{PINK}{model}{RESET}")
     parts.append(
-        f"{ctx_color}📊 Ctx: {format_tokens(ctx_in)}/{format_tokens(ctx_size)} "
+        f"{ctx_color}Ctx: {format_tokens(ctx_in)}/{format_tokens(ctx_size)} "
         f"({ctx_pct}%){RESET}"
     )
-    parts.append(f"{cost_color}💰 {format_cost(cost)}{RESET}")
-    parts.append(f"{SAPPHIRE}📦 Cached: {format_tokens(cache_read)}{RESET}")
+    parts.append(f"{cost_color}{format_cost(cost)}{RESET}")
+    parts.append(f"{SAPPHIRE}Cached: {format_tokens(cache_read)}{RESET}")
     parts.append(
-        f"{SKY}📥 In: {format_tokens(total_in)}{RESET}"
-        f"  {TEAL}📤 Out: {format_tokens(total_out)}{RESET}"
+        f"{SKY}In: {format_tokens(total_in)}{RESET}"
+        f"  {TEAL}Out: {format_tokens(total_out)}{RESET}"
     )
-    parts.append(f"{OVERLAY0}⏱ {format_duration(duration_ms)}{RESET}")
+    parts.append(f"{OVERLAY0}{format_duration(duration_ms)}{RESET}")
     return "  " + SEP.join(parts)
 
 
