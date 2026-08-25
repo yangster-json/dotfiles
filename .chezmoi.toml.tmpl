@@ -1,0 +1,7 @@
+{{- $jiraPersonalToken := promptStringOnce . "jiraPersonalToken" "Jira personal access token (jira.purestorage.com)" -}}
+{{- $confluencePersonalToken := promptStringOnce . "confluencePersonalToken" "Confluence personal access token (wiki.purestorage.com)" -}}
+{{- $jiraCloudApiToken := promptStringOnce . "jiraCloudApiToken" "Jira Cloud API token (purestorage.atlassian.net)" -}}
+[data]
+    jiraPersonalToken = {{ $jiraPersonalToken | quote }}
+    confluencePersonalToken = {{ $confluencePersonalToken | quote }}
+    jiraCloudApiToken = {{ $jiraCloudApiToken | quote }}
