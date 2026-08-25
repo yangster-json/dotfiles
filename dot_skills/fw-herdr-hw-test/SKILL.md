@@ -20,11 +20,13 @@ pgrep -af 'testlauncher.*<test-name>'
 ```
 
 Create an unfocused sibling pane within the current tab, and record the
-returned `pane_id`. Do not open a new tab:
+returned `pane_id`. Do not open a new tab. Name the pane so it is
+identifiable in the pane list:
 
 ```bash
 current_pane=$(herdr pane current --current)
 herdr pane split <current-pane-id> --direction right --cwd "$PWD" --no-focus
+herdr pane rename <pane-id> "<test-name>-<node>-bay<bay>"
 ```
 
 Run a saved Bash wrapper, not the pane's unspecified default shell and not
