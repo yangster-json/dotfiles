@@ -3,7 +3,8 @@
  *
  * Mirrors ~/.claude/statusline-command.py: branch, model, context usage,
  * cost, cached tokens, in/out tokens, elapsed time — same Catppuccin Mocha
- * palette, same icons, same color thresholds. Replaces pi's built-in footer.
+ * palette, plain-text labels (no icons), same color thresholds. Replaces
+ * pi's built-in footer.
  *
  * Toggle with /statusline (on by default).
  */
