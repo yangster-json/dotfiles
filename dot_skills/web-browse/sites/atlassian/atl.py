@@ -13,8 +13,8 @@ import urllib.parse
 import urllib.request
 
 ENV_FILES = (
-    os.path.expanduser("~/.pi/agent/.atlassian.env"),
-    os.path.expanduser("~/.pi/agent/.atlassian-cloud.env"),
+    os.path.expanduser("~/.skills/.atlassian.env"),
+    os.path.expanduser("~/.skills/.atlassian-cloud.env"),
 )
 
 

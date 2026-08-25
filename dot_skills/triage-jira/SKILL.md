@@ -80,9 +80,9 @@ The log location is derived from the JIRA ticket TITLE, not the ticket number. Y
 
 **Before searching for logs, you MUST access the JIRA ticket to get log location information.**
 
-1. **Fetch the ticket** with the `atlassian` skill:
+1. **Fetch the ticket** with `atl.py` (the `web-browse` skill's Atlassian workflow):
    ```bash
-   A="$HOME/.pi/agent/skills/web-browse/sites/atlassian/atl.py"
+   A=~/.skills/web-browse/sites/atlassian/atl.py
    python3 $A issue FAIL-XXXXXXX --comments
    ```
    Always pass `--comments` — PTA Bot analysis and prior human triage live there.
@@ -102,7 +102,8 @@ The log location is derived from the JIRA ticket TITLE, not the ticket number. Y
 
 ### If JIRA Access is Unavailable
 
-If `atl.py` returns HTTP 401/403 the PAT in `~/.pi/agent/.atlassian.env` has expired —
+If `atl.py` returns HTTP 401/403 the PAT in `~/.skills/.atlassian.env` (or
+`~/.skills/.atlassian-cloud.env` for `--cloud`) has expired —
 say so and regenerate it. If Jira is otherwise unreachable:
 
 1. **Ask the user** to provide:
@@ -446,7 +447,7 @@ grep -i "pcie\|ddr\|flash.*init" /path/to/logs/*.log
 
 **Search for similar issues:**
 ```bash
-A="$HOME/.pi/agent/skills/web-browse/sites/atlassian/atl.py"
+A=~/.skills/web-browse/sites/atlassian/atl.py
 
 # same error text, still open
 python3 $A search 'text ~ "<error msg>" AND project = FW AND status != Closed ORDER BY created DESC' --limit 5

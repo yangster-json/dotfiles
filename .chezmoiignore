@@ -2,20 +2,24 @@ README.md
 .gitignore
 source-only
 
+{{- $fwOnlySkills := list "fw-herdr-hw-test" "remote-testbed*" "triage-jira" "triage-local-logs" "firmware-tlogs-search" "web-browse" -}}
+{{- $isFwWork := eq (index .hostProfiles .chezmoi.hostname | default "default") "fw-work" -}}
+
 {{ if eq .chezmoi.os "windows" -}}
 .zshrc
 .zshenv
 .oh-my-zsh
 .config/nvim
 .config/herdr
-.pi/agent/skills/firmware-tlogs-search
+.claude
 .pi/agent/skills/remote-testbed*
 {{ end -}}
 
-{{ if ne (index .hostProfiles .chezmoi.hostname | default "default") "fw-work" -}}
+{{ if not $isFwWork -}}
 .pi/agent/extensions/compat-provider-bridge.ts
-.pi/agent/skills/fw-herdr-hw-test
-.pi/agent/skills/remote-testbed*
-.pi/agent/skills/triage-jira
-.pi/agent/skills/triage-local-logs
+{{ range $fwOnlySkills -}}
+.pi/agent/skills/{{ . }}
+.claude/skills/{{ . }}
+.skills/{{ . }}
+{{ end -}}
 {{ end -}}

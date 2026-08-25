@@ -5,7 +5,7 @@ description: Routes web browsing to hostname- or task-specific workflows while k
 
 # Web Browse Router
 
-Use this skill as the first step for web browsing. Site workflows live in `sites/` as ordinary Markdown references, never as nested `SKILL.md` files, so Pi advertises only this router at startup.
+Use this skill as the first step for web browsing. Site workflows live in `sites/` as ordinary Markdown references, never as nested `SKILL.md` files — some agents (e.g. Pi) recursively discover every `SKILL.md` and advertise it at startup, so keeping site instructions as plain files avoids surfacing every workflow up front.
 
 ## Route the request
 
@@ -28,4 +28,4 @@ The resolver is deterministic for hostname routing. Treat a matching site refere
 - Add the full, site-specific workflow as `sites/<site>.md`.
 - Add a hostname regex and reference filename to `scripts/resolve-site.py`.
 - Add a short task-keyword rule above only when the workflow must activate without a URL.
-- Do **not** add another `SKILL.md` below this directory; Pi discovers those recursively and would expose them at startup.
+- Do **not** add another `SKILL.md` below this directory; some agents (e.g. Pi) discover those recursively and would expose them at startup.
