@@ -2,8 +2,13 @@
 # .mcp.json contains jira/confluence personal access tokens
 dot_claude/.credentials.json
 dot_claude/.mcp.json
-# jira/confluence PATs used by skills/atlassian
-dot_claude/.atlassian.env
+
+# --- skills: shared secrets used by the web-browse/atlassian workflow ---
+# jira/confluence PATs, read by dot_skills/web-browse/sites/atlassian/atl.py;
+# lives in dot_skills/ (not dot_claude or dot_pi) since both agents' skills/
+# symlink into the same shared skill source.
+dot_skills/.atlassian.env
+dot_skills/.atlassian-cloud.env
 
 # --- claude: machine-local settings ---
 dot_claude/settings.local.json
@@ -49,8 +54,6 @@ dot_claude/sdd-learnings/*/
 __pycache__/
 
 # --- pi: secrets, runtime state, and installed packages ---
-dot_pi/agent/.atlassian.env
-dot_pi/agent/.atlassian-cloud.env
 dot_pi/agent/auth.json
 dot_pi/agent/models-store.json
 dot_pi/agent/trust.json
