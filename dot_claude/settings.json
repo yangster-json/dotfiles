@@ -21,6 +21,16 @@
             "statusMessage": "pure_astyle"
           }
         ]
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/herdr-claude-session-title.sh",
+            "timeout": 10
+          }
+        ]
       }
     ],
     "SessionStart": [

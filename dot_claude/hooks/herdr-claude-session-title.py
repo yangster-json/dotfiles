@@ -8,12 +8,14 @@ Modes:
 import json
 import os
 import random
+import re
 import socket
 import sys
 import time
 
 SOURCE = "plugin:claude-session-title"
 MAX_TITLE_CHARS = 120
+NUMERIC_LABEL_RE = re.compile(r"^\d+$")
 
 
 def sanitize(title):
@@ -84,17 +86,11 @@ def extract_title(transcript_path, session_id):
     return summary_from_index(transcript_path, session_id)
 
 
-def report(pane_id, socket_path, title):
+def rpc_call(socket_path, method, params):
     request = {
         "id": "{}:{}:{:06d}".format(SOURCE, int(time.time() * 1000), random.randrange(1_000_000)),
-        "method": "pane.report_metadata",
-        "params": {
-            "pane_id": pane_id,
-            "source": SOURCE,
-            "agent": "claude",
-            "title": title,
-            "seq": time.time_ns(),
-        },
+        "method": method,
+        "params": params,
     }
     client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     client.settimeout(0.5)
@@ -102,11 +98,44 @@ def report(pane_id, socket_path, title):
         client.connect(socket_path)
         client.sendall((json.dumps(request) + "\n").encode())
         try:
-            client.recv(4096)
+            raw = client.recv(4096)
         except OSError:
-            pass
+            return None
     finally:
         client.close()
+    try:
+        return json.loads(raw)
+    except ValueError:
+        return None
+
+
+def report(pane_id, socket_path, title):
+    rpc_call(
+        socket_path,
+        "pane.report_metadata",
+        {
+            "pane_id": pane_id,
+            "source": SOURCE,
+            "agent": "claude",
+            "title": title,
+            "seq": time.time_ns(),
+        },
+    )
+
+
+def maybe_rename_tab(pane_id, socket_path, title):
+    # only take over the tab label while it's still herdr's default numeric
+    # placeholder (never manually renamed) and claude is the sole occupant
+    pane = (rpc_call(socket_path, "pane.get", {"pane_id": pane_id}) or {}).get("result", {}).get("pane", {})
+    tab_id = pane.get("tab_id")
+    if not tab_id:
+        return
+    tab = (rpc_call(socket_path, "tab.get", {"tab_id": tab_id}) or {}).get("result", {}).get("tab", {})
+    if not NUMERIC_LABEL_RE.match(tab.get("label", "")):
+        return
+    if tab.get("pane_count") != 1:
+        return
+    rpc_call(socket_path, "tab.rename", {"tab_id": tab_id, "label": title})
 
 
 def hook_mode():
@@ -131,6 +160,7 @@ def hook_mode():
     if not title:
         return
     report(pane_id, socket_path, title)
+    maybe_rename_tab(pane_id, socket_path, title)
 
 
 def main():
