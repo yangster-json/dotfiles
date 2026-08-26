@@ -1,14 +1,20 @@
 {{- $profile := index .hostProfiles .chezmoi.hostname | default "default" -}}
 {{- $models := index .profiles $profile "models" -}}
+{{- $isWork := eq $profile "fw-work" -}}
 {
   "defaultProvider": "{{ $models.provider }}",
   "defaultModel": "{{ $models.default }}",
-  "lastChangelogVersion": "0.84.2",
+  "lastChangelogVersion": "0.84.3",
   "compaction": {
     "enabled": false
   },
-  "defaultThinkingLevel": "medium",
+  "defaultThinkingLevel": "high",
   "subagents": {
+    {{- if $isWork }}
+    "defaultExtensions": [
+      "/u/jasyang/.config/everpure-foundry/pi-extension"
+    ],
+    {{- end }}
     "agentOverrides": {
       "scout": {
         "model": "{{ $models.luna }}",
