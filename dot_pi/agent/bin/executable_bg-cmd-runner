@@ -1,0 +1,194 @@
+#!/usr/bin/env python3
+"""Runs bounded test repetitions and emits a concise report."""
+
+from __future__ import annotations
+
+import json
+import pathlib
+import re
+import shlex
+import subprocess
+import sys
+import time
+from datetime import datetime, timezone
+from typing import Any
+
+MAX_ITERATIONS = 500
+HEARTBEAT_SECONDS = 30
+PROCESS_POLL_SECONDS = 1
+SIGNATURES = (
+    ("credits_replenish", re.compile(r"credits_replenish", re.IGNORECASE)),
+    ("fault_sigaction", re.compile(r"fault_sigaction", re.IGNORECASE)),
+    ("SIGSEGV", re.compile(r"SIGSEGV|FAULT 11", re.IGNORECASE)),
+    ("assertion", re.compile(r"\[ASSERT\]:|DEBUG_ASSERT", re.IGNORECASE)),
+    ("timeout", re.compile(r"\btimeout\b|timed out", re.IGNORECASE)),
+    ("failed test", re.compile(r"FAILED TEST=|\[ FAILED \]", re.IGNORECASE)),
+)
+
+
+def load_payload() -> dict[str, Any]:
+    prompt = sys.stdin.read()
+    matches = re.findall(
+        r"<BACKGROUND_TEST_RUNNER_JSON>\s*(\{.*?\})\s*</BACKGROUND_TEST_RUNNER_JSON>",
+        prompt,
+        re.DOTALL,
+    )
+    if not matches:
+        raise ValueError("BACKGROUND_TEST_RUNNER_JSON payload is required")
+    value = json.loads(matches[-1])
+    if not isinstance(value, dict):
+        raise ValueError("BACKGROUND_TEST_RUNNER_JSON payload must be an object")
+    return value
+
+
+def validate_payload(payload: dict[str, Any]) -> tuple[pathlib.Path, list[str], int, str, bool, str | None]:
+    cwd = payload.get("cwd")
+    command = payload.get("command")
+    iterations = payload.get("iterations")
+    label = payload.get("label", "background-test")
+    stop_on_failure = payload.get("stop_on_failure", False)
+    remote = payload.get("remote")
+    if not isinstance(cwd, str) or not cwd:
+        raise ValueError("cwd must be a non-empty string")
+    if not isinstance(command, list) or not command or not all(isinstance(part, str) and part for part in command):
+        raise ValueError("command must be a non-empty string array")
+    if not isinstance(iterations, int) or not 1 <= iterations <= MAX_ITERATIONS:
+        raise ValueError(f"iterations must be between 1 and {MAX_ITERATIONS}")
+    if not isinstance(label, str) or not re.fullmatch(r"[A-Za-z0-9._-]+", label):
+        raise ValueError("label may contain only letters, digits, dot, underscore, and dash")
+    if not isinstance(stop_on_failure, bool):
+        raise ValueError("stop_on_failure must be a boolean")
+    if remote is None:
+        workdir = pathlib.Path(cwd).resolve()
+        if not workdir.is_dir():
+            raise ValueError(f"cwd does not exist: {workdir}")
+        return workdir, command, iterations, label, stop_on_failure, None
+    if not isinstance(remote, dict):
+        raise ValueError("remote must be an object")
+    host = remote.get("host")
+    ssh_user = remote.get("ssh_user")
+    run_as = remote.get("run_as")
+    if not isinstance(host, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.-]*", host):
+        raise ValueError("remote.host contains unsupported characters")
+    for field_name, value in (("ssh_user", ssh_user), ("run_as", run_as)):
+        if value is not None and (not isinstance(value, str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_-]*", value)):
+            raise ValueError(f"remote.{field_name} contains unsupported characters")
+    if not cwd.startswith("/"):
+        raise ValueError("remote cwd must be absolute")
+    destination = f"{ssh_user}@{host}" if ssh_user else host
+    if run_as:
+        destination = f"{destination}|{run_as}"
+    return pathlib.Path(cwd), command, iterations, label, stop_on_failure, destination
+
+
+def run_iteration(workdir: pathlib.Path, command: list[str], remote: str | None, log_path: pathlib.Path, iteration: int, iterations: int) -> tuple[int, str]:
+    try:
+        with log_path.open("w") as log_file:
+            if remote:
+                destination, separator, run_as = remote.partition("|")
+                remote_command = f"cd {shlex.quote(str(workdir))} && exec {shlex.join(command)}"
+                if separator:
+                    remote_command = f"exec runuser -u {shlex.quote(run_as)} -- bash -lc {shlex.quote(remote_command)}"
+                process = subprocess.Popen(
+                    ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=15", destination, remote_command],
+                    stdout=log_file,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                )
+            else:
+                process = subprocess.Popen(
+                    command,
+                    cwd=workdir,
+                    stdout=log_file,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                )
+            elapsed = 0
+            heartbeat_at = HEARTBEAT_SECONDS
+            while True:
+                exit_code = process.poll()
+                if exit_code is not None:
+                    break
+                time.sleep(PROCESS_POLL_SECONDS)
+                elapsed += PROCESS_POLL_SECONDS
+                if elapsed >= heartbeat_at and process.poll() is None:
+                    print(
+                        f"iteration {iteration}/{iterations}: still running; elapsed={elapsed}s",
+                        flush=True,
+                    )
+                    heartbeat_at += HEARTBEAT_SECONDS
+    except OSError as error:
+        log_path.write_text(f"runner execution error: {error}\n")
+        return 127, f"runner execution error: {error}\n"
+    return exit_code, log_path.read_text(errors="replace")
+
+
+def classify(output: str) -> str:
+    matches = [name for name, pattern in SIGNATURES if pattern.search(output)]
+    if matches:
+        return ", ".join(matches)
+    lines = [line.strip() for line in output.splitlines() if line.strip()]
+    return lines[-1][:240] if lines else "no output"
+
+
+def main() -> int:
+    try:
+        workdir, command, iterations, label, stop_on_failure, remote = validate_payload(load_payload())
+    except (ValueError, json.JSONDecodeError) as error:
+        print(f"bg-cmd-runner input error: {error}", file=sys.stderr)
+        return 2
+
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    log_dir = pathlib.Path("/tmp") / f"{label}-{timestamp}"
+    log_dir.mkdir(mode=0o700)
+    results: list[tuple[int, int, str, pathlib.Path]] = []
+
+    print(f"Running {iterations} iterations in {workdir}", flush=True)
+    for iteration in range(1, iterations + 1):
+        log_path = log_dir / f"iteration-{iteration:03d}.log"
+        exit_code, output = run_iteration(
+            workdir,
+            command,
+            remote,
+            log_path,
+            iteration,
+            iterations,
+        )
+        signature = "pass" if exit_code == 0 else classify(output)
+        results.append((iteration, exit_code, signature, log_path))
+        print(f"iteration {iteration}/{iterations}: exit={exit_code}; {signature}", flush=True)
+        if exit_code != 0 and stop_on_failure:
+            break
+
+    completed_runs = len(results)
+    passed = sum(exit_code == 0 for _, exit_code, _, _ in results)
+    failed = completed_runs - passed
+    report_path = log_dir / "report.md"
+    execution_location = f"{remote}:{workdir}" if remote else str(workdir)
+    report_lines = [
+        f"# {label} report",
+        "",
+        f"- Working directory: `{execution_location}`",
+        f"- Command: `{shlex.join(command)}`",
+        f"- Requested runs: {iterations}",
+        f"- Completed runs: {completed_runs}",
+        f"- Stop on failure: {stop_on_failure}",
+        f"- Passed: {passed}",
+        f"- Failed: {failed}",
+        f"- Logs: `{log_dir}`",
+        "",
+        "## Results",
+        "",
+        "| Iteration | Exit code | Signature | Log |",
+        "|---:|---:|---|---|",
+    ]
+    for iteration, exit_code, signature, log_path in results:
+        report_lines.append(f"| {iteration} | {exit_code} | {signature} | `{log_path}` |")
+    report_path.write_text("\n".join(report_lines) + "\n")
+    print("\n".join(report_lines), flush=True)
+    print(f"\nReport: {report_path}", flush=True)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
