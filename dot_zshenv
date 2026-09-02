@@ -1,3 +1,6 @@
 [ -f "$HOME/.config/everpure-foundry/foundry.env" ] && . "$HOME/.config/everpure-foundry/foundry.env"
 
 export NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
+
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"

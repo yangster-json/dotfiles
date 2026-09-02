@@ -1,0 +1,52 @@
+#!/usr/bin/env sh
+# Minimal unzip-compatible wrapper for tools (like Mason) that only need
+# quiet/overwrite extraction to a destination directory. Uses libarchive bsdtar.
+set -eu
+
+quiet=false
+overwrite=false
+dest=.
+archive=
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -q)
+      quiet=true
+      shift
+      ;;
+    -o)
+      overwrite=true
+      shift
+      ;;
+    -d)
+      shift
+      if [ "$#" -eq 0 ]; then
+        echo "unzip: option -d requires an argument" >&2
+        exit 2
+      fi
+      dest=$1
+      shift
+      ;;
+    --)
+      shift
+      break
+      ;;
+    -*)
+      # Ignore common unzip flags Mason may pass that bsdtar does not need.
+      shift
+      ;;
+    *)
+      archive=$1
+      shift
+      break
+      ;;
+  esac
+done
+
+if [ -z "${archive:-}" ]; then
+  echo "unzip: missing archive" >&2
+  exit 2
+fi
+
+mkdir -p "$dest"
+exec bsdtar -xf "$archive" -C "$dest" "$@"

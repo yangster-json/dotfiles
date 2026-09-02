@@ -5,6 +5,11 @@ return {
     "WhoIsSethDaniel/mason-tool-installer.nvim",
   },
   config = function()
+    local local_bin = vim.fn.expand("~/.local/bin")
+    if vim.fn.isdirectory(local_bin) == 1 and not vim.env.PATH:find(local_bin, 1, true) then
+      vim.env.PATH = local_bin .. ":" .. vim.env.PATH
+    end
+
     -- import mason
     local mason = require("mason")
 
