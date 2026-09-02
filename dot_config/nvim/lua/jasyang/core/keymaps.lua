@@ -11,6 +11,9 @@ keymap.set("n", "<leader>nh", ":nohl<CR>", { desc = "Clear search highlights" })
 
 -- show file info
 keymap.set("n", "<leader>fi", "<C-g>", { desc = "Show file info" })
+keymap.set("n", "<leader>ln", function()
+  vim.opt.relativenumber = not vim.opt.relativenumber:get()
+end, { desc = "Toggle relative numbers" })
 
 -- disable mouse click navigation (keep scroll wheel, split resizing, hover, UI clicks)
 for _, click in ipairs({
