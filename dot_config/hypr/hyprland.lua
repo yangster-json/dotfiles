@@ -297,7 +297,7 @@ end
 
 -- Example special workspace (scratchpad)
 hl.bind(mainMod .. " + S",         hl.dsp.workspace.toggle_special("magic"))
-hl.bind(mainMod .. " + SHIFT + S", hl.dsp.window.move({ workspace = "special:magic" }))
+hl.bind(mainMod .. " + SHIFT + S", hl.dsp.exec_cmd("hyprshot --freeze --clipboard-only --mode region --silent"), { locked = true })
 
 -- Scroll through existing workspaces with mainMod + scroll
 hl.bind(mainMod .. " + mouse_down", hl.dsp.focus({ workspace = "e+1" }))
@@ -353,6 +353,17 @@ hl.window_rule({
     },
 
     no_focus = true,
+})
+
+hl.window_rule({
+    name  = "picture-in-picture",
+    match = { title = "^([Pp]icture[- ]?[Ii]n[- ]?[Pp]icture)(.*)$" },
+
+    float             = true,
+    pin               = true,
+    keep_aspect_ratio = true,
+    move              = { "(monitor_w*0.73)", "(monitor_h*0.72)" },
+    size              = { "(monitor_w*0.25)", "(monitor_h*0.25)" },
 })
 
 -- Layer rules also return a handle.
