@@ -16,6 +16,9 @@
 -- Create your files separately and then require them like this:
 -- require("myColors")
 
+-- Catppuccin Mocha palette: https://github.com/catppuccin/hyprland
+local colors = require("themes.catppuccin-mocha")
+
 
 ------------------
 ---- MONITORS ----
@@ -49,11 +52,10 @@ local menu = "hyprlauncher"
 -- Autostart necessary processes (like notifications daemons, status bars, etc.)
 -- Or execute your favorite apps at launch like this:
 --
--- hl.on("hyprland.start", function ()
---   hl.exec_cmd(terminal)
---   hl.exec_cmd("nm-applet")
---   hl.exec_cmd("waybar & hyprpaper & firefox")
--- end)
+hl.on("hyprland.start", function ()
+  hl.exec_cmd("hyprpaper")
+  hl.exec_cmd("swayidle -w -C ~/.config/swayidle/config")
+end)
 
 
 -------------------------------
@@ -64,6 +66,9 @@ local menu = "hyprlauncher"
 
 hl.env("XCURSOR_SIZE", "24")
 hl.env("HYPRCURSOR_SIZE", "24")
+
+-- Make GTK applications launched by Hyprland use Adwaita's dark variant.
+hl.env("GTK_THEME", "Adwaita:dark")
 
 
 -----------------------
@@ -98,8 +103,8 @@ hl.config({
         border_size = 2,
 
         col = {
-            active_border   = { colors = {"rgba(33ccffee)", "rgba(00ff99ee)"}, angle = 45 },
-            inactive_border = "rgba(595959aa)",
+            active_border   = { colors = {colors.mauve, colors.lavender}, angle = 45 },
+            inactive_border = colors.surface0,
         },
 
         -- Set to true to enable resizing windows by clicking and dragging on borders and gaps
@@ -123,7 +128,7 @@ hl.config({
             enabled      = true,
             range        = 4,
             render_power = 3,
-            color        = 0xee1a1a1a,
+            color        = "rgba(" .. colors.crustAlpha .. "ee)",
         },
 
         blur = {
@@ -269,9 +274,14 @@ hl.bind(mainMod .. " + E", hl.dsp.exec_cmd(fileManager))
 hl.bind(mainMod .. " + V", hl.dsp.window.float({ action = "toggle" }))
 hl.bind(mainMod .. " + R", hl.dsp.exec_cmd(menu))
 hl.bind(mainMod .. " + P", hl.dsp.window.pseudo())
-hl.bind(mainMod .. " + J", hl.dsp.layout("togglesplit"))    -- dwindle only
+hl.bind(mainMod .. " + F", hl.dsp.window.fullscreen({ action = "toggle" }))
+hl.bind(mainMod .. " + SHIFT + L", hl.dsp.exec_cmd("swaylock -f"))
 
--- Move focus with mainMod + arrow keys
+-- Move focus with mainMod + arrow keys or vim keys
+hl.bind(mainMod .. " + H",     hl.dsp.focus({ direction = "left" }))
+hl.bind(mainMod .. " + J",     hl.dsp.focus({ direction = "down" }))
+hl.bind(mainMod .. " + K",     hl.dsp.focus({ direction = "up" }))
+hl.bind(mainMod .. " + L",     hl.dsp.focus({ direction = "right" }))
 hl.bind(mainMod .. " + left",  hl.dsp.focus({ direction = "left" }))
 hl.bind(mainMod .. " + right", hl.dsp.focus({ direction = "right" }))
 hl.bind(mainMod .. " + up",    hl.dsp.focus({ direction = "up" }))

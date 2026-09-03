@@ -50,6 +50,19 @@ herdr configuration.
 | `dot_config/herdr/config.toml` | `~/.config/herdr/config.toml` |
 | `dot_oh-my-zsh/private_custom/` | `~/.oh-my-zsh/custom/` |
 
+### Arch Linux: Kanata
+
+The Arch `kanata.service` reads `/etc/kanata.kbd`, while chezmoi manages the
+user configuration at `~/.config/kanata/kanata.kbd`. After applying the
+dotfiles, make the system configuration point at the managed file:
+
+```sh
+sudo ln -sfnT "$HOME/.config/kanata/kanata.kbd" /etc/kanata.kbd
+sudo systemctl restart kanata.service
+```
+
+Recreate the symlink after a Kanata package update if the package replaces it.
+
 `source-only/` contains intentionally undeployed files. `legacy/` archives the
 former tmux configuration. `git/` contains optional Git hook tooling;
 configure it per repository:
@@ -67,13 +80,13 @@ inside the source state records the current exclusions.
 
 ## Dependencies
 
-Install the tools referenced by the configurations separately: zsh, oh-my-zsh,
-zsh-vi-mode, Homebrew, zoxide, fzf, pyenv, pipx, tmux, TPM, herdr, Neovim,
-ripgrep, make plus a C compiler, git, lazygit, WezTerm, kanata, Claude Code,
-and Pi.
+Install the external tools used by the active configurations separately: zsh,
+zsh-vi-mode, Homebrew, zoxide, fzf, pyenv, tmux, herdr, Neovim, ripgrep, make
+plus a C compiler, git, lazygit, WezTerm, kanata, Claude Code, and Pi.
 
-For herdr, link the checked-in clock plugin from the source state after applying:
+For herdr, install the split-navigation plugin and link the checked-in clock plugin after applying:
 
 ```sh
+herdr plugin install lmilojevicc/herdr-splits.nvim
 herdr plugin link ~/.local/share/chezmoi/dot_config/herdr/plugins/clock
 ```

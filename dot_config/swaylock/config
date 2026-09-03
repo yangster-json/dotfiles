@@ -1,0 +1,44 @@
+# Catppuccin Mocha swaylock configuration for stock swaylock.
+# The linked end-4 configuration's clock and visual effects require
+# swaylock-effects, so they are intentionally not included here.
+
+daemonize
+ignore-empty-password
+font=Iosevka Nerd Font
+font-size=23
+indicator-caps-lock
+indicator-radius=80
+indicator-thickness=10
+
+# Catppuccin Mocha: crust, mantle, surface2, text, blue, mauve, and red.
+color=11111bdd
+key-hl-color=cdd6f4
+caps-lock-key-hl-color=f9e2af
+separator-color=00000000
+
+inside-color=11111bff
+inside-clear-color=181825ff
+inside-caps-lock-color=181825ff
+inside-ver-color=181825ff
+inside-wrong-color=181825ff
+
+ring-color=585b70
+ring-clear-color=cba6f7
+ring-caps-lock-color=f9e2af
+ring-ver-color=89b4fa
+ring-wrong-color=f38ba8
+
+line-color=00000000
+line-clear-color=00000000
+line-caps-lock-color=00000000
+line-ver-color=00000000
+line-wrong-color=00000000
+
+text-color=cdd6f4
+text-clear-color=cdd6f4
+text-caps-lock-color=f9e2af
+text-ver-color=cdd6f4
+text-wrong-color=f38ba8
+
+bs-hl-color=f38ba8
+caps-lock-bs-hl-color=f38ba8

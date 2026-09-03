@@ -1,0 +1,6 @@
+{{- $profile := index .hostProfiles .chezmoi.hostname | default "default" -}}
+{{- $models := index .profiles $profile "models" -}}
+{
+  "model": "{{ $models.luna }}",
+  "thinkingLevel": "off"
+}

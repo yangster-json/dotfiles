@@ -3,6 +3,8 @@ set -euo pipefail
 
 source_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 settings="$source_dir/dot_pi/agent/settings.json.tmpl"
+rename_config="$source_dir/dot_pi/agent/config/pi-herdr-rename.json.tmpl"
+btw_config="$source_dir/dot_pi/agent/pi-btw.json.tmpl"
 ignore="$source_dir/.chezmoiignore"
 
 render() {
@@ -37,12 +39,24 @@ assert_excludes() {
 
 fw_settings=$(render dev-jasyang linux "$settings")
 generic_settings=$(render generic-host linux "$settings")
+fw_rename_config=$(render dev-jasyang linux "$rename_config")
+generic_rename_config=$(render generic-host linux "$rename_config")
+fw_btw_config=$(render dev-jasyang linux "$btw_config")
+generic_btw_config=$(render generic-host linux "$btw_config")
 windows_ignore=$(render generic-host windows "$ignore")
 
 jq -e '.defaultProvider == "everpure-foundry" and .defaultModel == "cascade/gpt-5.6-terra"' \
   <<<"$fw_settings" >/dev/null
 jq -e '.defaultProvider == "openai-codex" and .defaultModel == "gpt-5.6-terra"' \
   <<<"$generic_settings" >/dev/null
+jq -e '.model == "everpure-foundry/cascade/gpt-5.6-luna"' \
+  <<<"$fw_rename_config" >/dev/null
+jq -e '.model == "openai-codex/gpt-5.6-luna"' \
+  <<<"$generic_rename_config" >/dev/null
+jq -e '.model == "everpure-foundry/cascade/gpt-5.6-luna"' \
+  <<<"$fw_btw_config" >/dev/null
+jq -e '.model == "openai-codex/gpt-5.6-luna"' \
+  <<<"$generic_btw_config" >/dev/null
 
 assert_contains "$windows_ignore" '.pi/agent/skills/firmware-tlogs-search'
 assert_contains "$windows_ignore" '.pi/agent/skills/remote-testbed*'
