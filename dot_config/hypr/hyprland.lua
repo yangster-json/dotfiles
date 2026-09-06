@@ -284,9 +284,12 @@ hl.bind(mainMod .. " + E", hl.dsp.exec_cmd(terminalFileManager))
 hl.bind(mainMod .. " + SHIFT + E", hl.dsp.exec_cmd(fileManager))
 hl.bind(mainMod .. " + V", hl.dsp.window.float({ action = "toggle" }))
 hl.bind(mainMod .. " + R", hl.dsp.exec_cmd(menu))
+hl.bind(mainMod .. " + SLASH", hl.dsp.exec_cmd("hotkeyhub"))
 hl.bind(mainMod .. " + P", hl.dsp.window.pseudo())
 hl.bind(mainMod .. " + F", hl.dsp.window.fullscreen({ action = "toggle" }))
 hl.bind(mainMod .. " + SHIFT + L", hl.dsp.exec_cmd("swaylock -f"))
+-- Toggle Gammastep's solar colour adjustment without stopping its GeoClue updates.
+hl.bind(mainMod .. " + N", hl.dsp.exec_cmd("systemctl --user kill --signal=USR1 gammastep.service"))
 
 -- Move focus with mainMod + arrow keys or vim keys
 hl.bind(mainMod .. " + H",     hl.dsp.focus({ direction = "left" }))
@@ -393,4 +396,3 @@ hl.window_rule({
     move  = "20 monitor_h-120",
     float = true,
 })
-hl.bind(mainMod .. " + SLASH", hl.dsp.exec_cmd("hotkeyhub"))
