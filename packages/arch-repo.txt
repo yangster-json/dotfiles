@@ -7,6 +7,7 @@ chezmoi
 dolphin
 efibootmgr
 fzf
+gammastep
 geoclue
 git
 github-cli

@@ -1,4 +1,5 @@
 catppuccin-sddm-theme-mocha
+hotkeyhub-bin
 kanata
 neofetch
 timeshift-autosnap
