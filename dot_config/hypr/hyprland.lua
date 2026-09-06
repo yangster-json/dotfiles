@@ -40,7 +40,7 @@ hl.monitor({
 -- Set programs that you use
 local terminal = "wezterm"
 local browser = "/opt/zen-browser-bin/zen-bin"
-local fileManager = "dolphin"
+local fileManager = "thunar"
 local terminalFileManager = terminal .. " start -- yazi /home/json"
 local menu = "rofi -show drun"
 
@@ -74,8 +74,8 @@ end)
 hl.env("XCURSOR_SIZE", "24")
 hl.env("HYPRCURSOR_SIZE", "24")
 
--- Make GTK applications launched by Hyprland use Adwaita's dark variant.
-hl.env("GTK_THEME", "Adwaita:dark")
+-- Make GTK applications launched by Hyprland use Catppuccin Mocha/Mauve.
+hl.env("GTK_THEME", "catppuccin-mocha-mauve-standard+default")
 
 
 -----------------------
@@ -281,6 +281,7 @@ hl.bind(mainMod .. " + B", hl.dsp.exec_cmd(browser))
 hl.bind(mainMod .. " + T", hl.dsp.exec_cmd(terminal))
 hl.bind(mainMod .. " + SHIFT + T", hl.dsp.exec_cmd(terminal .. " start -- btop"))
 local closeWindowBind = hl.bind(mainMod .. " + Q", hl.dsp.window.close())
+hl.bind(mainMod .. " + SHIFT + Q", hl.dsp.exec_cmd("$HOME/.local/bin/quit-active-app"))
 -- closeWindowBind:set_enabled(false)
 -- hyprshutdown is an immediate graceful-exit utility, not a power-choice menu.
 hl.bind(mainMod .. " + M", hl.dsp.exec_cmd("wlogout"))
