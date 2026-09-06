@@ -1,4 +1,6 @@
+catppuccin-sddm-theme-mocha
 kanata
+neofetch
 timeshift-autosnap
 ttf-iosevka
 wlogout

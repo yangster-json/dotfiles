@@ -7,10 +7,9 @@ chezmoi
 dolphin
 efibootmgr
 fzf
+geoclue
 git
 github-cli
-greetd
-greetd-tuigreet
 grub
 grub-btrfs
 hyprland
@@ -34,6 +33,7 @@ pipewire-alsa
 pipewire-jack
 pipewire-pulse
 pyenv
+qbittorrent
 qt5-quickcontrols2
 reflector
 rofi
@@ -53,5 +53,8 @@ wget
 wireplumber
 xdg-desktop-portal-gtk
 xdg-desktop-portal-hyprland
+yazi
+zathura
+zathura-pdf-mupdf
 zoxide
 zsh
