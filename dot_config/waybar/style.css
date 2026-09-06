@@ -65,6 +65,7 @@ tooltip {
     color: #f38ba8;
 }
 #custom-weather,
+#custom-media-title,
 #language,
 #cpu,
 #window,
@@ -75,10 +76,9 @@ tooltip {
 #network,
 #custom-network,
 #workspaces,
-#tray,
+#group-tray,
 #memory,
-#disk,
-#tray {
+#disk {
     background: #1e1e2e;
     opacity: 1.0;
     padding: 1.5px 7px 1.5px 7px;
@@ -158,11 +158,27 @@ tooltip {
 }
 
 
+#custom-media-title {
+  color: #cba6f7;
+}
+
 #bluetooth {
   color: #89b4fa;
-  border-radius: 0px 13px 13px 0px;
-  margin-left: 5px;
-  margin-right: 5px;
+  background: transparent;
+  border-radius: 0px;
+  margin: 0px;
+  padding: 0px 4px;
+}
+
+#bluetooth:not(.connected) {
+  padding: 0px;
+}
+
+#tray {
+  background: transparent;
+  border-radius: 0px;
+  margin: 0px;
+  padding: 0px;
 }
 
 #pulseaudio {
