@@ -17,6 +17,7 @@ hyprland
 hyprpaper
 hyprpolkitagent
 hyprshot
+hyprshutdown
 inotify-tools
 lazygit
 libnotify
