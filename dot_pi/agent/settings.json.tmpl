@@ -55,7 +55,8 @@
     "npm:pi-subagents",
     "npm:pi-memory",
     "npm:pi-ketch@0.1.6",
-    "npm:acp-headroom-pi@0.1.2"
+    "npm:acp-headroom-pi@0.1.2"{{ if not $isWork }},
+    "npm:pi-chatgpt-limit"{{ end }}
   ],
   "terminal": {
     "showTerminalProgress": true

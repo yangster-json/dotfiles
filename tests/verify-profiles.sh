@@ -49,6 +49,10 @@ jq -e '.defaultProvider == "everpure-foundry" and .defaultModel == "cascade/gpt-
   <<<"$fw_settings" >/dev/null
 jq -e '.defaultProvider == "openai-codex" and .defaultModel == "gpt-5.6-terra"' \
   <<<"$generic_settings" >/dev/null
+jq -e '(.packages | index("npm:pi-chatgpt-limit")) == null' \
+  <<<"$fw_settings" >/dev/null
+jq -e '(.packages | index("npm:pi-chatgpt-limit")) != null' \
+  <<<"$generic_settings" >/dev/null
 jq -e '.model == "everpure-foundry/cascade/gpt-5.6-luna"' \
   <<<"$fw_rename_config" >/dev/null
 jq -e '.model == "openai-codex/gpt-5.6-luna"' \
