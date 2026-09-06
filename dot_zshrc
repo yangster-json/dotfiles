@@ -70,6 +70,42 @@ cih() {
   ANTHROPIC_BASE_URL="http://127.0.0.1:8787" claude "$@"
 }
 
+save-setup() {
+  emulate -L zsh
+  setopt pipefail
+
+  if ! command -v chezmoi >/dev/null || ! command -v pacman >/dev/null; then
+    print -u2 'save-setup requires chezmoi and pacman.'
+    return 1
+  fi
+
+  local source_dir packages_dir repo_file aur_file repo_tmp aur_tmp
+  source_dir="$(chezmoi source-path)" || return
+  packages_dir="$source_dir/packages"
+  repo_file="$packages_dir/arch-repo.txt"
+  aur_file="$packages_dir/arch-aur.txt"
+  mkdir -p "$packages_dir" || return
+  repo_tmp="$(mktemp "$packages_dir/.arch-repo.txt.XXXXXX")" || return
+  aur_tmp="$(mktemp "$packages_dir/.arch-aur.txt.XXXXXX")" || {
+    rm -f "$repo_tmp"
+    return 1
+  }
+
+  if ! pacman -Qqen | LC_ALL=C sort >"$repo_tmp" || ! pacman -Qqem | LC_ALL=C sort >"$aur_tmp"; then
+    rm -f "$repo_tmp" "$aur_tmp"
+    return 1
+  fi
+  mv "$repo_tmp" "$repo_file" && mv "$aur_tmp" "$aur_file" || return
+
+  git -C "$source_dir" add -- packages/arch-repo.txt packages/arch-aur.txt || return
+  if git -C "$source_dir" diff --cached --quiet -- packages/arch-repo.txt packages/arch-aur.txt; then
+    print 'Package manifests are already current.'
+    return 0
+  fi
+  git -C "$source_dir" commit -m 'Update Arch package manifests' -- packages/arch-repo.txt packages/arch-aur.txt || return
+  git -C "$source_dir" push
+}
+
 export PYENV_ROOT="$HOME/.pyenv"
 [[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"
 if command -v pyenv >/dev/null 2>&1; then

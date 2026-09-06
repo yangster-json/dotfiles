@@ -1,0 +1,7 @@
+kanata
+timeshift-autosnap
+ttf-iosevka
+wlogout
+yay
+yay-debug
+zen-browser-bin
