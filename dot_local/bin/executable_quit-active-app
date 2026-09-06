@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Gracefully terminate the process which owns the active Hyprland window.
+# Unlike closing a window, this exits apps that would otherwise remain in the tray.
+set -euo pipefail
+
+pid=$(hyprctl activewindow -j | jq -er '.pid | select(type == "number" and . > 1)') || exit 0
+kill -TERM "$pid"
