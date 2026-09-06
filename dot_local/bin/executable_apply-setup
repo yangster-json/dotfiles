@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# Apply this chezmoi source state and restore its explicit Arch packages.
+set -euo pipefail
+
+if [[ ! -f /etc/arch-release ]]; then
+  printf '%s\n' 'apply-setup only supports Arch Linux.' >&2
+  exit 1
+fi
+
+for command in chezmoi pacman git; do
+  if ! command -v "$command" >/dev/null 2>&1; then
+    printf 'apply-setup requires %s.\n' "$command" >&2
+    exit 1
+  fi
+done
+
+source_dir="$(chezmoi source-path)"
+repo_packages="$source_dir/packages/arch-repo.txt"
+aur_packages="$source_dir/packages/arch-aur.txt"
+
+for manifest in "$repo_packages" "$aur_packages"; do
+  if [[ ! -f "$manifest" ]]; then
+    printf 'Missing package manifest: %s\n' "$manifest" >&2
+    exit 1
+  fi
+done
+
+chezmoi apply
+sudo -v
+sudo pacman -Syu --needed - < "$repo_packages"
+
+if ! command -v yay >/dev/null 2>&1; then
+  sudo pacman -S --needed base-devel git
+  build_dir="$(mktemp -d)"
+  trap 'rm -rf "$build_dir"' EXIT
+  git clone https://aur.archlinux.org/yay.git "$build_dir/yay"
+  (
+    cd "$build_dir/yay"
+    makepkg -si --needed
+  )
+fi
+
+yay -Syu --needed - < "$aur_packages"
+printf '%s\n' 'Dotfiles and explicit Arch packages are applied.'

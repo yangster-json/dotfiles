@@ -13,6 +13,20 @@ Then install the dependencies documented below and recreate machine-local
 secrets. Managed files are copied into `$HOME`; edit them with `chezmoi edit
 <target>` and inspect or apply changes with `chezmoi diff` and `chezmoi apply`.
 
+### Arch Linux
+
+After initializing chezmoi, run `apply-setup` to apply the local source state,
+update Arch, install all explicit repository packages, bootstrap `yay` if
+needed, and install the explicit AUR packages:
+
+```sh
+apply-setup
+```
+
+It deliberately does not restore secrets, user data, system configuration,
+or packages installed through Flatpak, Homebrew, npm, pip, Cargo, and other
+non-pacman package managers.
+
 ### Windows
 
 On Windows, chezmoi intentionally deploys only Pi and Kanata configuration.
