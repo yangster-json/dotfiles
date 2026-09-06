@@ -5,7 +5,7 @@ btop
 btrfs-progs
 chezmoi
 cliphist
-dolphin
+discord
 efibootmgr
 fzf
 gammastep
@@ -48,6 +48,7 @@ sudo
 swayidle
 swaylock
 swaync
+thunar
 timeshift
 ttf-iosevka-nerd
 udiskie
