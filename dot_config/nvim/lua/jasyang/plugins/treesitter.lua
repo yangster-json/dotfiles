@@ -14,9 +14,18 @@ return {
     treesitter.setup({ -- enable syntax highlighting
       highlight = {
         enable = true,
+        -- Skip parsing and highlighting files over 1 MiB (e.g. minified JSON).
+        disable = function(_, buf)
+          return vim.fn.getfsize(vim.api.nvim_buf_get_name(buf)) > 1024 * 1024
+        end,
       },
       -- enable indentation
-      indent = { enable = true },
+      indent = {
+        enable = true,
+        disable = function(_, buf)
+          return vim.fn.getfsize(vim.api.nvim_buf_get_name(buf)) > 1024 * 1024
+        end,
+      },
       -- enable autotagging (w/ nvim-ts-autotag plugin)
       autotag = {
         enable = true,
