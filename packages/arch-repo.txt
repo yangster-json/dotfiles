@@ -4,6 +4,7 @@ brightnessctl
 btop
 btrfs-progs
 chezmoi
+cliphist
 dolphin
 efibootmgr
 fzf
@@ -20,6 +21,7 @@ hyprshot
 hyprshutdown
 inotify-tools
 lazygit
+libappindicator
 libnotify
 linux
 linux-firmware
@@ -48,6 +50,7 @@ swaylock
 swaync
 timeshift
 ttf-iosevka-nerd
+udiskie
 vulkan-radeon
 waybar
 wezterm
