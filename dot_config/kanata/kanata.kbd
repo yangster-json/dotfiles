@@ -46,7 +46,7 @@
     @tab _ _ _ _ _ home pgdn pgup end _
     @caps _ _ _ _ _ left down up right _
     @lsft _ _ C-S-c C-S-v _ _ @rsft
-    lmet
+    @spc
 )
 
 ;; remapping between keys and functionality
