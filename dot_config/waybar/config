@@ -21,6 +21,7 @@
   "modules-right": [
     "hyprland/language",
     "pulseaudio",
+    "custom/microphone",
     "battery",
     "clock",
     "custom/separator",
@@ -124,6 +125,13 @@
       ]
     }
   },
+  "custom/microphone": {
+    "exec": "~/.config/waybar/scripts/microphone.sh",
+    "return-type": "json",
+    "interval": 1,
+    "format": "{}",
+    "on-click": "wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle"
+  },
   "battery": {
     "states": {
       "warning": 30,
@@ -137,10 +145,10 @@
     "exec": "~/.config/waybar/scripts/network-speed.sh",
     "interval": 1,
     "format": "{}",
-    "min-length": 9,
-    "max-length": 9,
-    "align": 0,
-    "justify": "left",
+    "min-length": 8,
+    "max-length": 8,
+    "align": 1,
+    "justify": "right",
     "on-click": "wezterm start -- nmtui"
   },
 

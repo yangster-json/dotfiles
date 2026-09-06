@@ -70,6 +70,7 @@ tooltip {
 #window,
 #clock,
 #pulseaudio,
+#custom-microphone,
 #battery,
 #network,
 #custom-network,
@@ -169,6 +170,18 @@ tooltip {
   border-radius: 0px 0px 0px 0px;
   margin-right: 0px;
   margin-left: 0px;
+}
+
+#custom-microphone {
+  color: #a6e3a1;
+  border-radius: 0px;
+  margin-right: 0px;
+  margin-left: 0px;
+}
+
+#custom-microphone.muted,
+#custom-microphone.unavailable {
+  color: #f38ba8;
 }
 
 #battery {

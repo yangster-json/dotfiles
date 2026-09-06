@@ -26,4 +26,8 @@ fi
 umask 077
 printf '%s %s\n' "$now" "$received" > "$state_file"
 speed=$(numfmt --to=si --format='%.0f' "$rate")
-printf '󰤨 ↓ %s\n' "$speed"
+# Reserve the final column for the SI suffix, including for byte-per-second rates.
+if [[ $speed != *[[:alpha:]] ]]; then
+  speed+=" "
+fi
+printf '󰤨 ↓ %4s\n' "$speed"
