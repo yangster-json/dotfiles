@@ -1,0 +1,13 @@
+[Desktop Entry]
+Name=Yazi File Manager
+GenericName=File Manager
+Comment=Browse files in Yazi
+Icon=yazi
+Exec=wezterm start -- yazi %f
+TryExec=wezterm
+Terminal=false
+Type=Application
+MimeType=inode/directory;
+Categories=System;FileManager;FileTools;
+Keywords=File;Manager;Explorer;Browser;
+StartupNotify=true

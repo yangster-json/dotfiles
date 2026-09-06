@@ -1,0 +1,19 @@
+[Default Applications]
+application/pdf=org.pwmt.zathura.desktop
+inode/directory=yazi.desktop
+text/plain=nvim.desktop
+text/markdown=nvim.desktop
+text/x-markdown=nvim.desktop
+application/json=nvim.desktop
+application/x-yaml=nvim.desktop
+text/yaml=nvim.desktop
+text/x-lua=nvim.desktop
+text/x-python=nvim.desktop
+text/x-shellscript=nvim.desktop
+application/x-shellscript=nvim.desktop
+text/x-c=nvim.desktop
+text/x-csrc=nvim.desktop
+text/x-chdr=nvim.desktop
+text/x-c++src=nvim.desktop
+text/x-c++hdr=nvim.desktop
+text/x-makefile=nvim.desktop
