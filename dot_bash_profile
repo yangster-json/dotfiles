@@ -1,0 +1,10 @@
+#
+# ~/.bash_profile
+#
+
+[[ -f ~/.bashrc ]] && . ~/.bashrc
+
+# Launch zsh for login shells when chsh is unavailable.
+if [[ $- == *i* && -t 0 && -z ${BASH_EXECUTION_STRING:-} && -x /usr/bin/zsh ]]; then
+  exec /usr/bin/zsh -l
+fi
