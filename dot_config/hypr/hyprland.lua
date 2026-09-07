@@ -56,6 +56,7 @@ local menu = "rofi -show drun"
 --
 hl.on("hyprland.start", function ()
   hl.exec_cmd("hyprpaper")
+  hl.exec_cmd("hyprpolkitagent")
   hl.exec_cmd("swayidle -w -C ~/.config/swayidle/config")
   hl.exec_cmd("swaync")
   hl.exec_cmd("udiskie --tray")
@@ -76,6 +77,8 @@ hl.env("HYPRCURSOR_SIZE", "24")
 
 -- Make GTK applications launched by Hyprland use Catppuccin Mocha/Mauve.
 hl.env("GTK_THEME", "catppuccin-mocha-mauve-standard+default")
+hl.env("EDITOR", "nvim")
+hl.env("VISUAL", "nvim")
 
 
 -----------------------
@@ -373,6 +376,24 @@ hl.window_rule({
     },
 
     no_focus = true,
+})
+
+hl.window_rule({
+    name  = "gazelle-network-manager",
+    match = { class = "^Gazelle$" },
+
+    float = true,
+    move  = { "(monitor_w - 800) / 2", "(monitor_h - 600) / 2" },
+    size  = { "800", "600" },
+})
+
+hl.window_rule({
+    name  = "kanata-toggle",
+    match = { class = "^kanata-toggle$" },
+
+    float = true,
+    center = true,
+    size  = { "700", "250" },
 })
 
 hl.window_rule({

@@ -124,7 +124,10 @@
     "exec": "~/.config/waybar/scripts/weather.sh",
     "return-type": "json",
     "interval": 600,
-    "format": "{text}"
+    "signal": 8,
+    "on-click": "pkill -SIGRTMIN+8 waybar",
+    "format": "{text}",
+    "tooltip": true
 },
 
 
@@ -174,7 +177,7 @@
     "max-length": 8,
     "align": 1,
     "justify": "right",
-    "on-click": "wezterm start -- nmtui"
+    "on-click": "wezterm start --class Gazelle -- gazelle"
   },
 
    "hyprland/language": {

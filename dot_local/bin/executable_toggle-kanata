@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Toggle the system Kanata service. Prefer a graphical polkit prompt; otherwise
+# open a terminal so sudo can collect the password visibly.
+set -euo pipefail
+
+service='kanata.service'
+if systemctl is-active --quiet "$service"; then
+  action='stop'
+  result='disabled'
+else
+  action='start'
+  result='enabled'
+fi
+
+if pgrep -x hyprpolkitagent >/dev/null || pgrep -x polkit-gnome-authentication-agent-1 >/dev/null || pgrep -x lxqt-policykit-agent >/dev/null; then
+  if timeout --foreground --kill-after=5s 60s pkexec /usr/bin/systemctl "$action" "$service"; then
+    notify-send 'Kanata' "Kanata ${result}."
+  else
+    notify-send --urgency=critical 'Kanata' "Kanata request was cancelled, denied, or timed out."
+  fi
+else
+  exec wezterm start --always-new-process --class kanata-toggle -- bash -lc "
+    if sudo /usr/bin/systemctl ${action} ${service}; then
+      notify-send 'Kanata' 'Kanata ${result}.'
+    else
+      notify-send --urgency=critical 'Kanata' 'Could not ${action} Kanata.'
+    fi
+    printf '\\nPress Enter to close this terminal...'
+    read -r
+  "
+fi

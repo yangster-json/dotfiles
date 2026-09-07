@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Toggle Kanata
+Comment=Enable or disable Kanata keyboard remapping
+Exec=/home/json/.local/bin/toggle-kanata
+TryExec=/home/json/.local/bin/toggle-kanata
+Icon=preferences-desktop-keyboard
+Terminal=false
+Type=Application
+Categories=Settings;
+Keywords=keyboard;remap;kanata;toggle;
+StartupNotify=true

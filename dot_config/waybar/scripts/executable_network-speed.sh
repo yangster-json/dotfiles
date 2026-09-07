@@ -3,7 +3,9 @@ set -euo pipefail
 
 iface=$(awk '$2 == "00000000" { print $1; exit }' /proc/net/route)
 if [[ -z ${iface:-} || ! -r /sys/class/net/$iface/statistics/rx_bytes ]]; then
-  printf '󰤭\n'
+  # Keep the disconnected output as wide as the live-rate display so the icon
+  # remains aligned when Waybar reserves this module's fixed-width slot.
+  printf '󰤭 ↓ %4s\n' ""
   exit 0
 fi
 
