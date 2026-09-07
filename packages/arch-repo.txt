@@ -1,3 +1,4 @@
+7zip
 base
 base-devel
 brightnessctl
@@ -29,7 +30,9 @@ man-db
 neovim
 networkmanager
 nodejs
+noto-fonts-cjk
 noto-fonts-emoji
+noto-fonts-extra
 npm
 openssh
 pipewire
@@ -54,6 +57,7 @@ ttf-iosevka-nerd
 udiskie
 vulkan-radeon
 waybar
+webkit2gtk-4.1
 wezterm
 wget
 wireplumber

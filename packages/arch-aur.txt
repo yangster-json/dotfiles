@@ -1,4 +1,5 @@
 catppuccin-sddm-theme-mocha
+gazelle-tui
 hotkeyhub-bin
 kanata
 neofetch
