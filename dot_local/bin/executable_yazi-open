@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Open ordinary files through xdg-open; extract archives beside themselves.
+set -euo pipefail
+
+for path in "$@"; do
+  case "${path,,}" in
+    *.zip|*.7z|*.rar|*.tar|*.tar.gz|*.tar.bz2|*.tar.xz|*.tar.zst)
+      destination="${path%.*}"
+      case "${path,,}" in
+        *.tar.gz|*.tar.bz2|*.tar.xz|*.tar.zst) destination="${path%.*}"; destination="${destination%.*}" ;;
+      esac
+      mkdir -p "$destination"
+      7z x -y "-o$destination" "$path"
+      ;;
+    *)
+      xdg-open "$path"
+      ;;
+  esac
+done

@@ -1,3 +1,20 @@
 [manager]
 linemode = 'size_and_mtime'
 
+[opener]
+open = [
+  { run = '$HOME/.local/bin/yazi-open %s', desc = "Open", for = "unix" },
+]
+extract = [
+  { run = '$HOME/.local/bin/yazi-open %s', desc = "Extract here", for = "unix" },
+]
+
+[open]
+prepend_rules = [
+  { url = "*.zip", use = "extract" },
+  { url = "*.7z", use = "extract" },
+  { url = "*.tar", use = "extract" },
+  { url = "*.tar.*", use = "extract" },
+  { url = "*.rar", use = "extract" },
+]
+
