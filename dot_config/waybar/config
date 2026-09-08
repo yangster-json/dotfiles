@@ -48,7 +48,7 @@
   },
   "custom/media-title": {
     "exec": "~/.config/waybar/scripts/media-title.sh",
-    "interval": 1,
+    "interval": 5,
     "format": "󰎈 {}",
     "hide-empty-text": true,
     "escape": true,
@@ -96,9 +96,9 @@
         },
     // Show only workspaces assigned to each bar's own output.
     "all-outputs": false,
-    // Keep at least two workspace buttons visible on every output.
+    // Keep at least one workspace button visible on every output.
     "persistent-workspaces": {
-      "*": 2
+      "*": 1
     },
     "sort-by": "number"
   },
@@ -110,14 +110,14 @@
 
   "cpu": {
     "format": "<span color='#89b4fa'>󰍛</span> <span color='#cdd6f4'>{usage}%</span>",
-    "interval": 1,
+    "interval": 3,
     "format-alt-click": "click",
     "format-alt": "<span color='#00FF00'>{icon0}{icon1}{icon2}{icon3}</span> <span color='#FFFFFF'>{usage:>2}%</span> <span color='#00FF00'>󰍛</span>",
     "format-icons": ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"],
     "on-click": "gnome-system-monitor"
   },
   "memory": {
-    "interval": 3,
+    "interval": 5,
     "format": "<span color='#f38ba8'> </span> <span color='#cdd6f4'>{used:0.1f}G</span>"
   },
 
@@ -158,7 +158,7 @@
   "custom/microphone": {
     "exec": "~/.config/waybar/scripts/microphone.sh",
     "return-type": "json",
-    "interval": 1,
+    "interval": 5,
     "format": "{}",
     "on-click": "wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle"
   },
@@ -173,7 +173,7 @@
   },
   "custom/network": {
     "exec": "~/.config/waybar/scripts/network-speed.sh",
-    "interval": 1,
+    "interval": 2,
     "format": "{}",
     "min-length": 8,
     "max-length": 8,
@@ -190,7 +190,7 @@
     "tooltip": true
   },
   "disk":{
-	"interval": 3,
+	"interval": 30,
   "path": "/home",
 	"format": "<span color='#a6e3a1'> </span><span color='#cdd6f4'>{free}</span>",
 	"unit": "GB"
