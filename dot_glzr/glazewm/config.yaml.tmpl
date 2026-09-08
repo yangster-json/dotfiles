@@ -103,7 +103,7 @@ keybindings:
   # Update `zen` if the browser is not on PATH.
   - commands: ["shell-exec zen"]
     bindings: ["{{ $superKey }}+b"]
-  - commands: ["shell-exec wezterm-gui"]
+  - commands: ["shell-exec wezterm-gui --config-file %USERPROFILE%\\.wezterm.lua"]
     bindings: ["{{ $superKey }}+t"]
   - commands: ["shell-exec wt wsl -e btop"]
     bindings: ["{{ $superKey }}+shift+t"]
