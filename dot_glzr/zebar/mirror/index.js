@@ -12,6 +12,7 @@ const providers = createProviderGroup({
   media: { type: "media" },
   keyboard: { type: "keyboard", refreshInterval: 2000 },
   glazewm: { type: "glazewm" },
+  weather: { type: "weather" },
 });
 
 function render() {

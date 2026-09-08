@@ -11,6 +11,12 @@ export function buildSections(config, output = {}, kanataOn = false, now = new D
   const renderers = {
     cpu: () => percent(config.icons.cpu, p.cpu?.usage, "blue"),
     memory: () => percent(config.icons.memory, p.memory?.usage, "red"),
+    weather: () => {
+      const w = p.weather;
+      if (!w) return "";
+      const icon = w.isDaytime ? "󰖐" : "󰖔";
+      return item(`${icon} ${Math.round(w.celsiusTemp)}°C`, "blue");
+    },
     network: () => {
       const name = p.network?.defaultGateway?.ssid || p.network?.defaultInterface?.friendlyName;
       return name ? item(`󰈀 ${escape(name)}`, "yellow") : "";
