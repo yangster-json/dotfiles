@@ -20,8 +20,7 @@
           "offsetY": "0px",
           "width": "100%",
           "height": "41px",
-          "monitorSelection": { "type": "primary" },
-          "dockToEdge": { "enabled": true, "edge": "top", "windowMargin": "0px" }
+          "monitorSelection": { "type": "primary" }
         }
       ],
       "privileges": {
