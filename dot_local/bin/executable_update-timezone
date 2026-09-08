@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# GeoClue provides coordinates, while Open-Meteo resolves them to an IANA
+# timezone. Fall back to Los Angeles whenever either lookup is unavailable.
+fallback_timezone='America/Los_Angeles'
+
+geoclue_coordinates() {
+  local agent demo location coordinates
+  agent=/usr/lib/geoclue-2.0/demos/agent
+  demo=/usr/lib/geoclue-2.0/demos/where-am-i
+
+  [[ -x $agent && -x $demo ]] || return 1
+
+  # Hyprland does not necessarily launch XDG autostart entries, so start the
+  # packaged GeoClue permission agent on demand for this graphical session.
+  if ! pgrep -f -- "$agent" >/dev/null; then
+    nohup "$agent" >/dev/null 2>&1 &
+    sleep 1
+  fi
+
+  location=$(mktemp "${XDG_RUNTIME_DIR:-/tmp}/timezone-geoclue.XXXXXX")
+  stdbuf --output=L "$demo" >"$location" 2>/dev/null &
+  local demo_pid=$!
+  local deadline=$((SECONDS + 10))
+
+  while (( SECONDS < deadline )); do
+    coordinates=$(awk '
+      /^Latitude:/ {
+        latitude = $2
+        sub(/[^0-9.-].*$/, "", latitude)
+      }
+      /^Longitude:/ {
+        longitude = $2
+        sub(/[^0-9.-].*$/, "", longitude)
+      }
+      /^Accuracy:/ {
+        accuracy = $2
+        sub(/[^0-9.].*$/, "", accuracy)
+        if (latitude != "" && longitude != "" && accuracy != "") {
+          print latitude "," longitude
+          exit
+        }
+      }
+    ' "$location")
+    if [[ -n $coordinates ]]; then
+      kill -KILL "$demo_pid" 2>/dev/null || true
+      wait "$demo_pid" 2>/dev/null || true
+      rm -f "$location"
+      printf '%s\n' "$coordinates"
+      return 0
+    fi
+    kill -0 "$demo_pid" 2>/dev/null || break
+    sleep 0.2
+  done
+
+  kill -KILL "$demo_pid" 2>/dev/null || true
+  wait "$demo_pid" 2>/dev/null || true
+  rm -f "$location"
+  return 1
+}
+
+timezone_from_coordinates() {
+  local coordinates timezone
+  coordinates=$1
+
+  command -v curl >/dev/null && command -v jq >/dev/null || return 1
+  timezone=$(curl --fail --silent --show-error --location \
+    --connect-timeout 3 --max-time 8 \
+    --user-agent 'timezone-autodetect/1.0' \
+    "https://api.open-meteo.com/v1/forecast?latitude=${coordinates%%,*}&longitude=${coordinates##*,}&current=temperature_2m&timezone=auto" |
+    jq --raw-output --exit-status '.timezone | strings') || return 1
+
+  [[ -f "/usr/share/zoneinfo/$timezone" ]] || return 1
+  printf '%s\n' "$timezone"
+}
+
+timezone=$fallback_timezone
+if coordinates=$(geoclue_coordinates); then
+  timezone=$(timezone_from_coordinates "$coordinates" || printf '%s\n' "$fallback_timezone")
+fi
+
+current_timezone=$(timedatectl show --property=Timezone --value 2>/dev/null || true)
+[[ $current_timezone == "$timezone" ]] && exit 0
+
+# The system D-Bus policy may request authentication when the timezone changes.
+exec timedatectl set-timezone "$timezone"

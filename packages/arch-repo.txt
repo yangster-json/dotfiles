@@ -6,6 +6,7 @@ btop
 btrfs-progs
 chezmoi
 cliphist
+curl
 discord
 efibootmgr
 fzf
@@ -21,6 +22,7 @@ hyprpolkitagent
 hyprshot
 hyprshutdown
 inotify-tools
+jq
 lazygit
 libappindicator
 libnotify
