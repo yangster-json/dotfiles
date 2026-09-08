@@ -17,7 +17,7 @@ assert.match(read("style.css"), /--height: 41px/);
 const html = read("index.html");
 assert.match(html, /src="index\.js"/);
 assert.match(html, /href="style\.css"/);
-assert.doesNotMatch(html, /esm\.sh/);
+assert.match(html, /esm\.sh\/zebar/);
 
 const output = {
   cpu: { usage: 23 }, memory: { usage: 45 },
