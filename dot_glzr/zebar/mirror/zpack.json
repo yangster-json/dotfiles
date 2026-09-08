@@ -6,7 +6,7 @@
     {
       "name": "bar",
       "htmlPath": "index.html",
-      "includeFiles": ["**/*"],
+      "includeFiles": ["index.html", "index.js", "config.js", "render-model.js", "style.css"],
       "zOrder": "top_most",
       "shownInTaskbar": false,
       "focused": false,
