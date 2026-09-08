@@ -51,4 +51,4 @@ section > .module:only-child { border-radius: var(--radius); }
 .mauve { color: var(--mauve); }
 .workspace { color: var(--surface0); margin: 0 3px; }
 .workspace.active { color: var(--blue); }
-.module.workspaces { padding-right: 2px; }
+.module.workspaces { padding-right: 4px; }
