@@ -21,6 +21,7 @@
   ],
   "modules-right": [
     "custom/input",
+    "bluetooth",
     "pulseaudio",
     "custom/microphone",
     "battery",
@@ -32,7 +33,7 @@
 
   "group/tray": {
     "orientation": "horizontal",
-    "modules": ["bluetooth", "tray"]
+    "modules": ["tray"]
   },
   "tray": {
     "icon-size": 16,
