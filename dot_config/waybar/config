@@ -96,6 +96,10 @@
         },
     // Show only workspaces assigned to each bar's own output.
     "all-outputs": false,
+    // Keep at least two workspace buttons visible on every output.
+    "persistent-workspaces": {
+      "*": 2
+    },
     "sort-by": "number"
   },
   "clock": {

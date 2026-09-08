@@ -93,7 +93,7 @@ tooltip {
     background: #1e1e2e;
     border-radius: 13px;
     margin-left: 5px;
-    padding-right: 0px;
+    padding-right: 7px;
 }
 
 #window {
@@ -140,6 +140,7 @@ tooltip {
  color: #cba6f7;
  border-radius: 7px 7px 7px 7px;
  padding-left: 4px;
+ padding-right: 7px;
  margin-left:  5px;
  margin-right: 5px;
 }
@@ -215,12 +216,14 @@ tooltip {
 #cpu {
    border-radius: 13px 0px 0px 13px;
    padding-left:10px;
+   padding-right:10px;
    margin-right:0px;
    margin-left: 0px;
 }
 
 #custom-weather {
    border-radius: 13px 0px 0px 13px;
+   padding-left: 10px;
    margin-left: 0px;
    margin-right: 0px;
 }
