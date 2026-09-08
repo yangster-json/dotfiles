@@ -11,7 +11,7 @@ indicator-radius=80
 indicator-thickness=10
 
 # Catppuccin Mocha: crust, mantle, surface2, text, blue, mauve, and red.
-color=11111bdd
+color=11111bff
 key-hl-color=cdd6f4
 caps-lock-key-hl-color=f9e2af
 separator-color=00000000

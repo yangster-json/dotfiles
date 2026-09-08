@@ -42,3 +42,7 @@ source-only
 .local/bin/hypr-cycle-workspace
 .local/bin/yazi-open
 {{- end }}
+
+{{- if ne .chezmoi.os "windows" }}
+.glzr/zebar/
+{{- end }}

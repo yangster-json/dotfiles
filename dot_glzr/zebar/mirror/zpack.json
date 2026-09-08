@@ -1,0 +1,36 @@
+{
+  "$schema": "https://raw.githubusercontent.com/glzr-io/zebar/main/resources/zpack-schema.json",
+  "name": "mirror",
+  "version": "1.0.0",
+  "widgets": [
+    {
+      "name": "bar",
+      "htmlPath": "index.html",
+      "zOrder": "top_most",
+      "shownInTaskbar": false,
+      "focused": false,
+      "resizable": false,
+      "transparent": true,
+      "presets": [
+        {
+          "name": "top",
+          "anchor": "top_left",
+          "offsetX": "0px",
+          "offsetY": "0px",
+          "width": "100%",
+          "height": "41px",
+          "monitorSelection": { "type": "all" },
+          "dockToEdge": { "enabled": true, "edge": "top", "windowMargin": "0px" }
+        }
+      ],
+      "privileges": {
+        "shellCommands": [
+          {
+            "program": "powershell.exe",
+            "argsRegex": "^-NoProfile -Command Get-Process kanata -ErrorAction SilentlyContinue$"
+          }
+        ]
+      }
+    }
+  ]
+}

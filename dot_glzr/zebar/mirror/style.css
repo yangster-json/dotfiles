@@ -1,0 +1,53 @@
+/* Standalone Catppuccin Mocha theme; unrelated to Waybar's stylesheet. */
+:root {
+  --base: #1e1e2e;
+  --text: #cdd6f4;
+  --blue: #89b4fa;
+  --green: #a6e3a1;
+  --yellow: #f9e2af;
+  --red: #f38ba8;
+  --mauve: #cba6f7;
+  --surface0: #313244;
+  /* Keep height consistent with the preset in zpack.json. */
+  --height: 41px;
+  --margin: 5px;
+  --radius: 13px;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font: 700 12px "JetBrainsMono Nerd Font", monospace;
+  color: var(--text);
+}
+#bar {
+  height: var(--height);
+  padding: 0 var(--margin);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+}
+section { display: flex; align-items: center; min-width: 0; overflow: hidden; }
+#center { justify-content: center; }
+#right { justify-content: flex-end; }
+.module {
+  background: var(--base);
+  padding: 1.5px 7px;
+  margin: var(--margin) 0;
+  min-height: calc(var(--height) - 2 * var(--margin));
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.module:first-child { border-radius: var(--radius) 0 0 var(--radius); }
+.module:last-child { border-radius: 0 var(--radius) var(--radius) 0; }
+section > .module:only-child { border-radius: var(--radius); }
+.blue { color: var(--blue); }
+.green { color: var(--green); }
+.yellow { color: var(--yellow); }
+.red { color: var(--red); }
+.mauve { color: var(--mauve); }
+.workspace { color: var(--surface0); margin: 0 3px; }
+.workspace.active { color: var(--blue); }
