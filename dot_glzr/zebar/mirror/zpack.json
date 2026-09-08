@@ -29,6 +29,10 @@
           {
             "program": "powershell.exe",
             "argsRegex": "^-NoProfile -Command Get-Process kanata -ErrorAction SilentlyContinue$"
+          },
+          {
+            "program": "powershell.exe",
+            "argsRegex": "^-NoProfile -Command \\$d=Get-PSDrive C; \\[math\\]::Round\\(\\$d\\.Used/\\(\\$d\\.Used\\+\\$d\\.Free\\)\\*100\\)$"
           }
         ]
       }

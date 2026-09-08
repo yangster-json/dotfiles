@@ -6,11 +6,12 @@ function percent(icon, value, tone) {
   return Number.isFinite(value) ? item(`${escape(icon)} ${Math.round(value)}%`, tone) : "";
 }
 
-export function buildSections(config, output = {}, kanataOn = false, now = new Date()) {
+export function buildSections(config, output = {}, kanataOn = false, storagePct = null, now = new Date()) {
   const p = output;
   const renderers = {
     cpu: () => percent(config.icons.cpu, p.cpu?.usage, "blue"),
     memory: () => percent(config.icons.memory, p.memory?.usage, "red"),
+    storage: () => storagePct !== null ? percent(config.icons.storage, storagePct, "yellow") : "",
     weather: () => {
       const w = p.weather;
       if (!w) return "";
@@ -47,6 +48,9 @@ export function buildSections(config, output = {}, kanataOn = false, now = new D
     clock: () => item(`${escape(config.icons.clock)} ${escape(now.toLocaleTimeString([], {
       hour: "2-digit", minute: "2-digit",
     }))}`, "green"),
+    date: () => item(`${escape(config.icons.date)} ${escape(now.toLocaleDateString([], {
+      month: "short", day: "numeric",
+    }))}`, "mauve"),
   };
 
   return Object.fromEntries(Object.entries(config.modules).map(([group, names]) => [
