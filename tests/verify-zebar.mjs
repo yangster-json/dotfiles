@@ -35,7 +35,7 @@ assert.match(sections.right, /class="green"/);
 assert.ok(sections.right.indexOf("English") < sections.right.indexOf("67%"));
 assert.equal(buildSections(config, {}).left, "");
 assert.doesNotMatch(buildSections(config, { cpu: {} }).left, /0%/);
-const reordered = { ...config, modules: { left: ["memory", "cpu"], center: [], right: [] } };
+const reordered = { ...config, modules: { left: [["memory", "cpu"]], center: [], right: [] } };
 const left = buildSections(reordered, output).left;
 assert.ok(left.indexOf("45%") < left.indexOf("23%"));
 

@@ -53,7 +53,14 @@ export function buildSections(config, output = {}, kanataOn = false, storagePct 
     }))}`, "mauve"),
   };
 
-  return Object.fromEntries(Object.entries(config.modules).map(([group, names]) => [
-    group, names.map(name => renderers[name]?.()).filter(Boolean).join(""),
+  // Build HTML for one bubble (sub-array of module names → one pill).
+  function renderBubble(names) {
+    const modules = names.map(name => renderers[name]?.()).filter(Boolean);
+    if (!modules.length) return "";
+    return `<span class="bubble">${modules.join("")}</span>`;
+  }
+
+  return Object.fromEntries(Object.entries(config.modules).map(([group, bubbles]) => [
+    group, bubbles.map(renderBubble).filter(Boolean).join(""),
   ]));
 }

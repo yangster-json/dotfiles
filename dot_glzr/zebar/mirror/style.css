@@ -30,10 +30,16 @@ body {
 section { display: flex; align-items: center; min-width: 0; overflow: hidden; }
 #center { justify-content: center; }
 #right { justify-content: flex-end; }
+.bubble {
+  display: flex;
+  align-items: center;
+  margin: var(--margin) 0;
+  margin-right: var(--margin);
+}
+.bubble:last-child { margin-right: 0; }
 .module {
   background: var(--base);
   padding: 1.5px 7px;
-  margin: var(--margin) 0;
   min-height: calc(var(--height) - 2 * var(--margin));
   min-width: 0;
   display: flex;
@@ -41,9 +47,9 @@ section { display: flex; align-items: center; min-width: 0; overflow: hidden; }
   white-space: nowrap;
   overflow: hidden;
 }
-.module:first-child { border-radius: var(--radius) 0 0 var(--radius); }
-.module:last-child { border-radius: 0 var(--radius) var(--radius) 0; }
-section > .module:only-child { border-radius: var(--radius); }
+.bubble > .module:first-child { border-radius: var(--radius) 0 0 var(--radius); }
+.bubble > .module:last-child { border-radius: 0 var(--radius) var(--radius) 0; }
+.bubble > .module:only-child { border-radius: var(--radius); }
 .blue { color: var(--blue); }
 .green { color: var(--green); }
 .yellow { color: var(--yellow); }
