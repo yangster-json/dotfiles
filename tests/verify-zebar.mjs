@@ -14,8 +14,10 @@ assert.equal(widget.htmlPath, "index.html");
 assert.equal(widget.presets[0].height, "41px");
 assert.equal(widget.presets[0].offsetX, "0px");
 assert.match(read("style.css"), /--height: 41px/);
-const importMap = JSON.parse(read("index.html").match(/<script type="importmap">([\s\S]*?)<\/script>/)[1]);
-assert.equal(importMap.imports.zebar, "https://esm.sh/zebar@3.0.0");
+const html = read("index.html");
+assert.match(html, /src="index\.js"/);
+assert.match(html, /href="style\.css"/);
+assert.doesNotMatch(html, /esm\.sh/);
 
 const output = {
   cpu: { usage: 23 }, memory: { usage: 45 },
