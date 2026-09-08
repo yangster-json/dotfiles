@@ -25,7 +25,7 @@ export function buildSections(config, output = {}, kanataOn = false, now = new D
       return item(workspaces.map(w => {
         const active = w.name === p.glazewm.displayedWorkspace?.name;
         return `<span class="workspace ${active ? "active" : ""}" title="${escape(w.name)}">●</span>`;
-      }).join(""));
+      }).join(""), "workspaces");
     },
     input: () => {
       if (!p.keyboard?.layout) return "";
