@@ -94,11 +94,9 @@
       "default": "",
 
         },
-    "sort-by-number": true,
-    "persistent-workspaces": {
-      "*": 9,
-      "DP-1": 9
-    }
+    // Show only workspaces assigned to each bar's own output.
+    "all-outputs": false,
+    "sort-by": "number"
   },
   "clock": {
     "tooltip-format": "<big>{:%Y %B}</big>\n<tt><small>{calendar}</small></tt>",
