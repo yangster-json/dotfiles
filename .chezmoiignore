@@ -24,3 +24,21 @@ source-only
 .skills/{{ . }}
 {{ end -}}
 {{ end -}}
+
+{{- if not (and (eq .chezmoi.os "linux") (eq .chezmoi.osRelease.id "arch")) }}
+.config/gammastep/
+.config/gazelle/
+.config/gtk-3.0/
+.config/gtk-4.0/
+.config/hypr/
+.config/qBittorrent/
+.config/rofi/
+.config/swayidle/
+.config/swaylock/
+.config/swaync/
+.config/waybar/
+.config/yazi/
+.config/zathura/
+.local/bin/hypr-cycle-workspace
+.local/bin/yazi-open
+{{- end }}
