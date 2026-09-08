@@ -301,9 +301,9 @@ hl.bind(mainMod .. " + J", hl.dsp.focus({ direction = "down" }))
 hl.bind(mainMod .. " + K", hl.dsp.focus({ direction = "up" }))
 hl.bind(mainMod .. " + L", hl.dsp.focus({ direction = "right" }))
 
--- Rotate through existing workspaces with mainMod + left/right
-hl.bind(mainMod .. " + left",  hl.dsp.focus({ workspace = "e-1" }))
-hl.bind(mainMod .. " + right", hl.dsp.focus({ workspace = "e+1" }))
+-- Rotate through existing workspaces on the focused monitor with mainMod + left/right.
+hl.bind(mainMod .. " + left",  hl.dsp.exec_cmd("hypr-cycle-workspace prev"))
+hl.bind(mainMod .. " + right", hl.dsp.exec_cmd("hypr-cycle-workspace next"))
 
 -- Switch workspaces with mainMod + [0-9]
 -- Move active window to a workspace with mainMod + SHIFT + [0-9]
