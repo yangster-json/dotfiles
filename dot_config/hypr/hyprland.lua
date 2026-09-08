@@ -295,15 +295,15 @@ hl.bind(mainMod .. " + SHIFT + L", hl.dsp.exec_cmd("swaylock -f"))
 -- Toggle Gammastep's solar colour adjustment without stopping its GeoClue updates.
 hl.bind(mainMod .. " + N", hl.dsp.exec_cmd("systemctl --user kill --signal=USR1 gammastep.service"))
 
--- Move focus with mainMod + arrow keys or vim keys
-hl.bind(mainMod .. " + H",     hl.dsp.focus({ direction = "left" }))
-hl.bind(mainMod .. " + J",     hl.dsp.focus({ direction = "down" }))
-hl.bind(mainMod .. " + K",     hl.dsp.focus({ direction = "up" }))
-hl.bind(mainMod .. " + L",     hl.dsp.focus({ direction = "right" }))
-hl.bind(mainMod .. " + left",  hl.dsp.focus({ direction = "left" }))
-hl.bind(mainMod .. " + right", hl.dsp.focus({ direction = "right" }))
-hl.bind(mainMod .. " + up",    hl.dsp.focus({ direction = "up" }))
-hl.bind(mainMod .. " + down",  hl.dsp.focus({ direction = "down" }))
+-- Move focus with mainMod + vim keys
+hl.bind(mainMod .. " + H", hl.dsp.focus({ direction = "left" }))
+hl.bind(mainMod .. " + J", hl.dsp.focus({ direction = "down" }))
+hl.bind(mainMod .. " + K", hl.dsp.focus({ direction = "up" }))
+hl.bind(mainMod .. " + L", hl.dsp.focus({ direction = "right" }))
+
+-- Rotate through existing workspaces with mainMod + left/right
+hl.bind(mainMod .. " + left",  hl.dsp.focus({ workspace = "e-1" }))
+hl.bind(mainMod .. " + right", hl.dsp.focus({ workspace = "e+1" }))
 
 -- Switch workspaces with mainMod + [0-9]
 -- Move active window to a workspace with mainMod + SHIFT + [0-9]
