@@ -1,0 +1,201 @@
+{{ $superKey := "lwin" }}
+# GlazeWM v3 configuration modelled on dot_config/hypr/hyprland.lua.
+# ChezMoi deploys this as %USERPROFILE%\.glzr\glazewm\config.yaml.
+#
+# `alt` is the Super modifier in this Windows translation, matching the
+# standard GlazeWM convention and avoiding Windows-reserved Win shortcuts.
+
+general:
+  startup_commands: []
+  shutdown_commands: []
+  config_reload_commands: []
+  focus_follows_cursor: true
+  toggle_workspace_on_refocus: false
+  cursor_jump:
+    enabled: true
+    trigger: "monitor_focus"
+  hide_method: "cloak"
+  show_all_in_taskbar: false
+
+gaps:
+  scale_with_dpi: true
+  inner_gap: "0px"
+  outer_gap:
+    top: "0px"
+    right: "0px"
+    bottom: "0px"
+    left: "0px"
+
+# Catppuccin Mocha, matching the Hyprland active/inactive border palette.
+# GlazeWM cannot provide Hyprland's gradient border, blur, shadow, or animations.
+window_effects:
+  focused_window:
+    border:
+      enabled: true
+      color: "#cba6f7" # mauve
+    hide_title_bar:
+      enabled: true
+    corner_style:
+      enabled: true
+      style: "rounded"
+    transparency:
+      enabled: false
+      opacity: "100%"
+  other_windows:
+    border:
+      enabled: true
+      color: "#313244" # surface0
+    hide_title_bar:
+      enabled: true
+    corner_style:
+      enabled: true
+      style: "rounded"
+    transparency:
+      enabled: false
+      opacity: "100%"
+
+window_behavior:
+  initial_state: "tiling"
+  state_defaults:
+    floating:
+      centered: true
+      shown_on_top: false
+    fullscreen:
+      maximized: false
+      shown_on_top: false
+
+workspaces:
+  - name: "1"
+  - name: "2"
+  - name: "3"
+  - name: "4"
+  - name: "5"
+  - name: "6"
+  - name: "7"
+  - name: "8"
+  - name: "9"
+  - name: "10"
+
+# Windows equivalents for Hyprland's floating/pinned helper windows.
+# `ignore` is the closest equivalent to Hyprland's pinned picture-in-picture.
+window_rules:
+  - commands: ["ignore"]
+    match:
+      - window_title: { regex: "[Pp]icture.in.[Pp]icture" }
+        window_class: { regex: "Chrome_WidgetWin_1|MozillaDialogClass" }
+  # Avoid tiling common utility overlays and PowerToys tools.
+  - commands: ["ignore"]
+    match:
+      - window_process: { equals: "PowerToys" }
+      - window_title: { equals: "Command Palette" }
+        window_class: { equals: "WinUIDesktopWin32WindowClass" }
+
+binding_modes:
+  - name: "resize"
+    keybindings:
+      - commands: ["resize --width -2%"]
+        bindings: ["h", "left"]
+      - commands: ["resize --width +2%"]
+        bindings: ["l", "right"]
+      - commands: ["resize --height +2%"]
+        bindings: ["k", "up"]
+      - commands: ["resize --height -2%"]
+        bindings: ["j", "down"]
+      - commands: ["wm-disable-binding-mode --name resize"]
+        bindings: ["escape", "enter", "alt+r"]
+
+keybindings:
+  # Applications: Windows/WSL replacements for the Hyprland launchers.
+  # Update `zen` if the browser is not on PATH.
+  - commands: ["shell-exec zen"]
+    bindings: ["{{ $superKey }}+b"]
+  - commands: ["shell-exec wt"]
+    bindings: ["{{ $superKey }}+t"]
+  - commands: ["shell-exec wt wsl -e btop"]
+    bindings: ["{{ $superKey }}+shift+t"]
+  - commands: ["shell-exec wt -d %USERPROFILE% yazi"]
+    bindings: ["{{ $superKey }}+e"]
+  - commands: ["shell-exec explorer"]
+    bindings: ["{{ $superKey }}+shift+e"]
+  - commands: ["shell-exec powertoys"]
+    bindings: ["{{ $superKey }}+r"]
+  - commands: ["shell-exec rundll32.exe user32.dll,LockWorkStation"]
+    bindings: ["{{ $superKey }}+shift+l"]
+  - commands: ["shell-exec snippingtool /clip"]
+    bindings: ["{{ $superKey }}+shift+s"]
+
+  # Window controls.
+  - commands: ["close"]
+    bindings: ["{{ $superKey }}+q"]
+  - commands: ["close"]
+    bindings: ["{{ $superKey }}+shift+q"]
+  - commands: ["toggle-floating --centered"]
+    bindings: ["{{ $superKey }}+v"]
+  - commands: ["toggle-tiling-direction"]
+    bindings: ["{{ $superKey }}+p"]
+  - commands: ["toggle-fullscreen"]
+    bindings: ["{{ $superKey }}+f"]
+  - commands: ["wm-enable-binding-mode --name resize"]
+    bindings: ["{{ $superKey }}+shift+r"]
+  - commands: ["wm-reload-config"]
+    bindings: ["{{ $superKey }}+shift+c"]
+
+  # Hyprland's Super+H/J/K/L directional focus.
+  - commands: ["focus --direction left"]
+    bindings: ["{{ $superKey }}+h"]
+  - commands: ["focus --direction down"]
+    bindings: ["{{ $superKey }}+j"]
+  - commands: ["focus --direction up"]
+    bindings: ["{{ $superKey }}+k"]
+  - commands: ["focus --direction right"]
+    bindings: ["{{ $superKey }}+l"]
+
+  # Hyprland's Super+Left/Right active-workspace cycling.
+  - commands: ["focus --prev-active-workspace"]
+    bindings: ["{{ $superKey }}+left"]
+  - commands: ["focus --next-active-workspace"]
+    bindings: ["{{ $superKey }}+right"]
+
+  # Hyprland's Super+[1..0] workspace navigation.
+  - commands: ["focus --workspace 1"]
+    bindings: ["{{ $superKey }}+1"]
+  - commands: ["focus --workspace 2"]
+    bindings: ["{{ $superKey }}+2"]
+  - commands: ["focus --workspace 3"]
+    bindings: ["{{ $superKey }}+3"]
+  - commands: ["focus --workspace 4"]
+    bindings: ["{{ $superKey }}+4"]
+  - commands: ["focus --workspace 5"]
+    bindings: ["{{ $superKey }}+5"]
+  - commands: ["focus --workspace 6"]
+    bindings: ["{{ $superKey }}+6"]
+  - commands: ["focus --workspace 7"]
+    bindings: ["{{ $superKey }}+7"]
+  - commands: ["focus --workspace 8"]
+    bindings: ["{{ $superKey }}+8"]
+  - commands: ["focus --workspace 9"]
+    bindings: ["{{ $superKey }}+9"]
+  - commands: ["focus --workspace 10"]
+    bindings: ["{{ $superKey }}+0"]
+
+  # Hyprland's Super+Shift+[1..0] move-and-follow bindings.
+  - commands: ["move --workspace 1", "focus --workspace 1"]
+    bindings: ["{{ $superKey }}+shift+1"]
+  - commands: ["move --workspace 2", "focus --workspace 2"]
+    bindings: ["{{ $superKey }}+shift+2"]
+  - commands: ["move --workspace 3", "focus --workspace 3"]
+    bindings: ["{{ $superKey }}+shift+3"]
+  - commands: ["move --workspace 4", "focus --workspace 4"]
+    bindings: ["{{ $superKey }}+shift+4"]
+  - commands: ["move --workspace 5", "focus --workspace 5"]
+    bindings: ["{{ $superKey }}+shift+5"]
+  - commands: ["move --workspace 6", "focus --workspace 6"]
+    bindings: ["{{ $superKey }}+shift+6"]
+  - commands: ["move --workspace 7", "focus --workspace 7"]
+    bindings: ["{{ $superKey }}+shift+7"]
+  - commands: ["move --workspace 8", "focus --workspace 8"]
+    bindings: ["{{ $superKey }}+shift+8"]
+  - commands: ["move --workspace 9", "focus --workspace 9"]
+    bindings: ["{{ $superKey }}+shift+9"]
+  - commands: ["move --workspace 10", "focus --workspace 10"]
+    bindings: ["{{ $superKey }}+shift+0"]
