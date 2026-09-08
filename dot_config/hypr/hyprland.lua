@@ -24,13 +24,8 @@ local colors = require("themes.catppuccin-mocha")
 ---- MONITORS ----
 ------------------
 
--- See https://wiki.hypr.land/Configuring/Basics/Monitors/
-hl.monitor({
-    output   = "",
-    mode     = "preferred",
-    position = "auto",
-    scale    = 0.92,
-})
+-- Generated and maintained by nwg-displays at ~/.config/hypr/monitors.lua.
+require("monitors")
 
 
 ---------------------
