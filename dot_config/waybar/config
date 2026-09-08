@@ -20,8 +20,7 @@
     "hyprland/workspaces"
   ],
   "modules-right": [
-    "custom/kanata",
-    "hyprland/language",
+    "custom/input",
     "pulseaudio",
     "custom/microphone",
     "battery",
@@ -179,24 +178,13 @@
     "on-click": "wezterm start --class Gazelle -- gazelle"
   },
 
-  "custom/kanata": {
-    "exec": "~/.config/waybar/scripts/kanata-status.sh",
+  "custom/input": {
+    "exec": "~/.config/waybar/scripts/input-status.sh",
     "return-type": "json",
     "interval": 2,
     "format": "{text}",
-    "hide-empty-text": true,
     "tooltip": true
   },
-
-   "hyprland/language": {
-
-  "format": "<span color='#f9e2af'>󰌌</span> <span color='#cdd6f4'>{}</span>",
-
-  "format-ar": "ara",
-
-  "format-en": "eng",
-
-},
   "disk":{
 	"interval": 3,
   "path": "/home",
