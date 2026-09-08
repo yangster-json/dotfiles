@@ -20,6 +20,13 @@ config.window_close_confirmation = 'NeverPrompt'
 config.front_end = "OpenGL"
 config.adjust_window_size_when_changing_font_size = false
 config.keys = {
+  -- Terminals traditionally encode Ctrl+Backspace as Ctrl+H.  Send Ctrl+W
+  -- instead: readline, ZLE, and Pi use it for backward word deletion.
+  {
+    key = 'Backspace',
+    mods = 'CTRL',
+    action = wezterm.action.SendKey { key = 'w', mods = 'CTRL' },
+  },
   -- Unbind CTRL + PageDown so it passes straight through to Neovim
   {
     key = 'PageDown',
