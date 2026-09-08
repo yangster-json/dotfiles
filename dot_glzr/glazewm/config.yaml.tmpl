@@ -70,6 +70,9 @@ workspaces:
 # Windows equivalents for Hyprland's floating/pinned helper windows.
 # `ignore` is the closest equivalent to Hyprland's pinned picture-in-picture.
 window_rules:
+  - commands: ["set-tiling"]
+    match:
+      - window_process: { equals: "wezterm-gui" }
   - commands: ["ignore"]
     match:
       - window_title: { regex: "[Pp]icture.in.[Pp]icture" }

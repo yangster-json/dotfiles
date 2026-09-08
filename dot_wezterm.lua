@@ -7,17 +7,17 @@ config.color_scheme = 'Catppuccin Mocha'
 config.font = wezterm.font('IosevkaTerm Nerd Font Mono')
 config.font_size = 11
 config.window_background_opacity = 0.93
-config.window_decorations = "NONE"
+config.window_decorations = "RESIZE"
 config.enable_tab_bar= false
 config.line_height = 0.9
 config.window_padding = {
-  left = 0,
-  right = 0,
-  top = 0,
-  bottom = 0,
+  left = 4,
+  right = 4,
+  top = 4,
+  bottom = 4,
 }
 config.window_close_confirmation = 'NeverPrompt'
-config.front_end = "OpenGL"
+config.front_end = "WebGpu"
 config.adjust_window_size_when_changing_font_size = false
 config.keys = {
   -- Terminals traditionally encode Ctrl+Backspace as Ctrl+H.  Send Ctrl+W
