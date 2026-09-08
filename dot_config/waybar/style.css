@@ -66,6 +66,7 @@ tooltip {
 }
 #custom-weather,
 #custom-media-title,
+#custom-kanata,
 #language,
 #cpu,
 #window,
@@ -207,9 +208,13 @@ tooltip {
     margin-right: 0px;
 }
 
+#custom-kanata {
+   color: #a6e3a1;
+}
+
 #language {
    border-radius: 13px 0px 0px 13px;
-   margin-right:0px;
+   margin-right: 0px;
 }
 
 #cpu {

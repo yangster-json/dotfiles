@@ -20,6 +20,7 @@
     "hyprland/workspaces"
   ],
   "modules-right": [
+    "custom/kanata",
     "hyprland/language",
     "pulseaudio",
     "custom/microphone",
@@ -176,6 +177,15 @@
     "align": 1,
     "justify": "right",
     "on-click": "wezterm start --class Gazelle -- gazelle"
+  },
+
+  "custom/kanata": {
+    "exec": "~/.config/waybar/scripts/kanata-status.sh",
+    "return-type": "json",
+    "interval": 2,
+    "format": "{text}",
+    "hide-empty-text": true,
+    "tooltip": true
   },
 
    "hyprland/language": {
