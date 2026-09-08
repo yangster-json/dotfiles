@@ -70,6 +70,10 @@ workspaces:
 # Windows equivalents for Hyprland's floating/pinned helper windows.
 # `ignore` is the closest equivalent to Hyprland's pinned picture-in-picture.
 window_rules:
+  # Ignore Zebar widgets so GlazeWM doesn't tile them.
+  - commands: ["ignore"]
+    match:
+      - window_process: { equals: "zebar" }
   - commands: ["set-tiling"]
     match:
       - window_process: { equals: "wezterm-gui" }
