@@ -13,6 +13,7 @@ elephant-windows-bin
 elephant-wireplumber-bin
 gazelle-tui
 hotkeyhub-bin
+hyprmon-bin
 kanata
 neofetch
 timeshift-autosnap

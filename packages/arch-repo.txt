@@ -1,12 +1,13 @@
 7zip
 base
 base-devel
+bluez
+bluez-utils
 brightnessctl
 btop
 btrfs-progs
 chezmoi
 cliphist
-curl
 discord
 efibootmgr
 fzf
@@ -22,7 +23,6 @@ hyprpolkitagent
 hyprshot
 hyprshutdown
 inotify-tools
-jq
 lazygit
 libappindicator
 libnotify
@@ -55,6 +55,7 @@ swaync
 thunar
 timeshift
 ttf-iosevka-nerd
+ttf-iosevkaterm-nerd
 udiskie
 vulkan-radeon
 waybar
@@ -62,8 +63,10 @@ webkit2gtk-4.1
 wezterm
 wget
 wireplumber
+xclip
 xdg-desktop-portal-gtk
 xdg-desktop-portal-hyprland
+xsel
 yazi
 zathura
 zathura-pdf-mupdf
