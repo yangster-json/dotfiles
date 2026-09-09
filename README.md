@@ -107,7 +107,8 @@ herdr plugin link ~/.local/share/chezmoi/dot_config/herdr/plugins/clock
 
 ### Separate Waybar and Zebar configurations
 
-The bars have independent configurations with similar Catppuccin Mocha styling.
+The bars have independent configurations. Zebar mirrors Waybar's module order,
+Catppuccin Mocha styling, rounded groups, labels and controls, without a system tray.
 There is no shared bar data, file watcher, or automatic synchronization.
 
 - **Arch Waybar:** `dot_config/waybar/config`, `dot_config/waybar/style.css`,
@@ -131,13 +132,38 @@ After editing and applying any Zebar file, close and reopen just the
 `mirror/bar` widget. Future visual changes must be made separately in both bars.
 For Waybar changes on Arch, apply `~/.config/waybar` and reload Waybar as usual.
 
-Zebar displays CPU, memory, network name, media title, GlazeWM workspaces,
-keyboard layout, audio volume, battery, and clock when their providers are
-available. Provider failures hide only the affected modules. The keyboard pill
-checks `Get-Process kanata` through a narrowly permitted PowerShell command;
-missing permission or process hides its Kanata marker. This is a process-running
-indicator, not proof that key remapping is active. Linux weather, disk,
-microphone, tray, network-speed scripts, and click actions are not translated.
+Zebar matches the following Waybar features:
 
-Windows runtime and appearance still need manual testing: open the preset,
-check workspace/audio/keyboard values, and start/stop Kanata to check its marker.
+- Left: CPU %, used RAM in GiB, free disk space; wttr.in weather in °F and
+  default-interface download speed; truncated media title with its full tooltip.
+- Center: numerically sorted, clickable GlazeWM workspaces on each monitor.
+- Right: `eng`/`ara` layout and Kanata marker, connected Bluetooth devices and
+  battery when exposed by the driver, speaker, microphone, battery, and clock.
+- Speaker click toggles mute; scrolling changes volume by 10 percentage points.
+  Microphone click toggles input mute. Clock click switches to ISO date, and
+  hovering shows a month calendar. Weather click refreshes its data.
+- CPU click opens Task Manager; network click opens Windows network settings.
+
+`windows.ps1` supplies narrowly allowlisted, non-overlapping queries for Kanata,
+Bluetooth, weather, and network counters. Keep it at the deployed path above.
+Weather uses wttr.in's public-IP location estimate (no Linux GeoClue equivalent).
+Disk defaults to `C:\` rather than `/home`; change `diskMount` in `config.js`.
+Kanata reports a running process, not proof that key remapping is active.
+GlazeWM supplies its own workspace lifecycle/state; Hyprland-only persistent or
+urgent workspace states cannot be reproduced exactly. Media requires a Windows
+application exposing system media metadata.
+
+Tooltips use native WebView2 `title` popups: HTML overlays would be clipped by
+this 41px widget window. Keyed DOM updates preserve hovered/focused elements.
+Names and titles are escaped, and multiline tooltips include weather, microphone,
+Bluetooth, resource and calendar details. Native tooltip styling/delay follows
+Windows rather than GTK; calendar alignment depends on its tooltip font.
+The speaker intentionally has no tooltip, matching Waybar's `tooltip: false`.
+
+Run `bash tests/verify-zebar.sh` for fixture, startup and deployment checks.
+`tests/verify-zebar-browser.mjs` additionally tests DOM stability, tooltip text,
+layout and interactions with Playwright (installation command in its header).
+Windows runtime still needs a manual check: reload the preset, hover each module
+long enough for its native tooltip, check workspace focus and audio controls,
+connect/disconnect Bluetooth, and start/stop Kanata. Browser tests use mocked
+providers and do not verify Windows hardware or native WebView2 popups.

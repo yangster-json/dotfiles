@@ -6,7 +6,7 @@
     {
       "name": "bar",
       "htmlPath": "index.html",
-      "includeFiles": ["index.html", "index.js", "config.js", "render-model.js", "style.css"],
+      "includeFiles": ["index.html", "index.js", "config.js", "render-model.js", "format.js", "dom.js", "actions.js", "windows.js", "windows.ps1", "style.css"],
       "zOrder": "top_most",
       "shownInTaskbar": false,
       "focused": false,
@@ -28,11 +28,15 @@
         "shellCommands": [
           {
             "program": "powershell.exe",
-            "argsRegex": "^-NoProfile -Command Get-Process kanata -ErrorAction SilentlyContinue$"
+            "argsRegex": "^-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command & \\(Join-Path \\$env:USERPROFILE '\\.glzr/zebar/mirror/windows\\.ps1'\\) -Query (kanata|network|bluetooth|weather)$"
           },
           {
-            "program": "powershell.exe",
-            "argsRegex": "^-NoProfile -Command \\$d=Get-PSDrive C; \\[math\\]::Round\\(\\$d\\.Used/\\(\\$d\\.Used\\+\\$d\\.Free\\)\\*100\\)$"
+            "program": "Taskmgr.exe",
+            "argsRegex": "^$"
+          },
+          {
+            "program": "explorer.exe",
+            "argsRegex": "^ms-settings:network-status$"
           }
         ]
       }

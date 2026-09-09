@@ -1,0 +1,76 @@
+param([Parameter(Mandatory)][ValidateSet('kanata', 'network', 'bluetooth', 'weather')][string]$Query)
+$ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+
+function Get-BluetoothDevices {
+    # Query connected association endpoints, not merely paired/present PnP nodes.
+    # Protocol IDs: https://learn.microsoft.com/windows/uwp/devices-sensors/aep-service-class-ids
+    Add-Type -AssemblyName System.Runtime.WindowsRuntime
+    $null = [Windows.Devices.Enumeration.DeviceInformation, Windows.Devices.Enumeration, ContentType = WindowsRuntime]
+    $null = [Windows.Devices.Enumeration.DeviceInformationCollection, Windows.Devices.Enumeration, ContentType = WindowsRuntime]
+    $null = [Windows.Devices.Enumeration.DeviceInformationKind, Windows.Devices.Enumeration, ContentType = WindowsRuntime]
+    $selector = '(System.Devices.Aep.ProtocolId:="{e0cbf06c-cd8b-4647-bb8a-263b43f0f974}" OR System.Devices.Aep.ProtocolId:="{bb7bb05e-5972-42b5-94fc-76eaa7084d49}") AND System.Devices.Aep.IsConnected:=System.StructuredQueryType.Boolean#True'
+    $operation = [Windows.Devices.Enumeration.DeviceInformation]::FindAllAsync(
+        $selector, [string[]]@('System.Devices.Aep.ContainerId'),
+        [Windows.Devices.Enumeration.DeviceInformationKind]::AssociationEndpoint)
+    $asTask = [System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {
+        $_.Name -eq 'AsTask' -and $_.IsGenericMethod -and $_.GetGenericArguments().Count -eq 1 -and
+        $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1'
+    } | Select-Object -First 1
+    $task = $asTask.MakeGenericMethod([Windows.Devices.Enumeration.DeviceInformationCollection]).Invoke($null, @($operation))
+    if (-not $task.Wait(8000)) { throw 'Bluetooth enumeration timed out' }
+
+    # Battery is driver-dependent. Match by container ID, never by friendly name.
+    $batteries = @{}
+    foreach ($device in @(Get-PnpDevice -Class Bluetooth -PresentOnly -ErrorAction SilentlyContinue)) {
+        $properties = @(Get-PnpDeviceProperty -InstanceId $device.InstanceId -ErrorAction SilentlyContinue)
+        $container = ($properties | Where-Object KeyName -eq 'DEVPKEY_Device_ContainerId' | Select-Object -First 1).Data
+        $battery = ($properties | Where-Object KeyName -eq '{104ea319-6ee2-4701-bd47-8ddbf425bbE5} 2' | Select-Object -First 1).Data
+        if ($null -ne $container -and $null -ne $battery -and $battery -ge 0 -and $battery -le 100) {
+            $batteries[$container.ToString()] = [int]$battery
+        }
+    }
+    $seen = @{}
+    foreach ($device in $task.Result) {
+        $container = [string]$device.Properties['System.Devices.Aep.ContainerId']
+        $key = if ($container) { $container } else { $device.Id }
+        if (-not $seen.ContainsKey($key)) {
+            $seen[$key] = $true
+            [pscustomobject]@{ name = $device.Name; battery = $batteries[$container] }
+        }
+    }
+}
+
+try {
+    $result = switch ($Query) {
+        'kanata' { [bool](Get-Process kanata -ErrorAction SilentlyContinue) }
+        'weather' {
+            # Same service, units and IP-location fallback as the Linux script.
+            Invoke-RestMethod -Uri 'https://wttr.in/?format=j1' -UserAgent 'waybar-weather/1.0' -TimeoutSec 8
+        }
+        'bluetooth' { ,@(Get-BluetoothDevices) }
+        'network' {
+            $routes = @(Get-NetRoute -DestinationPrefix '0.0.0.0/0' -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+                Where-Object { $_.State -eq 'Alive' } | Sort-Object @{ Expression = { $_.RouteMetric + $_.InterfaceMetric } })
+            $adapter = $null
+            $adapters = @(Get-NetAdapter -IncludeHidden -ErrorAction SilentlyContinue)
+            foreach ($route in $routes) {
+                $candidate = $adapters | Where-Object ifIndex -eq $route.InterfaceIndex | Select-Object -First 1
+                if ($candidate.Status -eq 'Up') { $adapter = $candidate; break }
+            }
+            if ($adapter) {
+                $stats = $adapter | Get-NetAdapterStatistics
+                [pscustomobject]@{
+                    interfaceId = [string]$adapter.InterfaceGuid
+                    name = $adapter.Name
+                    receivedBytes = [double]$stats.ReceivedBytes
+                    timestamp = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+                }
+            } else { $null }
+        }
+    }
+    ConvertTo-Json -InputObject $result -Depth 12 -Compress
+} catch {
+    [Console]::Error.WriteLine($_.Exception.Message)
+    exit 1
+}

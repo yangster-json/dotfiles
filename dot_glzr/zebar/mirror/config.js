@@ -1,25 +1,14 @@
-// Windows Zebar only. Waybar is configured separately in dot_config/waybar/.
-// Apply with chezmoi, then reopen this widget to pick up changes.
+// Windows counterpart of dot_config/waybar/config (no system tray).
 export const config = {
   modules: {
-    left: [
-      ["cpu", "memory", "storage"],
-      ["weather", "network", "media"],
-    ],
-    center: [
-      ["workspaces"],
-    ],
-    right: [
-      ["input", "audio", "battery", "clock", "date"],
-    ],
+    left: [["cpu", "memory", "disk"], ["weather", "network"], ["media"]],
+    center: [["workspaces"]],
+    right: [["input", "bluetooth", "audio", "microphone", "battery", "clock"]],
   },
+  // Windows equivalent of /home; change this if your user files live elsewhere.
+  diskMount: "C:\\",
+  locale: "en-GB",
   icons: {
-    cpu: "󰍛",
-    memory: "",
-    storage: "󰋊",
-    weather: "󰖐",
-    keyboard: "󰌌",
-    clock: "󰥔",
-    date: "󰃭",
+    cpu: "󰍛", memory: "", disk: "", keyboard: "󰌌", clock: "󰥔",
   },
 };

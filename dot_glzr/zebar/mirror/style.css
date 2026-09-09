@@ -1,4 +1,6 @@
-/* Standalone Catppuccin Mocha theme; unrelated to Waybar's stylesheet. */
+/* Match dot_config/waybar/style.css; native titles escape the 41px WebView.
+   An HTML tooltip would be clipped by the actual widget window, even with
+   overflow:visible. Do not replace native titles with CSS-only tooltips. */
 :root {
   --base: #1e1e2e;
   --text: #cdd6f4;
@@ -8,53 +10,49 @@
   --red: #f38ba8;
   --mauve: #cba6f7;
   --surface0: #313244;
-  /* Keep height consistent with the preset in zpack.json. */
   --height: 41px;
-  --margin: 5px;
   --radius: 13px;
 }
-
 * { box-sizing: border-box; }
-body {
-  margin: 0;
-  font: 700 12px "JetBrainsMono Nerd Font", monospace;
-  color: var(--text);
-}
+body { margin: 0; font: 700 12px "JetBrainsMono Nerd Font", monospace; color: var(--text); }
+button { font: inherit; color: inherit; border: 0; cursor: pointer; }
+button:focus-visible { outline: 1px solid var(--blue); outline-offset: -2px; }
 #bar {
   height: var(--height);
-  padding: 0 var(--margin);
+  padding: 0 10px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
+  column-gap: 5px;
 }
 section { display: flex; align-items: center; min-width: 0; overflow: hidden; }
 #center { justify-content: center; }
 #right { justify-content: flex-end; }
-.bubble {
-  display: flex;
-  align-items: center;
-  margin: var(--margin) 0;
-  margin-right: var(--margin);
-}
+.bubble { display: flex; align-items: center; min-width: 0; flex-shrink: 0; margin: 5px 5px 5px 0; }
 .bubble:last-child { margin-right: 0; }
 .module {
   background: var(--base);
   padding: 1.5px 7px;
-  min-height: calc(var(--height) - 2 * var(--margin));
+  height: calc(var(--height) - 10px);
   min-width: 0;
-  display: flex;
-  align-items: center;
-  white-space: nowrap;
-  overflow: hidden;
+  display: block;
+  align-content: center;
+  white-space: pre;
 }
 .bubble > .module:first-child { border-radius: var(--radius) 0 0 var(--radius); }
 .bubble > .module:last-child { border-radius: 0 var(--radius) var(--radius) 0; }
 .bubble > .module:only-child { border-radius: var(--radius); }
+.cpu { padding-left: 10px; padding-right: 10px; }
+.weather { padding-left: 10px; }
+.network { width: calc(8ch + 14px); text-align: right; overflow: hidden; }
+#left > .bubble:last-child:has(.media) { flex-shrink: 1; margin-left: 5px; }
+.media { max-width: calc(40ch + 14px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bluetooth { background: transparent; padding: 0 4px; }
+.workspaces { padding-right: 4px; }
+.workspace { background: transparent; color: var(--surface0); padding: 0; margin-right: 5px; }
+.workspace.active, .workspace.visible { color: var(--blue); box-shadow: inset 0 -1px var(--base); }
 .blue { color: var(--blue); }
 .green { color: var(--green); }
 .yellow { color: var(--yellow); }
 .red { color: var(--red); }
 .mauve { color: var(--mauve); }
-.workspace { color: var(--surface0); margin: 0 3px; }
-.workspace.active { color: var(--blue); }
-.module.workspaces { padding-right: 4px; }
