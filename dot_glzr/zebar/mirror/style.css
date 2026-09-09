@@ -49,14 +49,14 @@ section { display: flex; align-items: center; min-width: 0; overflow: hidden; }
 .media { max-width: calc(40ch + 14px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bluetooth { background: transparent; padding: 0 4px; }
 .workspaces { padding-right: 4px; }
-/* Match Waybar's compact 10px workspace bubbles and 21px center spacing. */
+/* WebView needs a 12px circle to match Waybar's rendered bubble size. */
 .workspace {
   display: inline-flex;
-  width: 10px;
-  height: 10px;
+  width: 12px;
+  height: 12px;
   align-items: center;
   justify-content: center;
-  margin: 0 7px 0 4px;
+  margin: 0 6px 0 3px;
   padding: 0;
   border-radius: 50%;
   background: var(--surface0);

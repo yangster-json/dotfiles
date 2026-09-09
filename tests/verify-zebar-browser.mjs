@@ -51,8 +51,8 @@ try {
   const workspaceBounds = await page.locator(".workspace").evaluateAll(elements => elements.map(e => {
     const rect = e.getBoundingClientRect(); return { x: rect.x, width: rect.width };
   }));
-  // Match Waybar: 10px bubbles with 21px center-to-center spacing.
-  assert.equal(workspaceBounds[0].width, 10);
+  // WebView uses 12px bubbles to match Waybar's rendered size.
+  assert.equal(workspaceBounds[0].width, 12);
   assert.equal(workspaceBounds[1].x - workspaceBounds[0].x, 21);
   assert.equal(await page.locator('[data-workspace="w1"]').textContent(), "1");
   assert.equal(await page.locator('[data-workspace="w2"]').textContent(), "2");
