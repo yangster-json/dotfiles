@@ -17,8 +17,8 @@
 -- Catppuccin Mocha palette: https://github.com/catppuccin/hyprland
 local colors = require("themes.catppuccin-mocha")
 
--- Generated and maintained by nwg-displays at ~/.config/hypr/monitors.lua.
-require("monitors")
+-- HyprMon manages monitor profiles in ~/.config/hypr/hyprmon.lua.
+require("hyprmon")
 
 ---------------------
 ---- MY PROGRAMS ----
@@ -29,7 +29,7 @@ local terminal = "wezterm"
 local browser = "/opt/zen-browser-bin/zen-bin"
 local fileManager = "thunar"
 local terminalFileManager = terminal .. " start -- yazi /home/json"
-local menu = "rofi -show drun"
+local menu = "walker"
 
 -------------------
 ---- AUTOSTART ----
@@ -188,6 +188,17 @@ hl.animation({ leaf = "zoomFactor", enabled = true, speed = 7, bezier = "quick" 
 --     rounding    = 0,
 -- })
 
+-- Workspace roles: 1 = web, 2 = terminal, 4 = chat.
+-- Keep 1–5 on the laptop display. Workspaces 6–9 will be bound to an
+-- external display once it is connected and its output name is known.
+for workspace = 1, 5 do
+	hl.workspace_rule({
+		workspace = workspace,
+		monitor = "eDP-1",
+		default = workspace == 1,
+	})
+end
+
 -- See https://wiki.hypr.land/Configuring/Layouts/Dwindle-Layout/ for more
 hl.config({
 	dwindle = {
@@ -273,27 +284,38 @@ hl.bind(mainMod .. " + M", hl.dsp.exec_cmd("wlogout"))
 hl.bind(mainMod .. " + E", hl.dsp.exec_cmd(terminalFileManager))
 hl.bind(mainMod .. " + SHIFT + E", hl.dsp.exec_cmd(fileManager))
 hl.bind(mainMod .. " + V", hl.dsp.window.float({ action = "toggle" }))
-hl.bind(
-	mainMod .. " + CTRL + V",
-	hl.dsp.exec_cmd("cliphist list | rofi -dmenu -i -p Clipboard | cliphist decode | wl-copy")
-)
+hl.bind(mainMod .. " + SHIFT + V", hl.dsp.layout("togglesplit"))
+hl.bind(mainMod .. " + CTRL + V", hl.dsp.exec_cmd("walker --modules clipboard"))
 hl.bind(mainMod .. " + R", hl.dsp.exec_cmd(menu))
 hl.bind(mainMod .. " + SLASH", hl.dsp.exec_cmd("hotkeyhub"))
 hl.bind(mainMod .. " + P", hl.dsp.window.pseudo())
 hl.bind(mainMod .. " + F", hl.dsp.window.fullscreen({ action = "toggle" }))
-hl.bind(mainMod .. " + SHIFT + L", hl.dsp.exec_cmd("swaylock -f"))
+-- Keep Shift+L available for Vim-style move-right.
+hl.bind(mainMod .. " + SHIFT + X", hl.dsp.exec_cmd("swaylock -f"))
 -- Toggle Gammastep's solar colour adjustment without stopping its GeoClue updates.
 hl.bind(mainMod .. " + N", hl.dsp.exec_cmd("systemctl --user kill --signal=USR1 gammastep.service"))
 
--- Move focus with mainMod + vim keys
-hl.bind(mainMod .. " + H", hl.dsp.focus({ direction = "left" }))
-hl.bind(mainMod .. " + J", hl.dsp.focus({ direction = "down" }))
-hl.bind(mainMod .. " + K", hl.dsp.focus({ direction = "up" }))
-hl.bind(mainMod .. " + L", hl.dsp.focus({ direction = "right" }))
+-- Vim-style directional bindings.
+local directions = {
+	{ key = "H", hypr = "l", name = "left" },
+	{ key = "J", hypr = "d", name = "down" },
+	{ key = "K", hypr = "u", name = "up" },
+	{ key = "L", hypr = "r", name = "right" },
+}
 
--- Rotate through existing workspaces on the focused monitor with mainMod + left/right.
-hl.bind(mainMod .. " + left", hl.dsp.exec_cmd("hypr-cycle-workspace prev"))
-hl.bind(mainMod .. " + right", hl.dsp.exec_cmd("hypr-cycle-workspace next"))
+for _, direction in ipairs(directions) do
+	hl.bind(mainMod .. " + " .. direction.key, hl.dsp.focus({ direction = direction.name }))
+	hl.bind(mainMod .. " + SHIFT + " .. direction.key, hl.dsp.window.move({ direction = direction.name }))
+	hl.bind(mainMod .. " + CTRL + " .. direction.key, hl.dsp.exec_cmd("hyprctl dispatch focusmonitor " .. direction.hypr))
+	hl.bind(
+		mainMod .. " + CTRL + SHIFT + " .. direction.key,
+		hl.dsp.exec_cmd("hyprctl dispatch movecurrentworkspacetomonitor " .. direction.hypr)
+	)
+end
+
+-- Rotate through existing workspaces on the focused monitor.
+hl.bind(mainMod .. " + ALT + H", hl.dsp.exec_cmd("hypr-cycle-workspace prev"))
+hl.bind(mainMod .. " + ALT + L", hl.dsp.exec_cmd("hypr-cycle-workspace next"))
 
 -- Switch workspaces with mainMod + [0-9]
 -- Move active window to a workspace with mainMod + SHIFT + [0-9]
@@ -355,6 +377,24 @@ hl.bind("XF86AudioPrev", hl.dsp.exec_cmd("playerctl previous"), { locked = true 
 
 -- See https://wiki.hypr.land/Configuring/Basics/Window-Rules/
 -- and https://wiki.hypr.land/Configuring/Basics/Workspace-Rules/
+
+-- Route primary applications to their semantic workspaces. Confirm classes with
+-- `hyprctl clients` before adding more rules.
+hl.window_rule({
+	name = "web-workspace",
+	match = { class = "^zen$" },
+	workspace = 1,
+})
+hl.window_rule({
+	name = "terminal-workspace",
+	match = { class = "^org%.wezfurlong%.wezterm$" },
+	workspace = 2,
+})
+hl.window_rule({
+	name = "chat-workspace",
+	match = { class = "^discord$" },
+	workspace = 4,
+})
 
 -- Example window rules that are useful
 
