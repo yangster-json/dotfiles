@@ -76,31 +76,10 @@
     "separate-outputs": true
   },
   "hyprland/workspaces": {
-    "format": "{icon}",
+    "format": "{name}",
     "on-click": "activate",
-    "format-icons": {
-      "1": "",
-      "2": "",
-      "3": "",
-      "4": "",
-      "5": "",
-      "6": "",
-      "7": "",
-      "8": "",
-      "9": "",
-      "active": "",
-      "urgent": "",
-      "persistent": "",
-      "focused": "",
-      "default": "",
-
-        },
     // Show only workspaces assigned to each bar's own output.
     "all-outputs": false,
-    // Keep at least one workspace button visible on every output.
-    "persistent-workspaces": {
-      "*": 1
-    },
     "sort-by": "number"
   },
   "clock": {

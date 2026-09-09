@@ -38,7 +38,7 @@ export function buildSections(config, p = {}, state = {}, now = new Date()) {
       return item("workspaces", [...workspaces].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })).map(w => {
         const active = w.name === p.glazewm.displayedWorkspace?.name;
         return `<button type="button" data-key="${escape(w.id)}" data-action="workspace" data-workspace="${escape(w.id)}"`
-          + ` class="workspace${active ? " active" : ""}${w.isDisplayed ? " visible" : ""}" title="${escape(w.name)}" aria-label="Workspace ${escape(w.name)}" aria-pressed="${active}"></button>`;
+          + ` class="workspace${active ? " active" : ""}${w.isDisplayed ? " visible" : ""}" title="${escape(w.name)}" aria-label="Workspace ${escape(w.name)}" aria-pressed="${active}">${escape(w.name)}</button>`;
       }).join(""));
     },
     input: () => {

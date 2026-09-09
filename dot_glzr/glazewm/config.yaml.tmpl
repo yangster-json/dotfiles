@@ -126,8 +126,9 @@ keybindings:
     bindings: ["{{ $superKey }}+shift+e"]
   - commands: ["shell-exec %ProgramFiles%\\PowerToys\\PowerToys.exe"]
     bindings: ["{{ $superKey }}+r"]
+  # `Super+Shift+L` is reserved for directional window movement.
   - commands: ["shell-exec rundll32.exe user32.dll,LockWorkStation"]
-    bindings: ["{{ $superKey }}+shift+l"]
+    bindings: ["{{ $superKey }}+shift+x"]
   - commands: ["shell-exec snippingtool /clip"]
     bindings: ["{{ $superKey }}+shift+s"]
 
@@ -139,7 +140,7 @@ keybindings:
   - commands: ["toggle-floating --centered"]
     bindings: ["{{ $superKey }}+v"]
   - commands: ["toggle-tiling-direction"]
-    bindings: ["{{ $superKey }}+p"]
+    bindings: ["{{ $superKey }}+shift+v"]
   - commands: ["toggle-fullscreen"]
     bindings: ["{{ $superKey }}+f"]
   - commands: ["wm-enable-binding-mode --name resize"]
@@ -147,7 +148,7 @@ keybindings:
   - commands: ["wm-reload-config"]
     bindings: ["{{ $superKey }}+shift+c"]
 
-  # Hyprland's Super+H/J/K/L directional focus.
+  # Vim-style directional focus. This can move focus across monitors.
   - commands: ["focus --direction left"]
     bindings: ["{{ $superKey }}+h"]
   - commands: ["focus --direction down"]
@@ -157,11 +158,31 @@ keybindings:
   - commands: ["focus --direction right"]
     bindings: ["{{ $superKey }}+l"]
 
-  # Hyprland's Super+Left/Right active-workspace cycling.
+  # Move the focused window in a Vim direction.
+  - commands: ["move --direction left"]
+    bindings: ["{{ $superKey }}+shift+h"]
+  - commands: ["move --direction down"]
+    bindings: ["{{ $superKey }}+shift+j"]
+  - commands: ["move --direction up"]
+    bindings: ["{{ $superKey }}+shift+k"]
+  - commands: ["move --direction right"]
+    bindings: ["{{ $superKey }}+shift+l"]
+
+  # Move the focused workspace to the adjacent monitor.
+  - commands: ["move-workspace --direction left"]
+    bindings: ["{{ $superKey }}+ctrl+shift+h"]
+  - commands: ["move-workspace --direction down"]
+    bindings: ["{{ $superKey }}+ctrl+shift+j"]
+  - commands: ["move-workspace --direction up"]
+    bindings: ["{{ $superKey }}+ctrl+shift+k"]
+  - commands: ["move-workspace --direction right"]
+    bindings: ["{{ $superKey }}+ctrl+shift+l"]
+
+  # Cycle only active workspaces on the focused monitor.
   - commands: ["focus --prev-active-workspace"]
-    bindings: ["{{ $superKey }}+left"]
+    bindings: ["{{ $superKey }}+ctrl+h"]
   - commands: ["focus --next-active-workspace"]
-    bindings: ["{{ $superKey }}+right"]
+    bindings: ["{{ $superKey }}+ctrl+l"]
 
   # Hyprland's Super+[1..0] workspace navigation.
   - commands: ["focus --workspace 1"]

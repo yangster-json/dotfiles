@@ -30,6 +30,8 @@ assert.match(sections.right, /14:05 \| Wed 09 Sep/);
 assert.match(sections.right, /2026 September/);
 assert.ok(sections.center.indexOf('data-workspace="w1"') < sections.center.indexOf('data-workspace="w2"'));
 assert.match(sections.center, /workspace active visible/);
+assert.match(sections.center, /data-workspace="w1"[^>]*>1<\/button>/);
+assert.match(sections.center, /data-workspace="w2"[^>]*>2<\/button>/);
 assert.doesNotMatch(sections.right.match(/<button[^>]*data-action="audio"[^>]*>/)[0], /title=/);
 assert.equal(language("Arabic (Saudi Arabia)"), "ara");
 assert.equal(language("French"), "---");

@@ -1,0 +1,106 @@
+# Wayland launcher configuration. Theme mirrors the previous Rofi setup.
+force_keyboard_focus = true
+close_when_open = true
+click_to_close = true
+single_click_activation = true
+selection_wrap = true
+theme = "catppuccin-mocha"
+hide_action_hints = true
+hide_action_hints_dmenu = true
+hide_return_action = true
+
+[shell]
+exclusive_zone = -1
+layer = "overlay"
+anchor_top = true
+anchor_bottom = true
+anchor_left = true
+anchor_right = true
+
+[placeholders]
+"default" = { input = "Search…", list = "No Results" }
+"desktopapplications" = { input = "Search applications…", list = "No Applications" }
+"runner" = { input = "Run command…", list = "No Commands" }
+"files" = { input = "Browse files…", list = "No Files" }
+"clipboard" = { input = "Clipboard", list = "Clipboard Empty" }
+"windows" = { input = "Switch window…", list = "No Windows" }
+"calc" = { input = "Calculate…", list = "Enter an expression" }
+"symbols" = { input = "Search symbols and emoji…", list = "No Symbols" }
+"bluetooth" = { input = "Manage Bluetooth…", list = "No Bluetooth Devices" }
+"wireplumber" = { input = "Audio controls…", list = "No Audio Devices" }
+"playerctl" = { input = "Media controls…", list = "No Media Players" }
+
+[keybinds]
+close = ["Escape"]
+next = ["Down"]
+previous = ["Up"]
+page_down = ["Page_Down"]
+page_up = ["Page_Up"]
+show_actions = ["alt j"]
+
+[providers]
+# Match Rofi's app launcher while keeping its run/file/window features available.
+default = ["desktopapplications", "runner", "calc"]
+empty = ["desktopapplications"]
+max_results = 50
+
+[providers.max_results_provider]
+desktopapplications = 8
+runner = 8
+files = 8
+clipboard = 8
+windows = 8
+symbols = 8
+bluetooth = 8
+wireplumber = 8
+playerctl = 8
+
+[[providers.prefixes]]
+prefix = ">"
+provider = "runner"
+
+[[providers.prefixes]]
+prefix = "/"
+provider = "files"
+
+[[providers.prefixes]]
+prefix = ":"
+provider = "clipboard"
+
+[[providers.prefixes]]
+prefix = "$"
+provider = "windows"
+
+[[providers.prefixes]]
+prefix = "="
+provider = "calc"
+
+[[providers.prefixes]]
+prefix = "."
+provider = "symbols"
+
+[[providers.prefixes]]
+prefix = "!"
+provider = "bluetooth"
+
+[[providers.prefixes]]
+prefix = "&"
+provider = "wireplumber"
+
+[[providers.prefixes]]
+prefix = ","
+provider = "playerctl"
+
+[[providers.prefixes]]
+prefix = ";"
+provider = "providerlist"
+
+[providers.clipboard]
+time_format = "relative"
+
+[providers.actions]
+clipboard = [
+  { action = "copy", default = true, bind = "Return" },
+  { action = "remove", bind = "ctrl d", after = "AsyncClearReload" },
+  { action = "remove_all", label = "clear", bind = "ctrl shift d", after = "AsyncClearReload" },
+]

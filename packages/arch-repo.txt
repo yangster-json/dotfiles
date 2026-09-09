@@ -36,7 +36,6 @@ noto-fonts-cjk
 noto-fonts-emoji
 noto-fonts-extra
 npm
-nwg-displays
 openssh
 pipewire
 pipewire-alsa
@@ -46,7 +45,6 @@ pyenv
 qbittorrent
 qt5-quickcontrols2
 reflector
-rofi
 ruby
 sbctl
 sddm
