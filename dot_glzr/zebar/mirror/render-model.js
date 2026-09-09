@@ -1,4 +1,4 @@
-import { escape, gib, diskSize, clamp, language, speed, clockText, calendar } from "./format.js";
+import { escape, gib, diskSize, clamp, language, keyboardName, speed, clockText, calendar } from "./format.js";
 
 const icon = (text, tone) => `<span class="${tone}">${escape(text)}</span>`;
 function item(key, html, { title, action, tone = "", extra = "" } = {}) {
@@ -45,7 +45,7 @@ export function buildSections(config, p = {}, state = {}, now = new Date()) {
       const layout = p.keyboard?.layout;
       const marker = state.kanataOn ? `${icon(config.icons.keyboard, "green")} ` : "";
       return item("input", `${marker}${icon(config.icons.keyboard, "yellow")} ${language(layout ?? "")}`,
-        { title: `${state.kanataOn ? "Kanata enabled — " : ""}${layout || "Keyboard unavailable"}` });
+        { title: `${state.kanataOn ? "Kanata enabled — " : ""}${keyboardName(layout)}` });
     },
     bluetooth: () => {
       const devices = state.bluetooth ?? [];

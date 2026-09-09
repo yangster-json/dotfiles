@@ -9,7 +9,25 @@ export function diskSize(bytes) {
   return `${bytes.toFixed(1)}${["B", "kiB", "MiB", "GiB", "TiB", "PiB"][unit]}`;
 }
 export const clamp = value => Math.max(0, Math.min(100, value));
-export const language = layout => /english/i.test(layout) ? "eng" : /arabic/i.test(layout) ? "ara" : "---";
+// Zebar's Windows provider returns locale tags (sometimes with a trailing NUL),
+// not the human-readable layout names supplied by Hyprland.
+const cleanLayout = layout => String(layout ?? "").replace(/\0/g, "").trim();
+export function language(layout) {
+  const name = cleanLayout(layout);
+  return /^(en|eng)(?:[-_]|$)|english/i.test(name) ? "eng"
+    : /^(ar|ara)(?:[-_]|$)|arabic/i.test(name) ? "ara" : "---";
+}
+export function keyboardName(layout) {
+  const name = cleanLayout(layout);
+  if (!name) return "Keyboard unavailable";
+  if (!/^[a-z]{2,3}(?:[-_][a-z0-9]{2,8})*$/i.test(name)) return name;
+  try {
+    const locale = new Intl.Locale(name.replace(/_/g, "-"));
+    const languageName = new Intl.DisplayNames(["en"], { type: "language" }).of(locale.language);
+    const region = locale.region && new Intl.DisplayNames(["en"], { type: "region" }).of(locale.region);
+    return region ? `${languageName} (${region})` : languageName;
+  } catch { return name; }
+}
 export function speed(bytes) {
   if (!Number.isFinite(bytes) || bytes < 0) return "";
   let unit = 0;

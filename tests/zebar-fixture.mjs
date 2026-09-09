@@ -7,7 +7,7 @@ export function fixture() {
       defaultPlaybackDevice: { deviceId: "speaker", name: "Speakers", volume: 67, isMuted: false },
       defaultRecordingDevice: { deviceId: "mic", name: 'USB <Mic> "one"', volume: 80, isMuted: false },
     },
-    keyboard: { layout: "English (United States)" },
+    keyboard: { layout: "en-US\u0000" },
     battery: { chargePercent: 65, isCharging: false, state: "discharging" },
     media: { currentSession: { title: '<img src=x onerror="alert(1)"> & a very long media title that needs truncation' } },
     glazewm: {

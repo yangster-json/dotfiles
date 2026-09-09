@@ -46,6 +46,13 @@ try {
   await page.locator('[data-action="audio"]').waitFor();
   assert.equal(await page.locator("#bar").evaluate(e => e.getBoundingClientRect().height), 41);
   assert.equal(await page.locator("img").count(), 0);
+  assert.match(await page.locator(".input").textContent(), /eng/);
+  assert.equal(await page.locator(".input").getAttribute("title"), "Kanata enabled — English (United States)");
+  const workspaceBounds = await page.locator(".workspace").evaluateAll(elements => elements.map(e => {
+    const rect = e.getBoundingClientRect(); return { x: rect.x, width: rect.width };
+  }));
+  assert.equal(workspaceBounds[0].width, 32);
+  assert.equal(workspaceBounds[1].x - workspaceBounds[0].x, 37);
   for (const width of [1920, 1366]) {
     await page.setViewportSize({ width, height: 100 });
     assert.ok(await page.evaluate(() => [...document.querySelectorAll('section')].every(e => e.scrollWidth <= e.clientWidth)), `Full bar fits at ${width}px`);
