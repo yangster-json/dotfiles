@@ -1,7 +1,7 @@
 // These command strings are mirrored by the anchored allowlist in zpack.json.
 // Never interpolate provider output (device names, workspace names, etc.).
 export function windowsQuery(shellExec, query) {
-  if (!["kanata", "network", "bluetooth", "weather"].includes(query)) throw new Error("Unknown Windows query");
+  if (!["kanata", "network", "bluetooth", "weather", "battery"].includes(query)) throw new Error("Unknown Windows query");
   return shellExec("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command",
     `& (Join-Path $env:USERPROFILE '.glzr/zebar/mirror/windows.ps1') -Query ${query}`,
   ]).then(result => {

@@ -28,7 +28,7 @@
         "shellCommands": [
           {
             "program": "powershell.exe",
-            "argsRegex": "^-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command & \\(Join-Path \\$env:USERPROFILE '\\.glzr/zebar/mirror/windows\\.ps1'\\) -Query (kanata|network|bluetooth|weather)$"
+            "argsRegex": "^-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command & \\(Join-Path \\$env:USERPROFILE '\\.glzr/zebar/mirror/windows\\.ps1'\\) -Query (kanata|network|bluetooth|weather|battery)$"
           },
           {
             "program": "Taskmgr.exe",

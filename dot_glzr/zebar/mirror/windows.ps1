@@ -1,4 +1,4 @@
-param([Parameter(Mandatory)][ValidateSet('kanata', 'network', 'bluetooth', 'weather')][string]$Query)
+param([Parameter(Mandatory)][ValidateSet('kanata', 'network', 'bluetooth', 'weather', 'battery')][string]$Query)
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 
@@ -44,6 +44,28 @@ function Get-BluetoothDevices {
 try {
     $result = switch ($Query) {
         'kanata' { [bool](Get-Process kanata -ErrorAction SilentlyContinue) }
+        'battery' {
+            # Uses Windows GetSystemPowerStatus, independent of Zebar's battery driver query.
+            Add-Type -AssemblyName System.Windows.Forms
+            $power = [System.Windows.Forms.SystemInformation]::PowerStatus
+            $flags = [int]$power.BatteryChargeStatus
+            if ($flags -eq 255) { throw 'Windows battery status is unknown' }
+            if ($flags -band 128) {
+                [pscustomobject]@{ present = $false }
+            } else {
+                $fraction = [double]$power.BatteryLifePercent
+                $charging = [bool]($flags -band 8)
+                $status = if ($charging) { 'Charging' } elseif ($power.PowerLineStatus -eq 'Online') {
+                    'Plugged in (not charging)'
+                } else { 'Discharging' }
+                [pscustomobject]@{
+                    present = $true
+                    chargePercent = $(if ($fraction -ge 0 -and $fraction -le 1) { [math]::Round($fraction * 100) } else { $null })
+                    isCharging = $charging
+                    state = $status
+                }
+            }
+        }
         'weather' {
             # Same service, units and IP-location fallback as the Linux script.
             Invoke-RestMethod -Uri 'https://wttr.in/?format=j1' -UserAgent 'waybar-weather/1.0' -TimeoutSec 8

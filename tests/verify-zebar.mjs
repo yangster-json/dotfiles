@@ -68,17 +68,29 @@ assert.match(changed.right, /Status: Muted/);
 assert.match(changed.right, /󰂄/);
 assert.match(changed.right, /2026-09-09/);
 
+const fallbackBattery = { present: true, chargePercent: 66, isCharging: true, state: "Charging" };
+for (const battery of [null, { chargePercent: NaN }, { chargePercent: null }]) {
+  const recovered = buildSections(config, { battery }, { battery: fallbackBattery }, now).right;
+  assert.match(recovered, /󰂄/);
+  assert.match(recovered, /Battery: 66%\nCharging/);
+}
+assert.match(buildSections(config, {}, { batterySeen: true }, now).right, /Battery status unavailable/);
+assert.match(buildSections(config, {}, { battery: { ...fallbackBattery, chargePercent: null } }, now).right, /󰂄.*--/);
+assert.doesNotMatch(buildSections(config, {}, { batterySeen: true, battery: { present: false } }, now).right, /class="module battery/);
+assert.doesNotMatch(empty.right, /class="module battery/);
+assert.match(buildSections(config, p, { battery: fallbackBattery }, now).right, /Battery: 65%/);
+
 const manifest = JSON.parse(readFileSync(new URL("../dot_glzr/zebar/mirror/zpack.json", import.meta.url)));
 const permissions = manifest.widgets[0].privileges.shellCommands;
 let calls = 0;
-for (const query of ["kanata", "network", "bluetooth", "weather"]) {
+for (const query of ["kanata", "network", "bluetooth", "weather", "battery"]) {
   assert.equal(await windowsQuery(async (program, args) => {
     calls++;
     assert.ok(permissions.some(rule => rule.program === program && new RegExp(rule.argsRegex).test(args.join(" "))));
     return { code: 0, stdout: "\ufefftrue", stderr: "" };
   }, query), true);
 }
-assert.equal(calls, 4);
+assert.equal(calls, 5);
 assert.throws(() => windowsQuery(() => {}, "injected;command"), /Unknown Windows query/);
 await assert.rejects(() => windowsQuery(async () => ({ code: 1, stderr: "failure" }), "network"), /failure/);
 for (const [program, args] of [["Taskmgr.exe", ""], ["explorer.exe", "ms-settings:network-status"]]) {
@@ -98,14 +110,15 @@ finish();
 await Promise.all([a, b]);
 assert.equal(schedules, 1);
 const startupTasks = [], intervals = [];
-let providerConfig, actionBindings, outputCallback, errorCallback;
+let providerConfig, actionBindings, outputCallback, errorCallback, lastRendered;
+const startupProviders = {};
 runInNewContext(readFileSync(new URL("../dot_glzr/zebar/mirror/index.js", import.meta.url), "utf8").replace(/^import .*;\n/gm, ""), {
   config, buildSections, weatherData, networkSample, windowsQuery,
   createProviderGroup(value) {
     providerConfig = value;
-    return { outputMap: {}, onOutput(fn) { outputCallback = fn; }, onError(fn) { errorCallback = fn; } };
+    return { outputMap: startupProviders, onOutput(fn) { outputCallback = fn; }, onError(fn) { errorCallback = fn; } };
   },
-  document: { getElementById: id => ({ id }) }, renderSections() {},
+  document: { getElementById: id => ({ id }) }, renderSections(document, sections) { lastRendered = sections; },
   bindActions(bar, bindings) { actionBindings = bindings; assert.equal(bar.id, "bar"); },
   shellExec: async () => ({ code: 0, stdout: "null" }),
   poll(task, interval) { intervals.push(interval); startupTasks.push(task()); return task; },
@@ -115,8 +128,20 @@ await Promise.all(startupTasks);
 assert.equal(providerConfig.disk.type, "disk");
 assert.equal(providerConfig.audio.type, "audio");
 assert.equal(providerConfig.memory.refreshInterval, 5000);
-assert.deepEqual(intervals, [5000, 10000, 2000, 600000]);
+assert.deepEqual(intervals, [10000, 5000, 10000, 2000, 600000]);
 assert.equal(typeof actionBindings.refreshWeather, "function");
 outputCallback();
 errorCallback({ audio: "Unavailable" });
+startupProviders.battery = fixture().battery;
+outputCallback();
+assert.equal(actionBindings.state.batterySeen, true);
+startupProviders.battery = null;
+errorCallback({ battery: "Unavailable while charging" });
+assert.match(lastRendered.right, /Battery status unavailable/);
+actionBindings.state.battery = fallbackBattery;
+outputCallback();
+assert.match(lastRendered.right, /Battery: 66%\nCharging/);
+startupProviders.battery = { chargePercent: 67, isCharging: false, state: "Discharging" };
+outputCallback();
+assert.match(lastRendered.right, /Battery: 67%\nDischarging/);
 console.log("Zebar render, parity, failure-state, permission, polling and startup tests passed.");

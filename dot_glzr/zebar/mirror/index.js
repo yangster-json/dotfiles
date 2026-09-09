@@ -6,7 +6,8 @@ import { bindActions } from "./actions.js";
 import { windowsQuery, poll } from "./windows.js";
 import { networkSample, weatherData } from "./format.js";
 
-const state = { kanataOn: false, bluetooth: [], weather: null, network: null, alternateClock: false };
+const state = { kanataOn: false, bluetooth: [], weather: null, network: null, alternateClock: false,
+  battery: null, batterySeen: false };
 const providers = createProviderGroup({
   audio: { type: "audio" },
   battery: { type: "battery", refreshInterval: 30000 },
@@ -18,6 +19,7 @@ const providers = createProviderGroup({
   glazewm: { type: "glazewm" },
 });
 function render() {
+  if (Number.isFinite(providers.outputMap.battery?.chargePercent) || state.battery?.present) state.batterySeen = true;
   renderSections(document, buildSections(config, providers.outputMap, state));
 }
 providers.onOutput(render);
@@ -30,6 +32,7 @@ function queryPoll(query, interval, update, fallback) {
     render();
   }, interval);
 }
+queryPoll("battery", 10000, value => { state.battery = value; }, null);
 queryPoll("kanata", 5000, value => { state.kanataOn = value === true; }, false);
 queryPoll("bluetooth", 10000, value => { state.bluetooth = Array.isArray(value) ? value : []; }, []);
 queryPoll("network", 2000, value => { state.network = networkSample(state.network, value); }, null);

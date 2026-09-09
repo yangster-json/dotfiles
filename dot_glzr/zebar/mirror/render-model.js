@@ -68,8 +68,14 @@ export function buildSections(config, p = {}, state = {}, now = new Date()) {
         title: d ? `Input: ${d.name}\nVolume: ${percent(d.volume)}\nStatus: ${d.isMuted ? "Muted" : "Active"}` : "No microphone available" });
     },
     battery: () => {
-      const b = p.battery;
-      if (!Number.isFinite(b?.chargePercent)) return "";
+      // Provider errors clear outputMap.battery. Use the independent Windows
+      // reading, then an explicit unknown state instead of silently disappearing.
+      const b = Number.isFinite(p.battery?.chargePercent) ? p.battery : state.battery;
+      if (!Number.isFinite(b?.chargePercent)) {
+        if (b?.present === false || (!state.batterySeen && !b?.present)) return "";
+        return item("battery", `${icon(b?.isCharging ? "󰂄" : "󰂑", "green")} --`,
+          { title: `Battery status unavailable${b?.state ? `\n${b.state}` : ""}` });
+      }
       const icons = ["󰁺", "󰁻", "󰁼", "󰁽", "󰁾", "󰁿", "󰂀", "󰂁", "󰂂", "󰁹"];
       const glyph = b.isCharging ? "󰂄" : icons[Math.min(9, Math.floor(clamp(b.chargePercent) / 10))];
       const level = b.chargePercent <= 15 ? "critical" : b.chargePercent <= 30 ? "warning" : "";

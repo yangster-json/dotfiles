@@ -145,7 +145,11 @@ Zebar matches the following Waybar features:
 - CPU click opens Task Manager; network click opens Windows network settings.
 
 `windows.ps1` supplies narrowly allowlisted, non-overlapping queries for Kanata,
-Bluetooth, weather, and network counters. Keep it at the deployed path above.
+Bluetooth, weather, network counters, and a Windows battery-status fallback.
+If Zebar's battery provider fails, the bar uses Windows power status; if both
+readings fail after a battery was detected, it shows `--` with an unavailable
+status tooltip rather than hiding the module or displaying stale data.
+Keep the script at the deployed path above.
 Weather uses wttr.in's public-IP location estimate (no Linux GeoClue equivalent).
 Disk defaults to `C:\` rather than `/home`; change `diskMount` in `config.js`.
 Kanata reports a running process, not proof that key remapping is active.
