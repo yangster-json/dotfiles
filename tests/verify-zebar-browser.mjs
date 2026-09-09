@@ -51,8 +51,9 @@ try {
   const workspaceBounds = await page.locator(".workspace").evaluateAll(elements => elements.map(e => {
     const rect = e.getBoundingClientRect(); return { x: rect.x, width: rect.width };
   }));
-  assert.equal(workspaceBounds[0].width, 32);
-  assert.equal(workspaceBounds[1].x - workspaceBounds[0].x, 37);
+  // Measured with Waybar's custom-content GTK button, not Gtk.Button(label=...).
+  assert.equal(workspaceBounds[0].width, 16);
+  assert.equal(workspaceBounds[1].x - workspaceBounds[0].x, 21);
   for (const width of [1920, 1366]) {
     await page.setViewportSize({ width, height: 100 });
     assert.ok(await page.evaluate(() => [...document.querySelectorAll('section')].every(e => e.scrollWidth <= e.clientWidth)), `Full bar fits at ${width}px`);
