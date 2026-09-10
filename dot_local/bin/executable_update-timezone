@@ -2,8 +2,18 @@
 set -euo pipefail
 
 # GeoClue provides coordinates, while Open-Meteo resolves them to an IANA
-# timezone. Fall back to Los Angeles whenever either lookup is unavailable.
-fallback_timezone='America/Los_Angeles'
+# timezone. On a lookup failure, leave the existing timezone intact and mark it
+# for the user timer to retry later.
+retry_marker="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/timezone-geoclue-retry"
+
+mark_for_retry() {
+  mkdir -p "$(dirname "$retry_marker")" 2>/dev/null || true
+  : >"$retry_marker" 2>/dev/null || true
+}
+
+clear_retry_marker() {
+  rm -f "$retry_marker"
+}
 
 geoclue_coordinates() {
   local agent demo location coordinates
@@ -75,13 +85,26 @@ timezone_from_coordinates() {
   printf '%s\n' "$timezone"
 }
 
-timezone=$fallback_timezone
-if coordinates=$(geoclue_coordinates); then
-  timezone=$(timezone_from_coordinates "$coordinates" || printf '%s\n' "$fallback_timezone")
+if ! coordinates=$(geoclue_coordinates); then
+  mark_for_retry
+  exit 1
+fi
+
+if ! timezone=$(timezone_from_coordinates "$coordinates"); then
+  mark_for_retry
+  exit 1
 fi
 
 current_timezone=$(timedatectl show --property=Timezone --value 2>/dev/null || true)
-[[ $current_timezone == "$timezone" ]] && exit 0
+if [[ $current_timezone == "$timezone" ]]; then
+  clear_retry_marker
+  exit 0
+fi
 
 # The system D-Bus policy may request authentication when the timezone changes.
-exec timedatectl set-timezone "$timezone"
+if timedatectl set-timezone "$timezone"; then
+  clear_retry_marker
+else
+  mark_for_retry
+  exit 1
+fi

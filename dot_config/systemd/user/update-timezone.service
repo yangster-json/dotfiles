@@ -1,0 +1,8 @@
+[Unit]
+Description=Retry timezone update after GeoClue location failure
+After=graphical-session.target
+ConditionPathExists=%t/timezone-geoclue-retry
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/update-timezone

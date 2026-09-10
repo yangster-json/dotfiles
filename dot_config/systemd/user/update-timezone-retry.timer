@@ -1,0 +1,12 @@
+[Unit]
+Description=Periodically retry a failed GeoClue timezone update
+
+[Timer]
+OnCalendar=*:0/15
+AccuracySec=1min
+RandomizedDelaySec=2min
+Persistent=false
+Unit=update-timezone.service
+
+[Install]
+WantedBy=timers.target
