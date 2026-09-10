@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+powerprofilesctl=/usr/bin/powerprofilesctl
+if [[ ! -x $powerprofilesctl ]]; then
+  notify-send --app-name='Power profile' 'Power profiles unavailable' 'Install power-profiles-daemon to manage profiles.'
+  exit 1
+fi
+
+run_powerprofilesctl() {
+  /usr/bin/python3 "$powerprofilesctl" "$@"
+}
+
+current=$(run_powerprofilesctl get)
+case ${1:-menu} in
+  get)
+    printf '%s\n' "$current"
+    ;;
+  status)
+    printf '%s\n' "$current"
+    notify-send --app-name='Power profile' 'Current power profile' "$current"
+    ;;
+  list)
+    run_powerprofilesctl list
+    ;;
+  set)
+    profile=${2:?Usage: power-profile set PROFILE}
+    run_powerprofilesctl set "$profile"
+    notify-send --app-name='Power profile' 'Power profile changed' "$profile"
+    ;;
+  menu)
+    profiles=$(run_powerprofilesctl list | sed -nE 's/^[* ]*(power-saver|balanced|performance):.*/\1/p')
+    selected=$(printf '%s\n' "$profiles" | walker --dmenu --placeholder 'Power profile')
+    [[ -n $selected ]] || exit 0
+    run_powerprofilesctl set "$selected"
+    notify-send --app-name='Power profile' 'Power profile changed' "$selected"
+    ;;
+  *)
+    printf 'Usage: power-profile [get|status|list|set PROFILE|menu]\n' >&2
+    exit 2
+    ;;
+esac

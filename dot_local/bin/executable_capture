@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+mode=${1:-region}
+case $mode in
+  region|window|output) ;;
+  *)
+    printf 'Usage: capture [region|window|output]\n' >&2
+    exit 2
+    ;;
+esac
+
+pictures_dir=$(xdg-user-dir PICTURES 2>/dev/null || printf '%s/Pictures' "$HOME")
+capture_dir="$pictures_dir/Screenshots"
+filename="screenshot-$(date +%Y-%m-%d_%H-%M-%S).png"
+path="$capture_dir/$filename"
+
+mkdir -p "$capture_dir"
+hyprshot --freeze --mode "$mode" --output-folder "$capture_dir" --filename "$filename" --silent
+[[ -f $path ]] || exit 1
+
+(
+  action=$(notify-send --wait --app-name=Capture --icon="$path" \
+    --action=open=Open --action=annotate=Annotate \
+    'Screenshot saved' 'Copied to the clipboard and saved in Pictures/Screenshots.' || true)
+
+  case $action in
+    open) xdg-open "$path" ;;
+    annotate) satty --filename "$path" --output-filename "$path" --copy-command wl-copy ;;
+  esac
+) &

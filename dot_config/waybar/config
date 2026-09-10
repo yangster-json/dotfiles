@@ -14,6 +14,7 @@
     "disk",
     "custom/weather",
     "custom/network",
+    "custom/updates",
     "custom/media-title",
   ],
   "modules-center": [
@@ -54,7 +55,11 @@
     "hide-empty-text": true,
     "escape": true,
     "max-length": 40,
-    "tooltip": true
+    "tooltip": true,
+    "on-click": "walker --provider playerctl",
+    "on-click-right": "playerctl play-pause",
+    "on-scroll-up": "playerctl previous",
+    "on-scroll-down": "playerctl next"
   },
   "bluetooth": {
     "format-connected-battery": " {device_battery_percentage}%",
@@ -65,7 +70,8 @@
     "format-no-controller": "",
     "tooltip": true,
     "tooltip-format-connected-battery": "{device_alias}: {device_battery_percentage}%",
-    "tooltip-format-connected": "{device_alias}"
+    "tooltip-format-connected": "{device_alias}",
+    "on-click": "walker --provider bluetooth"
   },
   "hyprland/window": {
     "format": "{}",
@@ -85,7 +91,8 @@
   "clock": {
     "tooltip-format": "<big>{:%Y %B}</big>\n<tt><small>{calendar}</small></tt>",
     "format": "<span color='#89b4fa'>󰥔 </span><span color='#cdd6f4'>{:%H:%M | %a %d %b}</span>",
-    "format-alt": "{:%Y-%m-%d}"
+    "format-alt": "{:%Y-%m-%d}",
+    "on-click": "swaync-client --toggle-panel"
   },
 
   "cpu": {
@@ -94,13 +101,23 @@
     "format-alt-click": "click",
     "format-alt": "<span color='#00FF00'>{icon0}{icon1}{icon2}{icon3}</span> <span color='#FFFFFF'>{usage:>2}%</span> <span color='#00FF00'>󰍛</span>",
     "format-icons": ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"],
-    "on-click": "gnome-system-monitor"
+    "on-click": "wezterm start --class Btop -- btop"
   },
   "memory": {
     "interval": 5,
-    "format": "<span color='#f38ba8'> </span> <span color='#cdd6f4'>{used:0.1f}G</span>"
+    "format": "<span color='#f38ba8'> </span> <span color='#cdd6f4'>{used:0.1f}G</span>",
+    "on-click": "wezterm start --class Btop -- btop"
   },
 
+
+"custom/updates": {
+    "exec": "~/.config/waybar/scripts/updates.sh",
+    "return-type": "json",
+    "interval": 3600,
+    "format": "{text}",
+    "tooltip": true,
+    "on-click": "wezterm start --class SystemUpdate -- bash -lc 'yay -Syu; exec $SHELL'"
+  },
 
 "custom/weather": {
     "exec": "~/.config/waybar/scripts/weather.sh",
@@ -118,7 +135,8 @@
     "format-bluetooth": "<span color='#a6e3a1'>{icon}</span>  <span color='#cdd6f4'>{volume}%</span>",
     "tooltip": false,
     "format-muted": "<span color='#f38ba8'>󰝟</span>",
-    "on-click": "wpctl set-mute @DEFAULT_SINK@ toggle",
+    "on-click": "walker --provider wireplumber",
+    "on-click-right": "wpctl set-mute @DEFAULT_SINK@ toggle",
     "on-scroll-up": "wpctl set-volume @DEFAULT_SINK@ 10%+",
     "on-scroll-down": "wpctl set-volume @DEFAULT_SINK@ 10%-",
     "format-icons": {
@@ -140,7 +158,8 @@
     "return-type": "json",
     "interval": 5,
     "format": "{}",
-    "on-click": "wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle"
+    "on-click": "walker --provider wireplumber",
+    "on-click-right": "wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle"
   },
   "battery": {
     "states": {
@@ -149,17 +168,22 @@
     },
     "format": "<span color='#a6e3a1'>{icon}</span> <span color='#cdd6f4'>{capacity}%</span>",
     "format-charging": "<span color='#a6e3a1'>󰂄</span> <span color='#cdd6f4'>{capacity}%</span>",
-    "format-icons": ["󰁺", "󰁻", "󰁼", "󰁽", "󰁾", "󰁿", "󰂀", "󰂁", "󰂂", "󰁹"]
+    "format-icons": ["󰁺", "󰁻", "󰁼", "󰁽", "󰁾", "󰁿", "󰂀", "󰂁", "󰂂", "󰁹"],
+    "on-click": "power-profile",
+    "on-click-right": "power-profile status"
   },
   "custom/network": {
     "exec": "~/.config/waybar/scripts/network-speed.sh",
+    "return-type": "json",
     "interval": 2,
-    "format": "{}",
+    "format": "{text}",
+    "tooltip": true,
     "min-length": 8,
     "max-length": 8,
     "align": 1,
     "justify": "right",
-    "on-click": "wezterm start --class Gazelle -- gazelle"
+    "on-click": "wezterm start --class Gazelle -- gazelle",
+    "on-click-right": "wezterm start --class Network -- nmtui-connect"
   },
 
   "custom/input": {
@@ -173,6 +197,7 @@
 	"interval": 30,
   "path": "/home",
 	"format": "<span color='#a6e3a1'> </span><span color='#cdd6f4'>{free}</span>",
-	"unit": "GB"
+	"unit": "GB",
+    "on-click": "wezterm start --class Btop -- btop"
 },
 }

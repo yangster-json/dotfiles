@@ -49,6 +49,8 @@ hl.on("hyprland.start", function()
 	hl.exec_cmd("wl-paste --type text --watch cliphist store")
 	hl.exec_cmd("wl-paste --type image --watch cliphist store")
 	hl.exec_cmd("update-timezone")
+	hl.exec_cmd("systemctl --user start elephant.service")
+	hl.exec_cmd("systemctl --user start app-9router@autostart.service")
 	hl.exec_cmd("waybar")
 end)
 
@@ -285,7 +287,8 @@ hl.bind(mainMod .. " + E", hl.dsp.exec_cmd(terminalFileManager))
 hl.bind(mainMod .. " + SHIFT + E", hl.dsp.exec_cmd(fileManager))
 hl.bind(mainMod .. " + V", hl.dsp.window.float({ action = "toggle" }))
 hl.bind(mainMod .. " + SHIFT + V", hl.dsp.layout("togglesplit"))
-hl.bind(mainMod .. " + CTRL + V", hl.dsp.exec_cmd("walker --modules clipboard"))
+hl.bind(mainMod .. " + CTRL + V", hl.dsp.exec_cmd("walker --provider clipboard"))
+hl.bind(mainMod .. " + SHIFT + N", hl.dsp.exec_cmd("swaync-client --toggle-panel"))
 hl.bind(mainMod .. " + R", hl.dsp.exec_cmd(menu))
 hl.bind(mainMod .. " + SLASH", hl.dsp.exec_cmd("hotkeyhub"))
 hl.bind(mainMod .. " + P", hl.dsp.window.pseudo())
@@ -329,7 +332,7 @@ end
 hl.bind(mainMod .. " + S", hl.dsp.workspace.toggle_special("magic"))
 hl.bind(
 	mainMod .. " + SHIFT + S",
-	hl.dsp.exec_cmd("hyprshot --freeze --clipboard-only --mode region --silent"),
+	hl.dsp.exec_cmd("capture region"),
 	{ locked = true }
 )
 
