@@ -9,7 +9,7 @@ export function fixture() {
     },
     keyboard: { layout: "en-US\u0000" },
     battery: { chargePercent: 65, isCharging: false, state: "discharging" },
-    media: { currentSession: { title: '<img src=x onerror="alert(1)"> & a very long media title that needs truncation' } },
+    media: { currentSession: { isPlaying: true, title: '<img src=x onerror="alert(1)"> & a very long media title that needs truncation' } },
     glazewm: {
       currentWorkspaces: [{ id: "w2", name: "2" }, { id: "w1", name: "1", isDisplayed: true }],
       displayedWorkspace: { id: "w1", name: "1" },

@@ -61,6 +61,8 @@ assert.match(empty.left, /Weather unavailable/);
 assert.match(empty.left, /Disconnected/);
 assert.match(empty.right, /No microphone available/);
 assert.doesNotMatch(empty.right, /class="module bluetooth/);
+const pausedMedia = buildSections(config, { media: { currentSession: { isPlaying: false, title: "stale title" } } }, {}, now);
+assert.doesNotMatch(pausedMedia.left, /stale title/);
 p.audio.defaultPlaybackDevice.isMuted = true;
 p.audio.defaultRecordingDevice.isMuted = true;
 p.battery.isCharging = true;

@@ -28,7 +28,8 @@ export function buildSections(config, p = {}, state = {}, now = new Date()) {
         ? `${state.network.name}\nDownload: ${speed(state.network.bytesPerSecond).trim()}B/s\nClick to open network settings`
         : "Disconnected\nClick to open network settings" }),
     media: () => {
-      const title = p.media?.currentSession?.title;
+      const session = p.media?.currentSession;
+      const title = session?.isPlaying ? session.title : "";
       if (!title) return "";
       return item("media", `󰎈 ${escape(title)}`, { title, tone: "mauve" });
     },
