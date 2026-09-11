@@ -1,4 +1,8 @@
-param([Parameter(Mandatory)][ValidateSet('kanata', 'network', 'bluetooth', 'weather', 'battery')][string]$Query)
+param(
+    [ValidateSet('kanata', 'network', 'bluetooth', 'weather', 'battery', 'updates')][string]$Query,
+    [ValidateSet('toggle-kanata')][string]$Action
+)
+if (($null -eq $Query) -eq ($null -eq $Action)) { throw 'Specify exactly one query or action' }
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 
@@ -42,7 +46,18 @@ function Get-BluetoothDevices {
 }
 
 try {
-    $result = switch ($Query) {
+    if ($Action -eq 'toggle-kanata') {
+        $process = @(Get-Process -Name kanata -ErrorAction SilentlyContinue)
+        if ($process) {
+            $process | Stop-Process -Force
+            $result = $false
+        } else {
+            $kanata = Get-Command kanata.exe -ErrorAction Stop
+            Start-Process -FilePath $kanata.Source -ArgumentList @('--cfg', (Join-Path $HOME '.config\kanata\kanata.kbd'))
+            $result = $true
+        }
+    } else {
+        $result = switch ($Query) {
         'kanata' { [bool](Get-Process kanata -ErrorAction SilentlyContinue) }
         'battery' {
             # Uses Windows GetSystemPowerStatus, independent of Zebar's battery driver query.
@@ -70,6 +85,11 @@ try {
             # Same service, units and IP-location fallback as the Linux script.
             Invoke-RestMethod -Uri 'https://wttr.in/?format=j1' -UserAgent 'waybar-weather/1.0' -TimeoutSec 8
         }
+        'updates' {
+            $session = New-Object -ComObject Microsoft.Update.Session
+            $searcher = $session.CreateUpdateSearcher()
+            [int]$searcher.Search('IsInstalled=0 and IsHidden=0').Updates.Count
+        }
         'bluetooth' { ,@(Get-BluetoothDevices) }
         'network' {
             $routes = @(Get-NetRoute -DestinationPrefix '0.0.0.0/0' -AddressFamily IPv4 -ErrorAction SilentlyContinue |
@@ -89,6 +109,7 @@ try {
                     timestamp = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
                 }
             } else { $null }
+        }
         }
     }
     ConvertTo-Json -InputObject $result -Depth 12 -Compress

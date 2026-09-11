@@ -28,7 +28,7 @@ try {
     import { weatherData } from './format.js';
     import { fixture, weather, bluetooth } from '/tests/zebar-fixture.mjs';
     const p = fixture();
-    const state = { kanataOn: true, bluetooth, weather: weatherData(weather), network: { name: 'Wi-Fi', bytesPerSecond: 12000 } };
+    const state = { kanataOn: true, bluetooth, weather: weatherData(weather), network: { name: 'Wi-Fi', bytesPerSecond: 12000 }, updates: 2 };
     window.test = { p, state, calls: [] };
     p.audio.setMute = async (...args) => window.test.calls.push(['mute', ...args]);
     p.audio.setVolume = async (...args) => window.test.calls.push(['volume', ...args]);
@@ -38,16 +38,19 @@ try {
     bindActions(document.getElementById('bar'), {
       output: () => p, state, render,
       refreshWeather: () => window.test.calls.push(['weather']),
+      refreshKanata: () => window.test.calls.push(['refresh-kanata']),
+      windowsAction: async (...args) => { window.test.calls.push(['kanata', ...args]); },
       shellExec: async (...args) => { window.test.calls.push(['launch', ...args]); return { code: 0 }; },
     });
     render();
   ` }));
   await page.goto(`http://127.0.0.1:${server.address().port}/dot_glzr/zebar/mirror/index.html`);
-  await page.locator('[data-action="audio"]').waitFor();
+  await page.locator('[data-action="audio-settings"]').waitFor();
   assert.equal(await page.locator("#bar").evaluate(e => e.getBoundingClientRect().height), 41);
   assert.equal(await page.locator("img").count(), 0);
   assert.match(await page.locator(".input").textContent(), /eng/);
-  assert.equal(await page.locator(".input").getAttribute("title"), "Kanata enabled — English (United States)");
+  assert.equal(await page.locator(".kanata").getAttribute("title"), "Kanata enabled — click to disable");
+  assert.equal(await page.locator(".input").getAttribute("title"), "English (United States)");
   const workspaceBounds = await page.locator(".workspace").evaluateAll(elements => elements.map(e => {
     const rect = e.getBoundingClientRect(); return { x: rect.x, width: rect.width };
   }));
@@ -60,7 +63,7 @@ try {
     await page.setViewportSize({ width, height: 100 });
     assert.ok(await page.evaluate(() => [...document.querySelectorAll('section')].every(e => e.scrollWidth <= e.clientWidth)), `Full bar fits at ${width}px`);
   }
-  for (const module of ["cpu", "memory", "disk", "weather", "network", "media", "input", "bluetooth", "microphone", "clock"]) {
+  for (const module of ["cpu", "memory", "disk", "weather", "network", "updates", "media", "kanata", "input", "bluetooth", "audio", "microphone", "battery", "clock"]) {
     assert.ok(await page.locator(`.module.${module}`).getAttribute("title"), module);
   }
   await page.locator(".microphone").hover();
@@ -73,7 +76,7 @@ try {
   assert.ok(await page.evaluate(() => window.hovered === document.querySelector('.microphone') && window.title === window.hovered.title));
   await page.locator(".microphone").click();
   await page.waitForFunction(() => document.querySelector('.microphone').title.includes('Status: Muted'));
-  await page.locator(".audio").click();
+  await page.locator(".audio").click({ button: "right" });
   await page.waitForFunction(() => window.test.p.audio.defaultPlaybackDevice.isMuted);
   await page.locator(".audio").hover();
   await page.mouse.wheel(0, -100);
@@ -85,15 +88,23 @@ try {
   assert.equal(await page.locator(".clock").textContent(), "2026-09-09");
   await page.locator('[data-workspace="w2"]').click();
   await page.locator(".weather").click();
+  await page.locator(".kanata").click();
   await page.locator(".cpu").click();
+  await page.locator(".memory").click();
+  await page.locator(".disk").click();
   await page.locator(".network").click();
+  await page.locator(".updates").click();
+  await page.locator(".audio").click();
   const calls = await page.evaluate(() => window.test.calls);
   assert.ok(calls.some(c => c[0] === "workspace" && c[1] === 'focus --workspace "2"'));
   assert.ok(calls.some(c => c[0] === "mute" && c[2].deviceId === "mic"));
   assert.ok(calls.some(c => c[0] === "mute" && c[2].deviceId === "speaker"));
   assert.ok(calls.some(c => c[0] === "weather"));
-  assert.ok(calls.some(c => c[0] === "launch" && c[1] === "Taskmgr.exe"));
-  assert.ok(calls.some(c => c[0] === "launch" && c[1] === "explorer.exe"));
+  assert.equal(calls.filter(c => c[0] === "launch" && c[1] === "Taskmgr.exe").length, 3);
+  assert.ok(calls.some(c => c[0] === "launch" && c[2][0] === "ms-settings:network-wifi"));
+  assert.ok(calls.some(c => c[0] === "launch" && c[2][0] === "ms-settings:apps-volume"));
+  assert.ok(calls.some(c => c[0] === "launch" && c[2][0] === "ms-settings:windowsupdate"));
+  assert.ok(calls.some(c => c[0] === "kanata" && c[2] === "toggle-kanata"));
   await page.evaluate(() => { window.test.state.bluetooth = []; window.test.p.media = null; window.test.render(); });
   assert.equal(await page.locator(".bluetooth").count(), 0);
   assert.equal(await page.locator(".media").count(), 0);

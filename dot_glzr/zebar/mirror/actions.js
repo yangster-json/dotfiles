@@ -1,6 +1,6 @@
 import { clamp } from "./format.js";
 
-export function bindActions(bar, { output, state, render, refreshWeather, shellExec }) {
+export function bindActions(bar, { output, state, render, refreshWeather, refreshKanata, shellExec, windowsAction }) {
   let audioQueue = Promise.resolve();
   function report(error) { console.warn("Bar action failed", error); }
   async function launch(program, args = []) {
@@ -30,11 +30,14 @@ export function bindActions(bar, { output, state, render, refreshWeather, shellE
     if (!target || !bar.contains(target)) return;
     const action = target.dataset.action;
     Promise.resolve().then(async () => {
-      if (action === "audio" || action === "microphone") return audioAction(action);
+      if (action === "microphone") return audioAction(action);
       if (action === "clock") { state.alternateClock = !state.alternateClock; render(); }
       if (action === "weather") return refreshWeather();
+      if (action === "updates") return launch("explorer.exe", ["ms-settings:windowsupdate"]);
+      if (action === "kanata") { await windowsAction(shellExec, "toggle-kanata"); return refreshKanata(); }
       if (action === "task-manager") return launch("Taskmgr.exe");
-      if (action === "network") return launch("explorer.exe", ["ms-settings:network-status"]);
+      if (action === "network") return launch("explorer.exe", ["ms-settings:network-wifi"]);
+      if (action === "audio-settings") return launch("explorer.exe", ["ms-settings:apps-volume"]);
       if (action === "workspace") {
         const wm = output().glazewm;
         const workspace = wm?.currentWorkspaces.find(w => w.id === target.dataset.workspace);
@@ -42,8 +45,14 @@ export function bindActions(bar, { output, state, render, refreshWeather, shellE
       }
     }).catch(report);
   });
+  bar.addEventListener("contextmenu", event => {
+    const target = event.target.closest('[data-action="audio-settings"]');
+    if (!target || !bar.contains(target)) return;
+    event.preventDefault();
+    audioAction("audio");
+  });
   bar.addEventListener("wheel", event => {
-    const target = event.target.closest('[data-action="audio"]');
+    const target = event.target.closest('[data-action="audio-settings"]');
     if (!target || !bar.contains(target) || event.deltaY === 0) return;
     event.preventDefault();
     audioAction("audio", event.deltaY < 0 ? 10 : -10);

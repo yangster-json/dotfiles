@@ -3,18 +3,19 @@ import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import { config } from "../dot_glzr/zebar/mirror/config.js";
 import { buildSections } from "../dot_glzr/zebar/mirror/render-model.js";
-import { networkSample, weatherData, speed, language, keyboardName, clockText, calendar, diskSize } from "../dot_glzr/zebar/mirror/format.js";
-import { windowsQuery, poll } from "../dot_glzr/zebar/mirror/windows.js";
+import { networkSample, weatherData, speed, language, keyboardName, clockText, calendar, diskSize, freeGigabytes } from "../dot_glzr/zebar/mirror/format.js";
+import { windowsQuery, windowsAction, poll } from "../dot_glzr/zebar/mirror/windows.js";
 import { fixture, weather, bluetooth } from "./zebar-fixture.mjs";
 
 const p = fixture();
 const now = new Date(2026, 8, 9, 14, 5);
-const state = { kanataOn: true, bluetooth, weather: weatherData(weather), network: { name: "Wi-Fi", bytesPerSecond: 12000 } };
+const state = { kanataOn: true, bluetooth, weather: weatherData(weather), network: { name: "Wi-Fi", bytesPerSecond: 12000 }, updates: 2 };
 const sections = buildSections(config, p, state, now);
-assert.deepEqual(config.modules.left, [["cpu", "memory", "disk"], ["weather", "network"], ["media"]]);
-assert.deepEqual(config.modules.right, [["input", "bluetooth", "audio", "microphone", "battery", "clock"]]);
+assert.deepEqual(config.modules.left, [["cpu", "memory", "disk"], ["weather", "network"], ["updates"], ["media"]]);
+assert.deepEqual(config.modules.right, [["kanata", "input"], ["bluetooth"], ["audio", "microphone", "battery", "clock"]]);
 assert.match(sections.left, /8\.5G/);
-assert.match(sections.left, /125\.0GiB/);
+assert.match(sections.left, /134G/);
+assert.match(sections.left, /2 updates available/);
 assert.doesNotMatch(sections.left, /45%/);
 assert.match(sections.left, /72°F/);
 assert.match(sections.left, /Test City, Country/);
@@ -22,8 +23,9 @@ assert.match(sections.left, /Feels like 74°F · Humidity 55% · Wind 8 km\/h/);
 assert.match(sections.left, /󰤨 ↓  12k/);
 assert.doesNotMatch(sections.left, /<img/);
 assert.match(sections.left, /&lt;img/);
-assert.match(sections.right, /Kanata enabled — English/);
+assert.match(sections.right, /Kanata enabled — click to disable/);
 assert.match(sections.right, /eng/);
+for (const name of ["cpu", "memory", "disk"]) assert.match(sections.left, new RegExp(`class="module ${name} [^>]*data-action="task-manager"`));
 assert.match(sections.right, /Headphones &lt;unsafe&gt; &quot;one&quot;: 75%/);
 assert.match(sections.right, /Volume: 80%\nStatus: Active/);
 assert.match(sections.right, /14:05 \| Wed 09 Sep/);
@@ -32,7 +34,7 @@ assert.ok(sections.center.indexOf('data-workspace="w1"') < sections.center.index
 assert.match(sections.center, /workspace active visible/);
 assert.match(sections.center, /data-workspace="w1"[^>]*>1<\/button>/);
 assert.match(sections.center, /data-workspace="w2"[^>]*>2<\/button>/);
-assert.doesNotMatch(sections.right.match(/<button[^>]*data-action="audio"[^>]*>/)[0], /title=/);
+assert.match(sections.right.match(/<button[^>]*data-action="audio-settings"[^>]*>/)[0], /title="Click to open Volume mixer/);
 assert.equal(language("Arabic (Saudi Arabia)"), "ara");
 assert.equal(language("French"), "---");
 for (const value of ["en", "en-US", "en-GB\0", " en_US\0 "]) assert.equal(language(value), "eng");
@@ -46,6 +48,7 @@ assert.ok(!sections.right.includes("\0"));
 assert.equal(clockText(now, "en-GB", true), "2026-09-09");
 assert.match(calendar(new Date(2024, 1, 29), "en-GB"), /\[29\]/);
 assert.equal(diskSize(1024 ** 4), "1.0TiB");
+assert.equal(freeGigabytes(125 * 1024 ** 3), " 134G");
 assert.equal(speed(12001), " 13k");
 assert.equal(speed(999999), "  1M");
 assert.equal(speed(0), "  0 ");
@@ -87,17 +90,22 @@ assert.match(buildSections(config, p, { battery: fallbackBattery }, now).right, 
 const manifest = JSON.parse(readFileSync(new URL("../dot_glzr/zebar/mirror/zpack.json", import.meta.url)));
 const permissions = manifest.widgets[0].privileges.shellCommands;
 let calls = 0;
-for (const query of ["kanata", "network", "bluetooth", "weather", "battery"]) {
+for (const query of ["kanata", "network", "bluetooth", "weather", "battery", "updates"]) {
   assert.equal(await windowsQuery(async (program, args) => {
     calls++;
     assert.ok(permissions.some(rule => rule.program === program && new RegExp(rule.argsRegex).test(args.join(" "))));
     return { code: 0, stdout: "\ufefftrue", stderr: "" };
   }, query), true);
 }
-assert.equal(calls, 5);
+assert.equal(calls, 6);
 assert.throws(() => windowsQuery(() => {}, "injected;command"), /Unknown Windows query/);
+assert.throws(() => windowsAction(() => {}, "injected;command"), /Unknown Windows action/);
 await assert.rejects(() => windowsQuery(async () => ({ code: 1, stderr: "failure" }), "network"), /failure/);
-for (const [program, args] of [["Taskmgr.exe", ""], ["explorer.exe", "ms-settings:network-status"]]) {
+await windowsAction(async (program, args) => {
+  assert.ok(permissions.some(rule => rule.program === program && new RegExp(rule.argsRegex).test(args.join(" "))));
+  return { code: 0, stdout: "true", stderr: "" };
+}, "toggle-kanata");
+for (const [program, args] of [["Taskmgr.exe", ""], ["explorer.exe", "ms-settings:network-wifi"], ["explorer.exe", "ms-settings:apps-volume"], ["explorer.exe", "ms-settings:windowsupdate"]]) {
   assert.ok(permissions.some(rule => rule.program === program && new RegExp(rule.argsRegex).test(args)));
 }
 assert.ok(!permissions.some(rule => rule.program === "powershell.exe" && new RegExp(rule.argsRegex).test("-Command Remove-Item")));
@@ -117,7 +125,7 @@ const startupTasks = [], intervals = [];
 let providerConfig, actionBindings, outputCallback, errorCallback, lastRendered;
 const startupProviders = {};
 runInNewContext(readFileSync(new URL("../dot_glzr/zebar/mirror/index.js", import.meta.url), "utf8").replace(/^import .*;\n/gm, ""), {
-  config, buildSections, weatherData, networkSample, windowsQuery,
+  config, buildSections, weatherData, networkSample, windowsQuery, windowsAction,
   createProviderGroup(value) {
     providerConfig = value;
     return { outputMap: startupProviders, onOutput(fn) { outputCallback = fn; }, onError(fn) { errorCallback = fn; } };
@@ -132,8 +140,9 @@ await Promise.all(startupTasks);
 assert.equal(providerConfig.disk.type, "disk");
 assert.equal(providerConfig.audio.type, "audio");
 assert.equal(providerConfig.memory.refreshInterval, 5000);
-assert.deepEqual(intervals, [10000, 5000, 10000, 2000, 600000]);
+assert.deepEqual(intervals, [10000, 5000, 10000, 2000, 3600000, 600000]);
 assert.equal(typeof actionBindings.refreshWeather, "function");
+assert.equal(typeof actionBindings.refreshKanata, "function");
 outputCallback();
 errorCallback({ audio: "Unavailable" });
 startupProviders.battery = fixture().battery;

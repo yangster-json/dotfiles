@@ -3,10 +3,10 @@ import { config } from "./config.js";
 import { buildSections } from "./render-model.js";
 import { renderSections } from "./dom.js";
 import { bindActions } from "./actions.js";
-import { windowsQuery, poll } from "./windows.js";
+import { windowsQuery, windowsAction, poll } from "./windows.js";
 import { networkSample, weatherData } from "./format.js";
 
-const state = { kanataOn: false, bluetooth: [], weather: null, network: null, alternateClock: false,
+const state = { kanataOn: false, bluetooth: [], weather: null, network: null, updates: null, alternateClock: false,
   battery: null, batterySeen: false };
 const providers = createProviderGroup({
   audio: { type: "audio" },
@@ -33,12 +33,13 @@ function queryPoll(query, interval, update, fallback) {
   }, interval);
 }
 queryPoll("battery", 10000, value => { state.battery = value; }, null);
-queryPoll("kanata", 5000, value => { state.kanataOn = value === true; }, false);
+const refreshKanata = queryPoll("kanata", 5000, value => { state.kanataOn = value === true; }, false);
 queryPoll("bluetooth", 10000, value => { state.bluetooth = Array.isArray(value) ? value : []; }, []);
 queryPoll("network", 2000, value => { state.network = networkSample(state.network, value); }, null);
+queryPoll("updates", 3600000, value => { state.updates = Number.isInteger(value) && value >= 0 ? value : null; }, null);
 const refreshWeather = queryPoll("weather", 600000, value => { state.weather = weatherData(value); }, null);
 bindActions(document.getElementById("bar"), {
-  output: () => providers.outputMap, state, render, refreshWeather, shellExec,
+  output: () => providers.outputMap, state, render, refreshWeather, refreshKanata, shellExec, windowsAction,
 });
 render();
 setInterval(render, 1000);

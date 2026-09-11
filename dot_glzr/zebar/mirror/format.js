@@ -1,13 +1,13 @@
 export const escape = value => String(value ?? "").replace(/[&<>"']/g,
   char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 export const gib = bytes => (bytes / 1024 ** 3).toFixed(1);
-// Waybar's {free} uses automatic binary units; its unit option only affects
-// {specific_free}, which this repository does not use.
+// Keep binary units for disk tooltips.
 export function diskSize(bytes) {
   let unit = 0;
   while (bytes >= 1024 && unit < 5) { bytes /= 1024; unit++; }
   return `${bytes.toFixed(1)}${["B", "kiB", "MiB", "GiB", "TiB", "PiB"][unit]}`;
 }
+export const freeGigabytes = bytes => `${Math.round(bytes / 1000 ** 3).toString().padStart(4)}G`;
 export const clamp = value => Math.max(0, Math.min(100, value));
 // Zebar's Windows provider returns locale tags (sometimes with a trailing NUL),
 // not the human-readable layout names supplied by Hyprland.

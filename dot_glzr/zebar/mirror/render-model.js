@@ -1,4 +1,4 @@
-import { escape, gib, diskSize, clamp, language, keyboardName, speed, clockText, calendar } from "./format.js";
+import { escape, gib, diskSize, freeGigabytes, clamp, language, keyboardName, speed, clockText, calendar } from "./format.js";
 
 const icon = (text, tone) => `<span class="${tone}">${escape(text)}</span>`;
 function item(key, html, { title, action, tone = "", extra = "" } = {}) {
@@ -7,22 +7,28 @@ function item(key, html, { title, action, tone = "", extra = "" } = {}) {
     + `${title ? ` title="${escape(title)}"` : ""}${extra}>${html}</${tag}>`;
 }
 const percent = value => `${Math.round(clamp(value))}%`;
+const fixedPercent = (value, width) => percent(value).padStart(width);
 const mount = value => String(value).replace(/[\\/]+$/, "").toLowerCase();
 
 export function buildSections(config, p = {}, state = {}, now = new Date()) {
   const renderers = {
-    cpu: () => Number.isFinite(p.cpu?.usage) ? item("cpu", `${icon(config.icons.cpu, "blue")} ${percent(p.cpu.usage)}`,
+    cpu: () => Number.isFinite(p.cpu?.usage) ? item("cpu", `${icon(config.icons.cpu, "blue")} ${fixedPercent(p.cpu.usage, 3)}`,
       { action: "task-manager", title: `CPU: ${percent(p.cpu.usage)}\n${p.cpu.physicalCoreCount ?? "?"} physical / ${p.cpu.logicalCoreCount ?? "?"} logical cores\nClick to open Task Manager` }) : "",
-    memory: () => Number.isFinite(p.memory?.usedMemory) ? item("memory", `${icon(config.icons.memory, "red")} ${gib(p.memory.usedMemory)}G`,
-      { title: `Memory: ${gib(p.memory.usedMemory)} / ${gib(p.memory.totalMemory)} GiB\nFree: ${gib(p.memory.freeMemory)} GiB` }) : "",
+    memory: () => Number.isFinite(p.memory?.usedMemory) ? item("memory", `${icon(config.icons.memory, "red")} ${gib(p.memory.usedMemory).padStart(4)}G`,
+      { action: "task-manager", title: `Memory: ${gib(p.memory.usedMemory)} / ${gib(p.memory.totalMemory)} GiB\nFree: ${gib(p.memory.freeMemory)} GiB\nClick to open Task Manager` }) : "",
     disk: () => {
       const d = p.disk?.disks?.find(disk => mount(disk.mountPoint) === mount(config.diskMount));
       if (!Number.isFinite(d?.availableSpace?.bytes)) return "";
-      return item("disk", `${icon(config.icons.disk, "green")} ${diskSize(d.availableSpace.bytes)}`,
-        { title: `${d.mountPoint} (${d.fileSystem})\nFree: ${diskSize(d.availableSpace.bytes)}\nTotal: ${diskSize(d.totalSpace.bytes)}` });
+      return item("disk", `${icon(config.icons.disk, "green")} ${freeGigabytes(d.availableSpace.bytes)}`,
+        { action: "task-manager", title: `${d.mountPoint} (${d.fileSystem})\nFree: ${diskSize(d.availableSpace.bytes)}\nTotal: ${diskSize(d.totalSpace.bytes)}\nClick to open Task Manager` });
     },
     weather: () => item("weather", escape(state.weather?.text ?? "󰖐 --"),
       { action: "weather", title: state.weather?.tooltip ?? "Weather unavailable" }),
+    updates: () => {
+      const count = Number.isInteger(state.updates) && state.updates >= 0 ? state.updates : 0;
+      return item("updates", `󰚰 ${String(count).padStart(3)}`, { action: "updates",
+        title: count ? `${count} update${count === 1 ? "" : "s"} available\nClick to open Windows Update` : "System is up to date\nClick to open Windows Update" });
+    },
     network: () => item("network", escape(state.network ? `󰤨 ↓ ${speed(state.network.bytesPerSecond)}` : "󰤭 ↓     "),
       { action: "network", tone: "yellow", title: state.network
         ? `${state.network.name}\nDownload: ${speed(state.network.bytesPerSecond).trim()}B/s\nClick to open network settings`
@@ -42,26 +48,26 @@ export function buildSections(config, p = {}, state = {}, now = new Date()) {
           + ` class="workspace${active ? " active" : ""}${w.isDisplayed ? " visible" : ""}" title="${escape(w.name)}" aria-label="Workspace ${escape(w.name)}" aria-pressed="${active}">${escape(w.name)}</button>`;
       }).join(""));
     },
+    kanata: () => item("kanata", icon(state.kanataOn ? "󰔡" : "󰔢", "mauve"),
+      { action: "kanata", title: state.kanataOn ? "Kanata enabled — click to disable" : "Kanata disabled — click to enable" }),
     input: () => {
       const layout = p.keyboard?.layout;
-      const marker = state.kanataOn ? `${icon(config.icons.keyboard, "green")} ` : "";
-      return item("input", `${marker}${icon(config.icons.keyboard, "yellow")} ${language(layout ?? "")}`,
-        { title: `${state.kanataOn ? "Kanata enabled — " : ""}${keyboardName(layout)}` });
+      return item("input", `${icon(config.icons.keyboard, "yellow")} ${language(layout ?? "")}`,
+        { title: keyboardName(layout) });
     },
     bluetooth: () => {
       const devices = state.bluetooth ?? [];
       if (!devices.length) return "";
       const battery = devices.find(d => Number.isFinite(d.battery))?.battery;
-      return item("bluetooth", `${battery === undefined ? "" : ` ${percent(battery)}`}`, { tone: "blue",
+      return item("bluetooth", ` ${battery === undefined ? " --%" : fixedPercent(battery, 4)}`, { tone: "blue",
         title: devices.map(d => `${d.name}${Number.isFinite(d.battery) ? `: ${percent(d.battery)}` : ""}`).join("\n") });
     },
     audio: () => {
       const d = p.audio?.defaultPlaybackDevice;
       if (!d || !Number.isFinite(d.volume)) return "";
       const glyph = /head(phone|set)/i.test(d.name) ? "" : d.volume < 34 ? "" : d.volume < 67 ? "" : "";
-      // Waybar explicitly disables the speaker tooltip.
-      return item("audio", d.isMuted ? icon("󰝟", "red") : `${icon(glyph, "green")} ${percent(d.volume)}`,
-        { action: "audio", extra: ' aria-label="Toggle speaker mute; scroll to change volume"' });
+      return item("audio", d.isMuted ? `${icon("󰝟", "red")}  --%` : `${icon(glyph, "green")} ${fixedPercent(d.volume, 4)}`,
+        { action: "audio-settings", title: "Click to open Volume mixer\nRight-click to mute\nScroll to change volume", extra: ' aria-label="Open Volume mixer; right-click to mute; scroll to change volume"' });
     },
     microphone: () => {
       const d = p.audio?.defaultRecordingDevice;
@@ -80,7 +86,7 @@ export function buildSections(config, p = {}, state = {}, now = new Date()) {
       const icons = ["󰁺", "󰁻", "󰁼", "󰁽", "󰁾", "󰁿", "󰂀", "󰂁", "󰂂", "󰁹"];
       const glyph = b.isCharging ? "󰂄" : icons[Math.min(9, Math.floor(clamp(b.chargePercent) / 10))];
       const level = b.chargePercent <= 15 ? "critical" : b.chargePercent <= 30 ? "warning" : "";
-      return item("battery", `${icon(glyph, "green")} ${percent(b.chargePercent)}`, { tone: level,
+      return item("battery", `${icon(glyph, "green")} ${fixedPercent(b.chargePercent, 4)}`, { tone: level,
         title: `Battery: ${percent(b.chargePercent)}\n${b.isCharging ? "Charging" : b.state ?? "unknown"}` });
     },
     clock: () => item("clock", `${state.alternateClock ? "" : `${icon(config.icons.clock, "blue")} `}${escape(clockText(now, config.locale, state.alternateClock))}`,

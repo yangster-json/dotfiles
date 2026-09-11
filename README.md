@@ -134,18 +134,22 @@ For Waybar changes on Arch, apply `~/.config/waybar` and reload Waybar as usual.
 
 Zebar matches the following Waybar features:
 
-- Left: CPU %, used RAM in GiB, free disk space; wttr.in weather in °F and
-  default-interface download speed; truncated media title with its full tooltip.
+- Left: fixed-width CPU %, used RAM in GiB, and whole-GB free disk space;
+  wttr.in weather in °F, default-interface download speed, a Windows Update
+  count, and a fixed-width media title with its full tooltip.
 - Center: numerically sorted, clickable GlazeWM workspaces on each monitor.
-- Right: `eng`/`ara` layout and Kanata marker, connected Bluetooth devices and
-  battery when exposed by the driver, speaker, microphone, battery, and clock.
-- Speaker click toggles mute; scrolling changes volume by 10 percentage points.
-  Microphone click toggles input mute. Clock click switches to ISO date, and
-  hovering shows a month calendar. Weather click refreshes its data.
-- CPU click opens Task Manager; network click opens Windows network settings.
+- Right: a clickable Kanata control, `eng`/`ara` layout, connected Bluetooth
+  devices and battery when exposed by the driver, speaker, microphone, battery,
+  and clock.
+- Speaker click opens Volume mixer; right-click toggles mute; scrolling changes
+  volume by 10 percentage points. Microphone click toggles input mute. Clock
+  click switches to ISO date, and hovering shows a month calendar. Weather
+  click refreshes its data. Kanata click starts or stops `kanata.exe`.
+- CPU, RAM and disk click open Task Manager; network click opens Wi-Fi settings;
+  the update count opens Windows Update.
 
 `windows.ps1` supplies narrowly allowlisted, non-overlapping queries for Kanata,
-Bluetooth, weather, network counters, and a Windows battery-status fallback.
+Bluetooth, weather, network counters, update counts, and a Windows battery-status fallback.
 If Zebar's battery provider fails, the bar uses Windows power status; if both
 readings fail after a battery was detected, it shows `--` with an unavailable
 status tooltip rather than hiding the module or displaying stale data.
@@ -162,7 +166,7 @@ this 41px widget window. Keyed DOM updates preserve hovered/focused elements.
 Names and titles are escaped, and multiline tooltips include weather, microphone,
 Bluetooth, resource and calendar details. Native tooltip styling/delay follows
 Windows rather than GTK; calendar alignment depends on its tooltip font.
-The speaker intentionally has no tooltip, matching Waybar's `tooltip: false`.
+The speaker tooltip documents its click, right-click and scroll controls.
 
 Run `bash tests/verify-zebar.sh` for fixture, startup and deployment checks.
 `tests/verify-zebar-browser.mjs` additionally tests DOM stability, tooltip text,

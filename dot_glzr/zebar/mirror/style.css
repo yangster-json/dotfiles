@@ -3,11 +3,11 @@
    overflow:visible. Do not replace native titles with CSS-only tooltips. */
 :root {
   --base: #1e1e2e;
-  --text: #cdd6f4;
-  --blue: #89b4fa;
-  --green: #a6e3a1;
-  --yellow: #f9e2af;
-  --red: #f38ba8;
+  --text: #cba6f7;
+  --blue: #cba6f7;
+  --green: #cba6f7;
+  --yellow: #cba6f7;
+  --red: #cba6f7;
   --mauve: #cba6f7;
   --surface0: #313244;
   --height: 41px;
@@ -42,12 +42,21 @@ section { display: flex; align-items: center; min-width: 0; overflow: hidden; }
 .bubble > .module:first-child { border-radius: var(--radius) 0 0 var(--radius); }
 .bubble > .module:last-child { border-radius: 0 var(--radius) var(--radius) 0; }
 .bubble > .module:only-child { border-radius: var(--radius); }
-.cpu { padding-left: 10px; padding-right: 10px; }
-.weather { padding-left: 10px; }
+.cpu { width: calc(5ch + 20px); padding-left: 10px; padding-right: 10px; text-align: right; }
+.memory, .disk { width: calc(7ch + 14px); text-align: right; }
+.weather { width: calc(7ch + 20px); padding-left: 10px; text-align: right; }
 .network { width: calc(8ch + 14px); text-align: right; overflow: hidden; }
+.updates { width: calc(5ch + 14px); text-align: right; }
 #left > .bubble:last-child:has(.media) { flex-shrink: 1; margin-left: 5px; }
-.media { max-width: calc(40ch + 14px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bluetooth { background: transparent; padding: 0 4px; }
+.media { width: calc(28ch + 14px); overflow: hidden; white-space: nowrap; }
+.kanata { width: calc(1ch + 14px); text-align: center; }
+.input { width: calc(5ch + 14px); text-align: right; }
+.bubble:has(.bluetooth) { margin-left: 0; margin-right: 0; }
+.bluetooth { width: calc(6ch + 8px); background: transparent; padding: 0 4px; text-align: right; }
+.audio { width: calc(7ch + 14px); text-align: right; }
+.microphone { width: calc(1ch + 14px); text-align: center; }
+.battery { width: calc(6ch + 14px); text-align: right; }
+.clock { width: calc(20ch + 14px); text-align: right; }
 .workspaces { padding-right: 4px; }
 /* WebView needs a 12px circle to match Waybar's rendered bubble size. */
 .workspace {

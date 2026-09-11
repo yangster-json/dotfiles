@@ -28,7 +28,7 @@
         "shellCommands": [
           {
             "program": "powershell.exe",
-            "argsRegex": "^-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command & \\(Join-Path \\$env:USERPROFILE '\\.glzr/zebar/mirror/windows\\.ps1'\\) -Query (kanata|network|bluetooth|weather|battery)$"
+            "argsRegex": "^-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command & \\(Join-Path \\$env:USERPROFILE '\\.glzr/zebar/mirror/windows\\.ps1'\\) -(?:Query (kanata|network|bluetooth|weather|battery|updates)|Action toggle-kanata)$"
           },
           {
             "program": "Taskmgr.exe",
@@ -36,7 +36,7 @@
           },
           {
             "program": "explorer.exe",
-            "argsRegex": "^ms-settings:network-status$"
+            "argsRegex": "^ms-settings:(network-wifi|apps-volume|windowsupdate)$"
           }
         ]
       }
