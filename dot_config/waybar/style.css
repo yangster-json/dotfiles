@@ -162,14 +162,10 @@ tooltip {
 
 #bluetooth {
   color: #cba6f7;
-  background: transparent;
-  border-radius: 0px;
-  margin: 0px;
-  padding: 0px 4px;
-}
-
-#bluetooth:not(.connected) {
-  padding: 0px;
+  background: #1e1e2e;
+  border-radius: 13px;
+  margin: 5px;
+  padding: 1.5px 7px;
 }
 
 #tray {
