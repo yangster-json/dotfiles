@@ -165,7 +165,7 @@ tooltip {
   background: #1e1e2e;
   border-radius: 0px;
   margin: 5px 0px;
-  padding: 1.5px 7px;
+  padding: 1.5px 0px 1.5px 7px;
 }
 
 #tray {
@@ -180,6 +180,7 @@ tooltip {
   border-radius: 0px 0px 0px 0px;
   margin-right: 0px;
   margin-left: 0px;
+  padding-left: 0px;
 }
 
 #custom-microphone {
