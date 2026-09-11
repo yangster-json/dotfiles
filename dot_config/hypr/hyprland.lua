@@ -50,7 +50,6 @@ hl.on("hyprland.start", function()
 	hl.exec_cmd("wl-paste --type image --watch cliphist store")
 	hl.exec_cmd("update-timezone")
 	hl.exec_cmd("systemctl --user start elephant.service")
-	hl.exec_cmd("systemctl --user start app-9router@autostart.service")
 	hl.exec_cmd("waybar")
 end)
 
