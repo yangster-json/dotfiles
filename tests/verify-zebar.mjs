@@ -90,6 +90,8 @@ const manifest = JSON.parse(readFileSync(new URL("../dot_glzr/zebar/mirror/zpack
 const powershellScript = readFileSync(new URL("../dot_glzr/zebar/mirror/windows.ps1", import.meta.url), "utf8");
 assert.match(powershellScript, /\$PSBoundParameters\.ContainsKey\('Query'\)/);
 assert.match(powershellScript, /\$PSBoundParameters\.ContainsKey\('Action'\)/);
+assert.match(powershellScript, /function Get-KanataProcesses/);
+assert.match(powershellScript, /ProcessName -like 'kanata\*'/);
 const permissions = manifest.widgets[0].privileges.shellCommands;
 let calls = 0;
 for (const query of ["kanata", "network", "bluetooth", "weather", "battery"]) {

@@ -47,17 +47,21 @@ function Get-BluetoothDevices {
     }
 }
 
+function Get-KanataProcesses {
+    @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -like 'kanata*' })
+}
+
 function Find-Kanata {
     $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
     if ($userPath) { $env:Path = "$env:Path;$userPath" }
-    $command = Get-Command kanata.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
-    if (-not $command) { throw 'kanata.exe was not found in the user PATH' }
-    $command.Source
+    $command = Get-Command -Name 'kanata*.exe' -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $command) { throw 'No Kanata executable was found in the user PATH' }
+    $command.Path
 }
 
 try {
     if ($Action -eq 'toggle-kanata') {
-        $process = @(Get-Process -Name kanata -ErrorAction SilentlyContinue)
+        $process = Get-KanataProcesses
         if ($process) {
             $process | Stop-Process -Force
             $result = $false
@@ -67,7 +71,7 @@ try {
         }
     } else {
         $result = switch ($Query) {
-        'kanata' { [bool](Get-Process kanata -ErrorAction SilentlyContinue) }
+        'kanata' { [bool](Get-KanataProcesses) }
         'battery' {
             # Uses Windows GetSystemPowerStatus, independent of Zebar's battery driver query.
             Add-Type -AssemblyName System.Windows.Forms
