@@ -99,7 +99,7 @@
   "clock": {
     "tooltip-format": "<big>{:%Y %B}</big>\n<tt><small>{calendar}</small></tt>",
     "format": "<span color='#cba6f7'>󰥔 </span><span color='#cba6f7'>{:%H:%M | %a %d %b}</span>",
-    "format-alt": "<span color='#cba6f7'>󰥔 </span><span color='#cba6f7'>{:%Y-%m-%d}</span>",
+    "format-alt": "<span color='#cba6f7'>󰥔 </span><span color='#cba6f7'>{:%H:%M | %a %d %b}</span>",
     "min-length": 20,
     "align": 1,
     "justify": "right",
