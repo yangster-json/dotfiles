@@ -51,11 +51,12 @@ export function buildSections(config, p = {}, state = {}, now = new Date()) {
         { title: keyboardName(layout) });
     },
     bluetooth: () => {
-      const devices = state.bluetooth ?? [];
-      if (!devices.length) return "";
-      const battery = devices.find(d => Number.isFinite(d.battery))?.battery;
-      return item("bluetooth", ` ${battery === undefined ? " --%" : fixedPercent(battery, 4)}`, { tone: "blue",
-        title: devices.map(d => `${d.name}${Number.isFinite(d.battery) ? `: ${percent(d.battery)}` : ""}`).join("\n") });
+      const devices = state.bluetooth;
+      if (!Array.isArray(devices)) return item("bluetooth", "󰂲", { title: "Bluetooth unavailable" });
+      if (!devices.length) return item("bluetooth", "󰂯", { title: "Bluetooth enabled — no device connected" });
+      return item("bluetooth", "󰂱", {
+        title: devices.map(d => `${d.name}${Number.isFinite(d.battery) ? `: ${percent(d.battery)}` : ""}`).join("\n"),
+      });
     },
     audio: () => {
       const d = p.audio?.defaultPlaybackDevice;
@@ -84,8 +85,9 @@ export function buildSections(config, p = {}, state = {}, now = new Date()) {
       return item("battery", `${icon(glyph, "green")} ${fixedPercent(b.chargePercent, 4)}`, { tone: level,
         title: `Battery: ${percent(b.chargePercent)}\n${b.isCharging ? "Charging" : b.state ?? "unknown"}` });
     },
-    clock: () => item("clock", `${state.alternateClock ? "" : `${icon(config.icons.clock, "blue")} `}${escape(clockText(now, config.locale, state.alternateClock))}`,
-      { action: "clock", title: calendar(now, config.locale) }),
+    clock: () => item("clock", `${icon(config.icons.clock, "blue")} ${escape(clockText(now, config.locale))}`, {
+      action: "clock", title: calendar(now, config.locale),
+    }),
   };
   return Object.fromEntries(Object.entries(config.modules).map(([group, bubbles]) => [group,
     bubbles.map((names, i) => {

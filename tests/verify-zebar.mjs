@@ -12,7 +12,7 @@ const now = new Date(2026, 8, 9, 14, 5);
 const state = { kanataOn: true, bluetooth, weather: weatherData(weather), network: { name: "Wi-Fi", bytesPerSecond: 12000 } };
 const sections = buildSections(config, p, state, now);
 assert.deepEqual(config.modules.left, [["cpu", "memory", "disk"], ["weather", "network"], ["media"]]);
-assert.deepEqual(config.modules.right, [["kanata", "input"], ["bluetooth"], ["audio", "microphone", "battery", "clock"]]);
+assert.deepEqual(config.modules.right, [["kanata", "input", "bluetooth", "microphone", "audio", "battery", "clock"]]);
 assert.match(sections.left, /8\.5G/);
 assert.match(sections.left, /134G/);
 assert.doesNotMatch(sections.left, /45%/);
@@ -24,6 +24,9 @@ assert.doesNotMatch(sections.left, /<img/);
 assert.match(sections.left, /&lt;img/);
 assert.match(sections.right, /Kanata enabled — click to disable/);
 assert.match(sections.right, /eng/);
+assert.match(sections.right, /class="module bluetooth "[^>]*>󰂱<\/span>/);
+assert.ok(sections.right.indexOf('module bluetooth') < sections.right.indexOf('module microphone'));
+assert.ok(sections.right.indexOf('module microphone') < sections.right.indexOf('module audio'));
 for (const name of ["cpu", "memory", "disk"]) assert.match(sections.left, new RegExp(`class="module ${name} [^>]*data-action="task-manager"`));
 assert.match(sections.right, /Headphones &lt;unsafe&gt; &quot;one&quot;: 75%/);
 assert.match(sections.right, /Volume: 80%\nStatus: Active/);
@@ -44,7 +47,7 @@ assert.equal(keyboardName("ar-SA\0"), "Arabic (Saudi Arabia)");
 assert.equal(keyboardName("English (United States)"), "English (United States)");
 assert.equal(keyboardName(null), "Keyboard unavailable");
 assert.ok(!sections.right.includes("\0"));
-assert.equal(clockText(now, "en-GB", true), "2026-09-09");
+assert.equal(clockText(now, "en-GB"), "14:05 | Wed 09 Sep");
 assert.match(calendar(new Date(2024, 1, 29), "en-GB"), /\[29\]/);
 assert.equal(diskSize(1024 ** 4), "1.0TiB");
 assert.equal(freeGigabytes(125 * 1024 ** 3), " 134G");
@@ -62,7 +65,7 @@ const empty = buildSections(config, {}, {}, now);
 assert.match(empty.left, /Weather unavailable/);
 assert.match(empty.left, /Disconnected/);
 assert.match(empty.right, /No microphone available/);
-assert.doesNotMatch(empty.right, /class="module bluetooth/);
+assert.match(empty.right, /class="module bluetooth "[^>]*>󰂲<\/span>/);
 const pausedMedia = buildSections(config, { media: { currentSession: { isPlaying: false, title: "stale title" } } }, {}, now);
 assert.doesNotMatch(pausedMedia.left, /stale title/);
 p.audio.defaultPlaybackDevice.isMuted = true;
@@ -72,7 +75,7 @@ const changed = buildSections(config, p, { ...state, alternateClock: true }, now
 assert.match(changed.right, /󰝟/);
 assert.match(changed.right, /Status: Muted/);
 assert.match(changed.right, /󰂄/);
-assert.match(changed.right, /2026-09-09/);
+assert.match(changed.right, /󰥔<\/span> 14:05 \| Wed 09 Sep/);
 
 const fallbackBattery = { present: true, chargePercent: 66, isCharging: true, state: "Charging" };
 for (const battery of [null, { chargePercent: NaN }, { chargePercent: null }]) {
@@ -84,6 +87,7 @@ assert.match(buildSections(config, {}, { batterySeen: true }, now).right, /Batte
 assert.match(buildSections(config, {}, { battery: { ...fallbackBattery, chargePercent: null } }, now).right, /󰂄.*--/);
 assert.doesNotMatch(buildSections(config, {}, { batterySeen: true, battery: { present: false } }, now).right, /class="module battery/);
 assert.doesNotMatch(empty.right, /class="module battery/);
+assert.match(buildSections(config, {}, { bluetooth: [] }, now).right, /class="module bluetooth "[^>]*>󰂯<\/span>/);
 assert.match(buildSections(config, p, { battery: fallbackBattery }, now).right, /Battery: 65%/);
 
 const manifest = JSON.parse(readFileSync(new URL("../dot_glzr/zebar/mirror/zpack.json", import.meta.url)));

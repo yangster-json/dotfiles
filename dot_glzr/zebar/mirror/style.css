@@ -44,16 +44,15 @@ section { display: flex; align-items: center; min-width: 0; overflow: hidden; }
 .bubble > .module:only-child { border-radius: var(--radius); }
 .cpu { width: calc(5ch + 20px); padding-left: 10px; padding-right: 10px; text-align: right; }
 .memory, .disk { width: calc(7ch + 14px); text-align: right; }
-.weather { width: calc(7ch + 20px); padding-left: 10px; text-align: right; }
+.weather { width: calc(7ch + 17px); padding-left: 10px; text-align: right; }
 .network { width: calc(8ch + 14px); text-align: right; overflow: hidden; }
 #left > .bubble:last-child:has(.media) { flex-shrink: 1; margin-left: 5px; }
 .media { width: calc(28ch + 14px); overflow: hidden; white-space: nowrap; }
 .kanata { width: calc(1ch + 14px); text-align: center; }
 .input { width: calc(5ch + 14px); text-align: right; }
-.bubble:has(.bluetooth) { margin-left: 0; margin-right: 0; }
-.bluetooth { width: calc(6ch + 8px); background: transparent; padding: 0 4px; text-align: right; }
-.audio { width: calc(7ch + 14px); text-align: right; }
+.bluetooth { width: calc(1ch + 14px); text-align: left; }
 .microphone { width: calc(1ch + 14px); text-align: center; }
+.audio { width: calc(7ch + 14px); padding-left: 0; text-align: right; }
 .battery { width: calc(6ch + 14px); text-align: right; }
 .clock { width: calc(20ch + 14px); text-align: right; }
 .workspaces { padding-right: 4px; }

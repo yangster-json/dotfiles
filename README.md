@@ -138,12 +138,12 @@ Zebar matches the following Waybar features:
   wttr.in weather in °F, default-interface download speed, and a fixed-width
   media title with its full tooltip.
 - Center: numerically sorted, clickable GlazeWM workspaces on each monitor.
-- Right: a clickable Kanata control, `eng`/`ara` layout, connected Bluetooth
-  devices and battery when exposed by the driver, speaker, microphone, battery,
-  and clock.
+- Right: a clickable Kanata control, `eng`/`ara` layout, Bluetooth state icon
+  with connected-device details in its tooltip, microphone, speaker, battery,
+  and clock. These controls share one continuous status bubble, like Waybar.
 - Speaker click opens Volume mixer; right-click toggles mute; scrolling changes
   volume by 10 percentage points. Microphone click toggles input mute. Clock
-  click switches to ISO date, and hovering shows a month calendar. Weather
+  hover shows a month calendar. Weather
   click refreshes its data. Kanata click starts or stops `kanata.exe`.
 - CPU, RAM and disk click open Task Manager; network click opens Wi-Fi settings.
 

@@ -6,7 +6,7 @@ import { bindActions } from "./actions.js";
 import { windowsQuery, windowsAction, poll } from "./windows.js";
 import { networkSample, weatherData } from "./format.js";
 
-const state = { kanataOn: false, bluetooth: [], weather: null, network: null, alternateClock: false,
+const state = { kanataOn: false, bluetooth: null, weather: null, network: null, alternateClock: false,
   battery: null, batterySeen: false };
 const providers = createProviderGroup({
   audio: { type: "audio" },
@@ -34,7 +34,7 @@ function queryPoll(query, interval, update, fallback) {
 }
 queryPoll("battery", 10000, value => { state.battery = value; }, null);
 const refreshKanata = queryPoll("kanata", 5000, value => { state.kanataOn = value === true; }, false);
-queryPoll("bluetooth", 10000, value => { state.bluetooth = Array.isArray(value) ? value : []; }, []);
+queryPoll("bluetooth", 10000, value => { state.bluetooth = Array.isArray(value) ? value : null; }, null);
 queryPoll("network", 2000, value => { state.network = networkSample(state.network, value); }, null);
 const refreshWeather = queryPoll("weather", 600000, value => { state.weather = weatherData(value); }, null);
 bindActions(document.getElementById("bar"), {

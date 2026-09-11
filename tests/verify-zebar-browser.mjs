@@ -85,7 +85,7 @@ try {
   await page.evaluate(() => window.test.render());
   assert.ok(await page.locator(".clock").evaluate(e => e === document.activeElement));
   await page.keyboard.press("Enter");
-  assert.equal(await page.locator(".clock").textContent(), "2026-09-09");
+  assert.match(await page.locator(".clock").textContent(), /14:05 \| Wed 09 Sep/);
   await page.locator('[data-workspace="w2"]').click();
   await page.locator(".weather").click();
   await page.locator(".kanata").click();
@@ -104,7 +104,7 @@ try {
   assert.ok(calls.some(c => c[0] === "launch" && c[2][0] === "ms-settings:apps-volume"));
   assert.ok(calls.some(c => c[0] === "kanata" && c[2] === "toggle-kanata"));
   await page.evaluate(() => { window.test.state.bluetooth = []; window.test.p.media = null; window.test.render(); });
-  assert.equal(await page.locator(".bluetooth").count(), 0);
+  assert.equal(await page.locator(".bluetooth").textContent(), "󰂯");
   assert.equal(await page.locator(".media").count(), 0);
   assert.ok(await page.evaluate(() => window.hovered === document.querySelector('.microphone')));
   await page.evaluate(() => { window.test.state.alternateClock = false; window.test.render(); });

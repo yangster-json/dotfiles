@@ -3,7 +3,7 @@ export const config = {
   modules: {
     left: [["cpu", "memory", "disk"], ["weather", "network"], ["media"]],
     center: [["workspaces"]],
-    right: [["kanata", "input"], ["bluetooth"], ["audio", "microphone", "battery", "clock"]],
+    right: [["kanata", "input", "bluetooth", "microphone", "audio", "battery", "clock"]],
   },
   // Windows equivalent of /home; change this if your user files live elsewhere.
   diskMount: "C:\\",
