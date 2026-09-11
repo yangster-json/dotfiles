@@ -46,7 +46,6 @@ section { display: flex; align-items: center; min-width: 0; overflow: hidden; }
 .memory, .disk { width: calc(7ch + 14px); text-align: right; }
 .weather { width: calc(7ch + 20px); padding-left: 10px; text-align: right; }
 .network { width: calc(8ch + 14px); text-align: right; overflow: hidden; }
-.updates { width: calc(5ch + 14px); text-align: right; }
 #left > .bubble:last-child:has(.media) { flex-shrink: 1; margin-left: 5px; }
 .media { width: calc(28ch + 14px); overflow: hidden; white-space: nowrap; }
 .kanata { width: calc(1ch + 14px); text-align: center; }

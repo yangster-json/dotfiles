@@ -33,7 +33,6 @@ export function bindActions(bar, { output, state, render, refreshWeather, refres
       if (action === "microphone") return audioAction(action);
       if (action === "clock") { state.alternateClock = !state.alternateClock; render(); }
       if (action === "weather") return refreshWeather();
-      if (action === "updates") return launch("explorer.exe", ["ms-settings:windowsupdate"]);
       if (action === "kanata") { await windowsAction(shellExec, "toggle-kanata"); return refreshKanata(); }
       if (action === "task-manager") return launch("Taskmgr.exe");
       if (action === "network") return launch("explorer.exe", ["ms-settings:network-wifi"]);

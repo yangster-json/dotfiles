@@ -135,8 +135,8 @@ For Waybar changes on Arch, apply `~/.config/waybar` and reload Waybar as usual.
 Zebar matches the following Waybar features:
 
 - Left: fixed-width CPU %, used RAM in GiB, and whole-GB free disk space;
-  wttr.in weather in °F, default-interface download speed, a Windows Update
-  count, and a fixed-width media title with its full tooltip.
+  wttr.in weather in °F, default-interface download speed, and a fixed-width
+  media title with its full tooltip.
 - Center: numerically sorted, clickable GlazeWM workspaces on each monitor.
 - Right: a clickable Kanata control, `eng`/`ara` layout, connected Bluetooth
   devices and battery when exposed by the driver, speaker, microphone, battery,
@@ -145,11 +145,10 @@ Zebar matches the following Waybar features:
   volume by 10 percentage points. Microphone click toggles input mute. Clock
   click switches to ISO date, and hovering shows a month calendar. Weather
   click refreshes its data. Kanata click starts or stops `kanata.exe`.
-- CPU, RAM and disk click open Task Manager; network click opens Wi-Fi settings;
-  the update count opens Windows Update.
+- CPU, RAM and disk click open Task Manager; network click opens Wi-Fi settings.
 
 `windows.ps1` supplies narrowly allowlisted, non-overlapping queries for Kanata,
-Bluetooth, weather, network counters, update counts, and a Windows battery-status fallback.
+Bluetooth, weather, network counters, and a Windows battery-status fallback.
 If Zebar's battery provider fails, the bar uses Windows power status; if both
 readings fail after a battery was detected, it shows `--` with an unavailable
 status tooltip rather than hiding the module or displaying stale data.

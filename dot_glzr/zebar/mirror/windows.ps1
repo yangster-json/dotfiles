@@ -1,5 +1,5 @@
 param(
-    [ValidateSet('kanata', 'network', 'bluetooth', 'weather', 'battery', 'updates')][string]$Query,
+    [ValidateSet('kanata', 'network', 'bluetooth', 'weather', 'battery')][string]$Query,
     [ValidateSet('toggle-kanata')][string]$Action
 )
 if (($null -eq $Query) -eq ($null -eq $Action)) { throw 'Specify exactly one query or action' }
@@ -45,6 +45,14 @@ function Get-BluetoothDevices {
     }
 }
 
+function Find-Kanata {
+    $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+    if ($userPath) { $env:Path = "$env:Path;$userPath" }
+    $command = Get-Command kanata.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $command) { throw 'kanata.exe was not found in the user PATH' }
+    $command.Source
+}
+
 try {
     if ($Action -eq 'toggle-kanata') {
         $process = @(Get-Process -Name kanata -ErrorAction SilentlyContinue)
@@ -52,8 +60,7 @@ try {
             $process | Stop-Process -Force
             $result = $false
         } else {
-            $kanata = Get-Command kanata.exe -ErrorAction Stop
-            Start-Process -FilePath $kanata.Source -ArgumentList @('--cfg', (Join-Path $HOME '.config\kanata\kanata.kbd'))
+            Start-Process -FilePath (Find-Kanata) -ArgumentList @('--cfg', (Join-Path $HOME '.config\kanata\kanata.kbd'))
             $result = $true
         }
     } else {
@@ -82,29 +89,25 @@ try {
             }
         }
         'weather' {
-            # Same service, units and IP-location fallback as the Linux script.
+            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
             Invoke-RestMethod -Uri 'https://wttr.in/?format=j1' -UserAgent 'waybar-weather/1.0' -TimeoutSec 8
-        }
-        'updates' {
-            $session = New-Object -ComObject Microsoft.Update.Session
-            $searcher = $session.CreateUpdateSearcher()
-            [int]$searcher.Search('IsInstalled=0 and IsHidden=0').Updates.Count
         }
         'bluetooth' { ,@(Get-BluetoothDevices) }
         'network' {
-            $routes = @(Get-NetRoute -DestinationPrefix '0.0.0.0/0' -AddressFamily IPv4 -ErrorAction SilentlyContinue |
-                Where-Object { $_.State -eq 'Alive' } | Sort-Object @{ Expression = { $_.RouteMetric + $_.InterfaceMetric } })
-            $adapter = $null
-            $adapters = @(Get-NetAdapter -IncludeHidden -ErrorAction SilentlyContinue)
-            foreach ($route in $routes) {
-                $candidate = $adapters | Where-Object ifIndex -eq $route.InterfaceIndex | Select-Object -First 1
-                if ($candidate.Status -eq 'Up') { $adapter = $candidate; break }
+            $profile = Get-NetConnectionProfile -ErrorAction SilentlyContinue |
+                Where-Object { $_.IPv4Connectivity -ne 'Disconnected' } | Select-Object -First 1
+            $adapter = if ($profile) {
+                Get-NetAdapter -InterfaceIndex $profile.InterfaceIndex -ErrorAction SilentlyContinue
+            } else {
+                $route = Get-NetRoute -DestinationPrefix '0.0.0.0/0' -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+                    Where-Object State -eq 'Alive' | Sort-Object RouteMetric | Select-Object -First 1
+                if ($route) { Get-NetAdapter -InterfaceIndex $route.InterfaceIndex -ErrorAction SilentlyContinue }
             }
-            if ($adapter) {
+            if ($adapter -and $adapter.Status -eq 'Up') {
                 $stats = $adapter | Get-NetAdapterStatistics
                 [pscustomobject]@{
                     interfaceId = [string]$adapter.InterfaceGuid
-                    name = $adapter.Name
+                    name = if ($profile.Name) { $profile.Name } else { $adapter.Name }
                     receivedBytes = [double]$stats.ReceivedBytes
                     timestamp = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
                 }

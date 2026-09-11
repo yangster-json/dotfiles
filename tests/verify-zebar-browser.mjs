@@ -28,7 +28,7 @@ try {
     import { weatherData } from './format.js';
     import { fixture, weather, bluetooth } from '/tests/zebar-fixture.mjs';
     const p = fixture();
-    const state = { kanataOn: true, bluetooth, weather: weatherData(weather), network: { name: 'Wi-Fi', bytesPerSecond: 12000 }, updates: 2 };
+    const state = { kanataOn: true, bluetooth, weather: weatherData(weather), network: { name: 'Wi-Fi', bytesPerSecond: 12000 } };
     window.test = { p, state, calls: [] };
     p.audio.setMute = async (...args) => window.test.calls.push(['mute', ...args]);
     p.audio.setVolume = async (...args) => window.test.calls.push(['volume', ...args]);
@@ -63,7 +63,7 @@ try {
     await page.setViewportSize({ width, height: 100 });
     assert.ok(await page.evaluate(() => [...document.querySelectorAll('section')].every(e => e.scrollWidth <= e.clientWidth)), `Full bar fits at ${width}px`);
   }
-  for (const module of ["cpu", "memory", "disk", "weather", "network", "updates", "media", "kanata", "input", "bluetooth", "audio", "microphone", "battery", "clock"]) {
+  for (const module of ["cpu", "memory", "disk", "weather", "network", "media", "kanata", "input", "bluetooth", "audio", "microphone", "battery", "clock"]) {
     assert.ok(await page.locator(`.module.${module}`).getAttribute("title"), module);
   }
   await page.locator(".microphone").hover();
@@ -93,7 +93,6 @@ try {
   await page.locator(".memory").click();
   await page.locator(".disk").click();
   await page.locator(".network").click();
-  await page.locator(".updates").click();
   await page.locator(".audio").click();
   const calls = await page.evaluate(() => window.test.calls);
   assert.ok(calls.some(c => c[0] === "workspace" && c[1] === 'focus --workspace "2"'));
@@ -103,7 +102,6 @@ try {
   assert.equal(calls.filter(c => c[0] === "launch" && c[1] === "Taskmgr.exe").length, 3);
   assert.ok(calls.some(c => c[0] === "launch" && c[2][0] === "ms-settings:network-wifi"));
   assert.ok(calls.some(c => c[0] === "launch" && c[2][0] === "ms-settings:apps-volume"));
-  assert.ok(calls.some(c => c[0] === "launch" && c[2][0] === "ms-settings:windowsupdate"));
   assert.ok(calls.some(c => c[0] === "kanata" && c[2] === "toggle-kanata"));
   await page.evaluate(() => { window.test.state.bluetooth = []; window.test.p.media = null; window.test.render(); });
   assert.equal(await page.locator(".bluetooth").count(), 0);

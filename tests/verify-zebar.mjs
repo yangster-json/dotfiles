@@ -9,13 +9,12 @@ import { fixture, weather, bluetooth } from "./zebar-fixture.mjs";
 
 const p = fixture();
 const now = new Date(2026, 8, 9, 14, 5);
-const state = { kanataOn: true, bluetooth, weather: weatherData(weather), network: { name: "Wi-Fi", bytesPerSecond: 12000 }, updates: 2 };
+const state = { kanataOn: true, bluetooth, weather: weatherData(weather), network: { name: "Wi-Fi", bytesPerSecond: 12000 } };
 const sections = buildSections(config, p, state, now);
-assert.deepEqual(config.modules.left, [["cpu", "memory", "disk"], ["weather", "network"], ["updates"], ["media"]]);
+assert.deepEqual(config.modules.left, [["cpu", "memory", "disk"], ["weather", "network"], ["media"]]);
 assert.deepEqual(config.modules.right, [["kanata", "input"], ["bluetooth"], ["audio", "microphone", "battery", "clock"]]);
 assert.match(sections.left, /8\.5G/);
 assert.match(sections.left, /134G/);
-assert.match(sections.left, /2 updates available/);
 assert.doesNotMatch(sections.left, /45%/);
 assert.match(sections.left, /72°F/);
 assert.match(sections.left, /Test City, Country/);
@@ -90,14 +89,14 @@ assert.match(buildSections(config, p, { battery: fallbackBattery }, now).right, 
 const manifest = JSON.parse(readFileSync(new URL("../dot_glzr/zebar/mirror/zpack.json", import.meta.url)));
 const permissions = manifest.widgets[0].privileges.shellCommands;
 let calls = 0;
-for (const query of ["kanata", "network", "bluetooth", "weather", "battery", "updates"]) {
+for (const query of ["kanata", "network", "bluetooth", "weather", "battery"]) {
   assert.equal(await windowsQuery(async (program, args) => {
     calls++;
     assert.ok(permissions.some(rule => rule.program === program && new RegExp(rule.argsRegex).test(args.join(" "))));
     return { code: 0, stdout: "\ufefftrue", stderr: "" };
   }, query), true);
 }
-assert.equal(calls, 6);
+assert.equal(calls, 5);
 assert.throws(() => windowsQuery(() => {}, "injected;command"), /Unknown Windows query/);
 assert.throws(() => windowsAction(() => {}, "injected;command"), /Unknown Windows action/);
 await assert.rejects(() => windowsQuery(async () => ({ code: 1, stderr: "failure" }), "network"), /failure/);
@@ -105,7 +104,7 @@ await windowsAction(async (program, args) => {
   assert.ok(permissions.some(rule => rule.program === program && new RegExp(rule.argsRegex).test(args.join(" "))));
   return { code: 0, stdout: "true", stderr: "" };
 }, "toggle-kanata");
-for (const [program, args] of [["Taskmgr.exe", ""], ["explorer.exe", "ms-settings:network-wifi"], ["explorer.exe", "ms-settings:apps-volume"], ["explorer.exe", "ms-settings:windowsupdate"]]) {
+for (const [program, args] of [["Taskmgr.exe", ""], ["explorer.exe", "ms-settings:network-wifi"], ["explorer.exe", "ms-settings:apps-volume"]]) {
   assert.ok(permissions.some(rule => rule.program === program && new RegExp(rule.argsRegex).test(args)));
 }
 assert.ok(!permissions.some(rule => rule.program === "powershell.exe" && new RegExp(rule.argsRegex).test("-Command Remove-Item")));
@@ -140,7 +139,7 @@ await Promise.all(startupTasks);
 assert.equal(providerConfig.disk.type, "disk");
 assert.equal(providerConfig.audio.type, "audio");
 assert.equal(providerConfig.memory.refreshInterval, 5000);
-assert.deepEqual(intervals, [10000, 5000, 10000, 2000, 3600000, 600000]);
+assert.deepEqual(intervals, [10000, 5000, 10000, 2000, 600000]);
 assert.equal(typeof actionBindings.refreshWeather, "function");
 assert.equal(typeof actionBindings.refreshKanata, "function");
 outputCallback();

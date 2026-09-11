@@ -1,7 +1,7 @@
 // Windows counterpart of dot_config/waybar/config (no system tray).
 export const config = {
   modules: {
-    left: [["cpu", "memory", "disk"], ["weather", "network"], ["updates"], ["media"]],
+    left: [["cpu", "memory", "disk"], ["weather", "network"], ["media"]],
     center: [["workspaces"]],
     right: [["kanata", "input"], ["bluetooth"], ["audio", "microphone", "battery", "clock"]],
   },

@@ -24,11 +24,6 @@ export function buildSections(config, p = {}, state = {}, now = new Date()) {
     },
     weather: () => item("weather", escape(state.weather?.text ?? "󰖐 --"),
       { action: "weather", title: state.weather?.tooltip ?? "Weather unavailable" }),
-    updates: () => {
-      const count = Number.isInteger(state.updates) && state.updates >= 0 ? state.updates : 0;
-      return item("updates", `󰚰 ${String(count).padStart(3)}`, { action: "updates",
-        title: count ? `${count} update${count === 1 ? "" : "s"} available\nClick to open Windows Update` : "System is up to date\nClick to open Windows Update" });
-    },
     network: () => item("network", escape(state.network ? `󰤨 ↓ ${speed(state.network.bytesPerSecond)}` : "󰤭 ↓     "),
       { action: "network", tone: "yellow", title: state.network
         ? `${state.network.name}\nDownload: ${speed(state.network.bytesPerSecond).trim()}B/s\nClick to open network settings`
