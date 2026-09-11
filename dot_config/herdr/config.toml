@@ -134,6 +134,9 @@ height = "90%"
 name = "catppuccin"
 auto_switch = false
 
+[theme.custom]
+accent = "#cba6f7"
+
 [terminal]
 new_cwd = "follow"
 
@@ -170,3 +173,6 @@ scrollback_limit_bytes = 50000000
 
 [worktrees]
 directory = "~/.herdr/worktrees"
+
+[experimental]
+kitty_graphics = true
