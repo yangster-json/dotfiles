@@ -4,7 +4,7 @@
 {
   "defaultProvider": "{{ $models.provider }}",
   "defaultModel": "{{ $models.default }}",
-  "lastChangelogVersion": "0.84.3",
+  "lastChangelogVersion": "0.85.1",
   "compaction": {
     "enabled": false
   },
@@ -37,11 +37,11 @@
         "thinking": "high"
       },
       "oracle": {
-        "model": "{{ $models.sol }}",
+        "model": "openai-codex/gpt-6-astra",
         "thinking": "high"
       },
       "advisor": {
-        "model": "{{ $models.sol }}",
+        "model": "openai-codex/gpt-6-astra",
         "thinking": "high"
       }
     }
@@ -59,7 +59,19 @@
     "npm:pi-chatgpt-limit"{{ end }}
   ],
   "terminal": {
-    "showTerminalProgress": true
+    "showTerminalProgress": true,
+    "images": "kitty"
   },
-  "tuiMode": "fullscreen"
+  "tuiMode": "fullscreen",
+  "hideThinkingBlock": true,
+  "enabledModels": [
+    "openai-codex/gpt-5.6-luna",
+    "openai-codex/gpt-5.6-sol",
+    "openai-codex/gpt-5.6-terra",
+    "openai-codex/gpt-6-astra",
+    "openai-codex/gpt-5.3-codex-spark",
+    "openai-codex/gpt-5.4",
+    "openai-codex/gpt-5.4-mini",
+    "openai-codex/gpt-5.5"
+  ]
 }
