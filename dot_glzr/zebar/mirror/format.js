@@ -55,14 +55,13 @@ export function weatherData(json) {
     : snow.includes(code) ? "󰖘" : ["200", "386", "389"].includes(code) ? "󰖓"
     : rain.includes(code) ? "󰖗" : "󰖐";
   return {
-    text: `${icon} ${current.temp_F}°F`,
+    text: `${icon} ${String(current.temp_F).padStart(3)}°F`,
     tooltip: `${area?.areaName?.[0]?.value ?? "Unknown location"}, ${area?.country?.[0]?.value ?? ""}\n`
       + `${current.weatherDesc?.[0]?.value ?? ""}\nFeels like ${current.FeelsLikeF}°F · Humidity ${current.humidity}% · Wind ${current.windspeedKmph} km/h`,
   };
 }
-export function clockText(now, locale, alternate) {
+export function clockText(now, locale) {
   const pad = n => String(n).padStart(2, "0");
-  if (alternate) return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
   return `${pad(now.getHours())}:${pad(now.getMinutes())} | ${now.toLocaleDateString(locale, { weekday: "short" })} `
     + `${pad(now.getDate())} ${now.toLocaleDateString(locale, { month: "short" }).slice(0, 3)}`;
 }

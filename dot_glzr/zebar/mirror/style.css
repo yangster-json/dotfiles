@@ -51,7 +51,7 @@ section { display: flex; align-items: center; min-width: 0; overflow: hidden; }
 .kanata { width: calc(1ch + 14px); text-align: center; }
 .input { width: calc(5ch + 14px); text-align: right; }
 .bluetooth { width: calc(1ch + 14px); text-align: left; }
-.microphone { width: calc(1ch + 14px); text-align: center; }
+.microphone { width: calc(1ch + 14px); padding-right: 0; text-align: center; }
 .audio { width: calc(7ch + 14px); padding-left: 0; text-align: right; }
 .battery { width: calc(6ch + 14px); text-align: right; }
 .clock { width: calc(20ch + 14px); text-align: right; }
