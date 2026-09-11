@@ -65,16 +65,17 @@
     "on-scroll-down": "playerctl next"
   },
   "bluetooth": {
-    "format-connected-battery": "󰂱 {device_battery_percentage:>3}%",
-    "format-connected": "󰂱  --%",
-    "min-length": 6,
-    "align": 1,
-    "justify": "right",
+    "format-connected-battery": "󰂱",
+    "format-connected": "󰂱",
+    "min-length": 1,
+    "align": 0,
+    "justify": "left",
     "format-disabled": "󰂲",
     "format-off": "󰂲",
     "format-on": "󰂯",
     "format-no-controller": "󰂲",
     "tooltip": true,
+    "tooltip-format": "{status}",
     "tooltip-format-connected-battery": "{device_alias}: {device_battery_percentage}%",
     "tooltip-format-connected": "{device_alias}",
     "on-click": "walker --provider bluetooth"
@@ -148,7 +149,7 @@
     "format": "{text}",
     "min-length": 7,
     "align": 1,
-    "justify": "right",
+    "justify": "left",
     "tooltip": true
 },
 
