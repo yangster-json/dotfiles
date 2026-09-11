@@ -3,6 +3,10 @@ set -euo pipefail
 
 updates=$(checkupdates 2>/dev/null || true)
 count=$(printf '%s\n' "$updates" | sed '/^$/d' | wc -l)
-(( count > 0 )) || exit 0
+if (( count > 0 )); then
+  tooltip="$count package updates available"$'\nClick to update'
+else
+  tooltip='System is up to date'
+fi
 
-printf '{"text":"󰚰 %s","tooltip":"%s package updates available\\nClick to update"}\n' "$count" "$count"
+printf '{"text":"󰚰 %3d","tooltip":"%s"}\n' "$count" "$tooltip"

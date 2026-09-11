@@ -8,9 +8,5 @@ case "$keymap" in
   *) language="---" ;;
 esac
 
-keyboard="<span color='#f9e2af'>󰌌</span> <span color='#cdd6f4'>${language}</span>"
-if systemctl is-active --quiet kanata.service; then
-  jq -nc --arg text "<span color='#a6e3a1'>󰌌</span> ${keyboard}" --arg tooltip "Kanata enabled — ${keymap:-keyboard unavailable}" '{text: $text, tooltip: $tooltip, class: "enabled"}'
-else
-  jq -nc --arg text "$keyboard" --arg tooltip "${keymap:-Keyboard unavailable}" '{text: $text, tooltip: $tooltip, class: "disabled"}'
-fi
+keyboard="<span color='#cba6f7'>󰌌</span> <span color='#cba6f7'>${language}</span>"
+jq -nc --arg text "$keyboard" --arg tooltip "${keymap:-Keyboard unavailable}" '{text: $text, tooltip: $tooltip}'

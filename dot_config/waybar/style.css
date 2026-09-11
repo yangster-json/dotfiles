@@ -10,7 +10,7 @@
 
 window#waybar {
     background: rgba(21, 18, 27, 0);
-    color: #cdd6f4;
+    color: #cba6f7;
 }
 
 tooltip {
@@ -18,7 +18,7 @@ tooltip {
     border-radius: 7px;
     border-width: 2.5px;
     border-style: solid;
-    border-color: #8aadf4;
+    border-color: #cba6f7;
     padding-right: 5px;
     padding-left: 5px;
     padding-top: 5px;
@@ -29,7 +29,7 @@ tooltip {
 
 /* Keep 16px circular buttons inside Waybar's taller workspace container. */
 #workspaces button {
-    color: #cdd6f4;
+    color: #cba6f7;
     /* 10px bubble + 4px left + 7px right = 21px centers and even outer gaps. */
     margin: 7px 7px 7px 4px;
     padding: 0;
@@ -40,7 +40,7 @@ tooltip {
 
 #workspaces button.active {
     color: transparent;
-    background: #89b4fa;
+    background: #cba6f7;
 }
 
 #workspaces button.focused {
@@ -53,7 +53,7 @@ tooltip {
 
 #workspaces button.active,
 #workspaces button.visible {
-    background: #89b4fa;
+    background: #cba6f7;
     box-shadow: inset 0 -1px #1e1e2e;
 }
 
@@ -63,6 +63,7 @@ tooltip {
 #custom-weather,
 #custom-media-title,
 #custom-input,
+#custom-kanata,
 #cpu,
 #window,
 #clock,
@@ -99,7 +100,7 @@ tooltip {
 }
 
 #clock {
-    color: #a6e3a1;
+    color: #cba6f7;
     border-radius: 0px 13px 13px 0px;
     margin-right: 0px;
     margin-left: 0px;
@@ -107,14 +108,14 @@ tooltip {
 
 #network,
 #custom-network {
-    color: #f9e2af;
+    color: #cba6f7;
     border-radius: 0px;
     margin-left: 0px;
     margin-right: 0px;
 }
 
 #custom-notifications {
-    color: #f9e2af;
+    color: #cba6f7;
     border-radius: 7px 7px 7px 7px;
     padding-left: 9px;
     padding-right: 15px;
@@ -124,7 +125,7 @@ tooltip {
 }
 
 #custom-updates {
-    color: #89b4fa;
+    color: #cba6f7;
     border-radius: 7px 7px 7px 7px;
     border-left:  0px;
     border-right: 0px;
@@ -142,14 +143,14 @@ tooltip {
 }
 
 #memory {
-    color: #89b4fa;
+    color: #cba6f7;
     border-radius: 0px 0px 0px 0px;
     margin-left: 0px;
     margin-right:0px;
 }
 
 #disk {
-    color: #f9e2af;
+    color: #cba6f7;
     border-radius: 0px 13px 13px 0px;
     margin-left: 0px;
 }
@@ -160,7 +161,7 @@ tooltip {
 }
 
 #bluetooth {
-  color: #89b4fa;
+  color: #cba6f7;
   background: transparent;
   border-radius: 0px;
   margin: 0px;
@@ -179,14 +180,14 @@ tooltip {
 }
 
 #pulseaudio {
-  color: #89b4fa;
+  color: #cba6f7;
   border-radius: 0px 0px 0px 0px;
   margin-right: 0px;
   margin-left: 0px;
 }
 
 #custom-microphone {
-  color: #a6e3a1;
+  color: #cba6f7;
   border-radius: 0px;
   margin-right: 0px;
   margin-left: 0px;
@@ -194,18 +195,24 @@ tooltip {
 
 #custom-microphone.muted,
 #custom-microphone.unavailable {
-  color: #f38ba8;
+  color: #cba6f7;
 }
 
 #battery {
-    color: #a6e3a1;
+    color: #cba6f7;
     border-radius: 0px;
     margin-left: 0px;
     margin-right: 0px;
 }
 
-#custom-input {
+#custom-kanata {
    border-radius: 13px 0px 0px 13px;
+   margin-right: 0px;
+}
+
+#custom-input {
+   border-radius: 0px;
+   margin-left: 0px;
    margin-right: 0px;
 }
 

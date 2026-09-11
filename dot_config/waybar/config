@@ -21,6 +21,7 @@
     "hyprland/workspaces"
   ],
   "modules-right": [
+    "custom/kanata",
     "custom/input",
     "bluetooth",
     "pulseaudio",
@@ -54,7 +55,9 @@
     "format": "󰎈 {}",
     "hide-empty-text": true,
     "escape": true,
-    "max-length": 40,
+    "min-length": 28,
+    "align": 1,
+    "justify": "right",
     "tooltip": true,
     "on-click": "walker --provider playerctl",
     "on-click-right": "playerctl play-pause",
@@ -62,8 +65,11 @@
     "on-scroll-down": "playerctl next"
   },
   "bluetooth": {
-    "format-connected-battery": " {device_battery_percentage}%",
-    "format-connected": "",
+    "format-connected-battery": " {device_battery_percentage:>3}%",
+    "format-connected": "  --%",
+    "min-length": 6,
+    "align": 1,
+    "justify": "right",
     "format-disabled": "",
     "format-off": "",
     "format-on": "",
@@ -75,7 +81,9 @@
   },
   "hyprland/window": {
     "format": "{}",
-    "max-length": 35,
+    "min-length": 35,
+    "align": 1,
+    "justify": "right",
     "rewrite": {
       "": "Harsh"
     },
@@ -90,22 +98,31 @@
   },
   "clock": {
     "tooltip-format": "<big>{:%Y %B}</big>\n<tt><small>{calendar}</small></tt>",
-    "format": "<span color='#89b4fa'>󰥔 </span><span color='#cdd6f4'>{:%H:%M | %a %d %b}</span>",
-    "format-alt": "{:%Y-%m-%d}",
+    "format": "<span color='#cba6f7'>󰥔 </span><span color='#cba6f7'>{:%H:%M | %a %d %b}</span>",
+    "format-alt": "<span color='#cba6f7'>󰥔 </span><span color='#cba6f7'>{:%Y-%m-%d}</span>",
+    "min-length": 20,
+    "align": 1,
+    "justify": "right",
     "on-click": "swaync-client --toggle-panel"
   },
 
   "cpu": {
-    "format": "<span color='#89b4fa'>󰍛</span> <span color='#cdd6f4'>{usage}%</span>",
+    "format": "<span color='#cba6f7'>󰍛</span> <span color='#cba6f7'>{usage:>2}%</span>",
+    "min-length": 5,
+    "align": 1,
+    "justify": "right",
     "interval": 3,
     "format-alt-click": "click",
-    "format-alt": "<span color='#00FF00'>{icon0}{icon1}{icon2}{icon3}</span> <span color='#FFFFFF'>{usage:>2}%</span> <span color='#00FF00'>󰍛</span>",
+    "format-alt": "<span color='#cba6f7'>{usage:>3}% 󰍛</span>",
     "format-icons": ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"],
     "on-click": "wezterm start --class Btop -- btop"
   },
   "memory": {
     "interval": 5,
-    "format": "<span color='#f38ba8'> </span> <span color='#cdd6f4'>{used:0.1f}G</span>",
+    "format": "<span color='#cba6f7'> </span><span color='#cba6f7'>{used:>4.1f}G</span>",
+    "min-length": 7,
+    "align": 1,
+    "justify": "right",
     "on-click": "wezterm start --class Btop -- btop"
   },
 
@@ -115,6 +132,9 @@
     "return-type": "json",
     "interval": 3600,
     "format": "{text}",
+    "min-length": 5,
+    "align": 1,
+    "justify": "right",
     "tooltip": true,
     "on-click": "wezterm start --class SystemUpdate -- bash -lc 'yay -Syu; exec $SHELL'"
   },
@@ -126,15 +146,21 @@
     "signal": 8,
     "on-click": "pkill -SIGRTMIN+8 waybar",
     "format": "{text}",
+    "min-length": 7,
+    "align": 1,
+    "justify": "right",
     "tooltip": true
 },
 
 
   "pulseaudio": {
-    "format": "<span color='#a6e3a1'>{icon} </span><span color='#cdd6f4'>{volume}%</span>",
-    "format-bluetooth": "<span color='#a6e3a1'>{icon}</span>  <span color='#cdd6f4'>{volume}%</span>",
+    "format": "<span color='#cba6f7'>{icon} </span><span color='#cba6f7'>{volume:>3}%</span>",
+    "format-bluetooth": "<span color='#cba6f7'>{icon}</span>  <span color='#cba6f7'>{volume:>3}%</span>",
+    "format-muted": "<span color='#cba6f7'>󰝟 </span><span color='#cba6f7'> --%</span>",
+    "min-length": 7,
+    "align": 1,
+    "justify": "right",
     "tooltip": false,
-    "format-muted": "<span color='#f38ba8'>󰝟</span>",
     "on-click": "walker --provider wireplumber",
     "on-click-right": "wpctl set-mute @DEFAULT_SINK@ toggle",
     "on-scroll-up": "wpctl set-volume @DEFAULT_SINK@ 10%+",
@@ -166,8 +192,11 @@
       "warning": 30,
       "critical": 15
     },
-    "format": "<span color='#a6e3a1'>{icon}</span> <span color='#cdd6f4'>{capacity}%</span>",
-    "format-charging": "<span color='#a6e3a1'>󰂄</span> <span color='#cdd6f4'>{capacity}%</span>",
+    "format": "<span color='#cba6f7'>{icon}</span> <span color='#cba6f7'>{capacity:>3}%</span>",
+    "format-charging": "<span color='#cba6f7'>󰂄</span> <span color='#cba6f7'>{capacity:>3}%</span>",
+    "min-length": 6,
+    "align": 1,
+    "justify": "right",
     "format-icons": ["󰁺", "󰁻", "󰁼", "󰁽", "󰁾", "󰁿", "󰂀", "󰂁", "󰂂", "󰁹"],
     "on-click": "power-profile",
     "on-click-right": "power-profile status"
@@ -179,24 +208,37 @@
     "format": "{text}",
     "tooltip": true,
     "min-length": 8,
-    "max-length": 8,
     "align": 1,
     "justify": "right",
     "on-click": "wezterm start --class Gazelle -- gazelle",
     "on-click-right": "wezterm start --class Network -- nmtui-connect"
   },
 
+  "custom/kanata": {
+    "exec": "~/.config/waybar/scripts/kanata-status.sh",
+    "return-type": "json",
+    "interval": 2,
+    "format": "{text}",
+    "tooltip": true,
+    "on-click": "~/.local/bin/toggle-kanata"
+  },
   "custom/input": {
     "exec": "~/.config/waybar/scripts/input-status.sh",
     "return-type": "json",
     "interval": 2,
     "format": "{text}",
+    "min-length": 5,
+    "align": 1,
+    "justify": "right",
     "tooltip": true
   },
   "disk":{
 	"interval": 30,
   "path": "/home",
-	"format": "<span color='#a6e3a1'> </span><span color='#cdd6f4'>{free}</span>",
+	"format": "<span color='#cba6f7'> </span><span color='#cba6f7'>{specific_free:>4.0f}G</span>",
+    "min-length": 7,
+    "align": 1,
+    "justify": "right",
 	"unit": "GB",
     "on-click": "wezterm start --class Btop -- btop"
 },
