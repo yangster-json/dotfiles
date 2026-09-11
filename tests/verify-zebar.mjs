@@ -87,6 +87,9 @@ assert.doesNotMatch(empty.right, /class="module battery/);
 assert.match(buildSections(config, p, { battery: fallbackBattery }, now).right, /Battery: 65%/);
 
 const manifest = JSON.parse(readFileSync(new URL("../dot_glzr/zebar/mirror/zpack.json", import.meta.url)));
+const powershellScript = readFileSync(new URL("../dot_glzr/zebar/mirror/windows.ps1", import.meta.url), "utf8");
+assert.match(powershellScript, /\$PSBoundParameters\.ContainsKey\('Query'\)/);
+assert.match(powershellScript, /\$PSBoundParameters\.ContainsKey\('Action'\)/);
 const permissions = manifest.widgets[0].privileges.shellCommands;
 let calls = 0;
 for (const query of ["kanata", "network", "bluetooth", "weather", "battery"]) {

@@ -2,7 +2,9 @@ param(
     [ValidateSet('kanata', 'network', 'bluetooth', 'weather', 'battery')][string]$Query,
     [ValidateSet('toggle-kanata')][string]$Action
 )
-if (($null -eq $Query) -eq ($null -eq $Action)) { throw 'Specify exactly one query or action' }
+$hasQuery = $PSBoundParameters.ContainsKey('Query')
+$hasAction = $PSBoundParameters.ContainsKey('Action')
+if ($hasQuery -eq $hasAction) { throw 'Specify exactly one query or action' }
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 
