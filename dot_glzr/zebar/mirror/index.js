@@ -10,12 +10,12 @@ const state = { kanataOn: false, bluetooth: null, weather: null, network: null, 
   battery: null, batterySeen: false };
 const providers = createProviderGroup({
   audio: { type: "audio" },
-  battery: { type: "battery", refreshInterval: 30000 },
-  cpu: { type: "cpu", refreshInterval: 3000 },
-  memory: { type: "memory", refreshInterval: 5000 },
-  disk: { type: "disk", refreshInterval: 30000 },
+  battery: { type: "battery", refreshInterval: 60000 },
+  cpu: { type: "cpu", refreshInterval: 5000 },
+  memory: { type: "memory", refreshInterval: 10000 },
+  disk: { type: "disk", refreshInterval: 60000 },
   media: { type: "media" },
-  keyboard: { type: "keyboard", refreshInterval: 2000 },
+  keyboard: { type: "keyboard", refreshInterval: 5000 },
   glazewm: { type: "glazewm" },
 });
 function render() {
@@ -32,13 +32,13 @@ function queryPoll(query, interval, update, fallback) {
     render();
   }, interval);
 }
-queryPoll("battery", 10000, value => { state.battery = value; }, null);
-const refreshKanata = queryPoll("kanata", 5000, value => { state.kanataOn = value === true; }, false);
-queryPoll("bluetooth", 10000, value => { state.bluetooth = Array.isArray(value) ? value : null; }, null);
-queryPoll("network", 2000, value => { state.network = networkSample(state.network, value); }, null);
+queryPoll("battery", 60000, value => { state.battery = value; }, null);
+const refreshKanata = queryPoll("kanata", 15000, value => { state.kanataOn = value === true; }, false);
+queryPoll("bluetooth", 60000, value => { state.bluetooth = Array.isArray(value) ? value : null; }, null);
+queryPoll("network", 5000, value => { state.network = networkSample(state.network, value); }, null);
 const refreshWeather = queryPoll("weather", 600000, value => { state.weather = weatherData(value); }, null);
 bindActions(document.getElementById("bar"), {
   output: () => providers.outputMap, state, render, refreshWeather, refreshKanata, shellExec, windowsAction,
 });
 render();
-setInterval(render, 1000);
+setInterval(render, 30000);
