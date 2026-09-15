@@ -100,8 +100,9 @@ def weather_icon:
   end;
 .current_condition[0] as $current |
 .nearest_area[0] as $area |
+($current.temp_F | tostring | if length < 3 then ("   " + .)[-3:] else . end) as $temperature |
 {
-  text: "\($current.weatherCode | weather_icon) \($current.temp_F)°F",
+  text: "\($current.weatherCode | weather_icon) \($temperature)°F",
   tooltip: "\($area.areaName[0].value), \($area.country[0].value)\n\($current.weatherDesc[0].value)\nFeels like \($current.FeelsLikeF)°F · Humidity \($current.humidity)% · Wind \($current.windspeedKmph) km/h",
   class: "weather"
 }' <<<"$weather_json"); then

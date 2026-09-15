@@ -146,7 +146,7 @@
     "format": "{text}",
     "min-length": 7,
     "align": 1,
-    "justify": "left",
+    "justify": "right",
     "tooltip": true
 },
 
