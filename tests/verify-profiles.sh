@@ -45,19 +45,25 @@ fw_btw_config=$(render dev-jasyang linux "$btw_config")
 generic_btw_config=$(render generic-host linux "$btw_config")
 windows_ignore=$(render generic-host windows "$ignore")
 
-jq -e '.defaultProvider == "everpure-foundry" and .defaultModel == "cascade/gpt-5.6-terra"' \
+jq -e '.defaultProvider == "everpure-foundry" and
+  .defaultModel == "gpt-5.6-sol" and
+  .enabledModels == ["everpure-foundry/gpt-5.6-luna", "everpure-foundry/gpt-5.6-sol"] and
+  .subagents.agentOverrides.oracle.model == "everpure-foundry/gpt-5.6-sol"' \
   <<<"$fw_settings" >/dev/null
-jq -e '.defaultProvider == "openai-codex" and .defaultModel == "gpt-5.6-terra"' \
+jq -e '.defaultProvider == "openai-codex" and
+  .defaultModel == "gpt-5.6-terra" and
+  (.enabledModels | index("openai-codex/gpt-6-astra")) != null and
+  .subagents.agentOverrides.oracle.model == "openai-codex/gpt-6-astra"' \
   <<<"$generic_settings" >/dev/null
 jq -e '(.packages | index("npm:pi-chatgpt-limit")) == null' \
   <<<"$fw_settings" >/dev/null
 jq -e '(.packages | index("npm:pi-chatgpt-limit")) != null' \
   <<<"$generic_settings" >/dev/null
-jq -e '.model == "everpure-foundry/cascade/gpt-5.6-luna"' \
+jq -e '.model == "everpure-foundry/gpt-5.6-luna"' \
   <<<"$fw_rename_config" >/dev/null
 jq -e '.model == "openai-codex/gpt-5.6-luna"' \
   <<<"$generic_rename_config" >/dev/null
-jq -e '.model == "everpure-foundry/cascade/gpt-5.6-luna"' \
+jq -e '.model == "everpure-foundry/gpt-5.6-luna"' \
   <<<"$fw_btw_config" >/dev/null
 jq -e '.model == "openai-codex/gpt-5.6-luna"' \
   <<<"$generic_btw_config" >/dev/null

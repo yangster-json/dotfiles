@@ -10,7 +10,7 @@ sol = "openai-codex/gpt-5.6-sol"
 
 [profiles.fw-work.models]
 provider = "everpure-foundry"
-default = "cascade/gpt-5.6-terra"
-luna = "everpure-foundry/cascade/gpt-5.6-luna"
-terra = "everpure-foundry/cascade/gpt-5.6-terra"
-sol = "everpure-foundry/cascade/gpt-5.6-sol"
+default = "gpt-5.6-sol"
+luna = "everpure-foundry/gpt-5.6-luna"
+terra = "everpure-foundry/gpt-5.6-sol"
+sol = "everpure-foundry/gpt-5.6-sol"
