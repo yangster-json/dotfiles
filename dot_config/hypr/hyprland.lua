@@ -267,6 +267,16 @@ hl.device({
 	sensitivity = -0.5,
 })
 
+hl.device({
+	name = "at-translated-set-2-keyboard",
+	kb_options = "altwin:swap_alt_win",
+})
+
+hl.device({
+	name = "kanata",
+	kb_options = "altwin:swap_alt_win",
+})
+
 ---------------------
 ---- KEYBINDINGS ----
 ---------------------
