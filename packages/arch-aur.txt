@@ -1,4 +1,5 @@
 catppuccin-sddm-theme-mocha
+chatgpt-desktop
 elephant-bin
 elephant-bluetooth-bin
 elephant-calc-bin

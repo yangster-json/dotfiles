@@ -15,6 +15,7 @@ gammastep
 geoclue
 git
 github-cli
+gnome-keyring
 grub
 grub-btrfs
 hyprland
@@ -42,15 +43,14 @@ pipewire
 pipewire-alsa
 pipewire-jack
 pipewire-pulse
-playerctl
 power-profiles-daemon
 pyenv
 qbittorrent
 qt5-quickcontrols2
 reflector
 ruby
-sbctl
 satty
+sbctl
 sddm
 sudo
 swayidle
@@ -61,6 +61,7 @@ timeshift
 ttf-iosevka-nerd
 ttf-iosevkaterm-nerd
 udiskie
+unzip
 vulkan-radeon
 waybar
 webkit2gtk-4.1
