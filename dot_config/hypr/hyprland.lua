@@ -267,16 +267,6 @@ hl.device({
 	sensitivity = -0.5,
 })
 
-hl.device({
-	name = "at-translated-set-2-keyboard",
-	kb_options = "altwin:swap_alt_win",
-})
-
-hl.device({
-	name = "kanata",
-	kb_options = "altwin:swap_alt_win",
-})
-
 ---------------------
 ---- KEYBINDINGS ----
 ---------------------
@@ -287,6 +277,8 @@ local mainMod = "SUPER" -- Sets "Windows" key as main modifier
 hl.bind(mainMod .. " + B", hl.dsp.exec_cmd(browser))
 hl.bind(mainMod .. " + T", hl.dsp.exec_cmd(terminal))
 hl.bind(mainMod .. " + SHIFT + T", hl.dsp.exec_cmd(terminal .. " start -- btop"))
+hl.bind(mainMod .. " + SHIFT + G", hl.dsp.exec_cmd("$HOME/.local/bin/neru grid"))
+hl.bind(mainMod .. " + SHIFT + S", hl.dsp.exec_cmd("$HOME/.local/bin/neru scroll"))
 local closeWindowBind = hl.bind(mainMod .. " + Q", hl.dsp.window.close())
 hl.bind(mainMod .. " + SHIFT + Q", hl.dsp.exec_cmd("$HOME/.local/bin/quit-active-app"))
 -- closeWindowBind:set_enabled(false)
