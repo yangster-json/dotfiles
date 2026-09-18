@@ -103,12 +103,5 @@ return {
       },
     })
 
-    if not has_provider then
-      vim.notify(
-        "Minuet disabled: set OPENAI_API_KEY or ANTHROPIC_API_KEY for non-work profiles",
-        vim.log.levels.WARN,
-        { title = "minuet-ai.nvim" }
-      )
-    end
   end,
 }
