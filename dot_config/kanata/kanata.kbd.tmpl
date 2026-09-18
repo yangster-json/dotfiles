@@ -7,6 +7,7 @@
 {{ if eq .chezmoi.os "linux" }}
   ;; prevents USB keyboard interception
   linux-dev                       /dev/input/by-path/platform-i8042-serio-0-event-kbd
+  linux-dev-names-exclude         ("neru-keyboard-proxy" "neru-pointer-proxy" "neru-keyboard")
 {{ end }}
 )
 
@@ -14,7 +15,7 @@
   1 2 3 4 5        8 9 0 - =
   q w e r t        i o p [ ]
   a s d f g        k l ; ' ret
-  v b              m n
+  v b              m ,
   f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 f11 f12
 )
 
@@ -68,7 +69,7 @@
   q       w       e       r       t         y       u       i         o       p
   @a_ctl  @s_alt  @d_met  f       g         h       j       @k_rmet   @l_ralt @semi_rctl
   z       x       c       v       b         n       m       ,         .       /
-  @bspc_shift @del_nav                      @spc_nav   @ret_nav
+  @bspc_shift @del_nav                      @ret_nav   @spc_nav
   f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 f11 f12
 )
 
