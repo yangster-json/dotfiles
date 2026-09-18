@@ -1,0 +1,99 @@
+;; mirrors custom-voyager-qmk keymap
+(defcfg
+  process-unmapped-keys           no
+  tap-hold-require-prior-idle     125
+  delegate-to-first-layer         yes
+  concurrent-tap-hold             yes
+{{ if eq .chezmoi.os "linux" }}
+  ;; prevents USB keyboard interception
+  linux-dev                       /dev/input/by-path/platform-i8042-serio-0-event-kbd
+{{ end }}
+)
+
+(defsrc
+  1 2 3 4 5        8 9 0 - =
+  q w e r t        i o p [ ]
+  a s d f g        k l ; ' ret
+  v b              m n
+  f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 f11 f12
+)
+
+(defalias
+  a_ctl       (tap-hold-release 250 250 a lctl)
+{{ if eq .chezmoi.os "linux" }}
+  s_alt       (tap-hold-release 250 250 s lalt)
+  d_met       (tap-hold-release 250 250 d lmet)
+  k_rmet      (tap-hold-release 250 250 k rmet)
+  l_ralt      (tap-hold-release 250 250 l ralt)
+{{ else }}
+  s_alt       (tap-hold-release 250 250 s lmet)
+  d_met       (tap-hold-release 250 250 d lalt)
+  k_rmet      (tap-hold-release 250 250 k ralt)
+  l_ralt      (tap-hold-release 250 250 l rmet)
+{{ end }}
+  semi_rctl   (tap-hold-release 250 250 ; rctl)
+
+  bspc_shift  (tap-hold-release 200 200 bspc lsft)
+  del_nav     (tap-hold-press 200 200 del (layer-while-held nav))
+  spc_nav     (tap-hold-press 200 200 spc (layer-while-held nav))
+  ret_nav     (tap-hold-press 200 200 ret (layer-while-held nav))
+
+  1_ctl       (tap-hold-press 250 250 1 lctl)
+{{ if eq .chezmoi.os "linux" }}
+  2_alt       (tap-hold-press 250 250 2 lalt)
+  3_met       (tap-hold-press 250 250 3 lmet)
+  8_rmet      (tap-hold-press 250 250 8 rmet)
+  9_ralt      (tap-hold-press 250 250 9 ralt)
+{{ else }}
+  2_alt       (tap-hold-press 250 250 2 lmet)
+  3_met       (tap-hold-press 250 250 3 lalt)
+  8_rmet      (tap-hold-press 250 250 8 ralt)
+  9_ralt      (tap-hold-press 250 250 9 rmet)
+{{ end }}
+  0_rctl      (tap-hold-press 250 250 0 rctl)
+
+  prev_tab    (multi lctl lsft tab)
+  next_tab    (multi lctl tab)
+  copy        (multi lctl lsft c)
+  paste       (multi lctl lsft v)
+
+  mouse_left  (movemouse-left 1 1)
+  mouse_down  (movemouse-down 1 1)
+  mouse_up    (movemouse-up 1 1)
+  mouse_right (movemouse-right 1 1)
+)
+
+;; Kanata lacks QMK retro tapping.
+(deflayer base
+  q       w       e       r       t         y       u       i         o       p
+  @a_ctl  @s_alt  @d_met  f       g         h       j       @k_rmet   @l_ralt @semi_rctl
+  z       x       c       v       b         n       m       ,         .       /
+  @bspc_shift @del_nav                      @spc_nav   @ret_nav
+  f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 f11 f12
+)
+
+(deflayer num
+  S-1    S-2     S-3     S-4     S-5       S-6   S-7  S-8       -       =
+  @1_ctl @2_alt  @3_met  4       5         6     7    @8_rmet  @9_ralt @0_rctl
+  _      _       _       grave   bksl      _     tab  esc      _       _
+  _      _                         _       _
+  _ _ _ _ _ _ _ _ _ _ _ _
+)
+
+(deflayer nav
+  mute   vold      volu       prev  next     home        pgdn        pgup  end  _
+  nop0   mmid      mrgt       mlft  pp       left        down        up    rght brup
+  @prev_tab @next_tab @copy @paste nop0      @mouse_left @mouse_down @mouse_up @mouse_right brdown
+  _      _                                  _           _
+  _ _ _ _ _ _ _ _ _ _ _ _
+)
+
+(defchordsv2
+  (4 5) S-9  50 all-released (num nav)
+  (r t) [    50 all-released (num nav)
+  (f g) S-[  50 all-released (num nav)
+  (8 9) S-0  50 all-released (num nav)
+  (k l) ]    50 all-released (num nav)
+  (l ;) esc  50 all-released (num nav)
+  (; ') S-]  50 all-released (num nav)
+)
