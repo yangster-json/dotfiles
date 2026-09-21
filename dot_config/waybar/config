@@ -14,8 +14,8 @@
     "disk",
     "custom/weather",
     "custom/network",
-    "custom/updates",
     "custom/media-title",
+    "custom/updates",
   ],
   "modules-center": [
     "hyprland/workspaces"
@@ -130,7 +130,6 @@
     "return-type": "json",
     "interval": 3600,
     "format": "{text}",
-    "min-length": 5,
     "align": 1,
     "justify": "right",
     "tooltip": true,
