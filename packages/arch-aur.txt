@@ -12,6 +12,7 @@ elephant-runner-bin
 elephant-symbols-bin
 elephant-windows-bin
 elephant-wireplumber-bin
+execstack
 gazelle-tui
 hotkeyhub-bin
 hyprmon-bin

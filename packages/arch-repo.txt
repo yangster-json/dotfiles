@@ -10,6 +10,7 @@ chezmoi
 cliphist
 discord
 efibootmgr
+evtest
 fzf
 gammastep
 geoclue
@@ -39,6 +40,7 @@ noto-fonts-extra
 npm
 openssh
 pacman-contrib
+patchelf
 pipewire
 pipewire-alsa
 pipewire-jack
@@ -52,6 +54,7 @@ ruby
 satty
 sbctl
 sddm
+steam
 sudo
 swayidle
 swaylock
@@ -62,7 +65,9 @@ ttf-iosevka-nerd
 ttf-iosevkaterm-nerd
 udiskie
 unzip
+uwsm
 vulkan-radeon
+vulkan-tools
 waybar
 webkit2gtk-4.1
 wezterm
