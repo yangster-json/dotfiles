@@ -22,7 +22,7 @@ return {
         return {
           ft_icon and { " ", ft_icon, " ", guifg = ft_color } or "",
           { filename, gui = modified and "bold,italic" or "bold" },
-          modified and { "  ", guifg = "#ff9e64" } or "",
+          modified and { "  ", guifg = C.mauve } or "",
           " ",
         }
       end,

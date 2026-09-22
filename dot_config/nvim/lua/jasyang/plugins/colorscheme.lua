@@ -24,7 +24,7 @@ return {
           mocha = function(colors)
             return {
               WinSeparator       = { fg = colors.surface1 },
-              WinSeparatorActive = { fg = colors.teal },
+              WinSeparatorActive = { fg = colors.mauve },
               -- Telescope: background matches editor, subtle rounded border
               TelescopeNormal        = { bg = colors.base },
               TelescopeBorder        = { fg = colors.surface1, bg = colors.base },
@@ -34,15 +34,21 @@ return {
               TelescopeResultsBorder = { fg = colors.surface1, bg = colors.base },
               TelescopePreviewNormal = { bg = colors.base },
               TelescopePreviewBorder = { fg = colors.surface1, bg = colors.base },
-              TelescopeTitle         = { fg = colors.blue, bg = colors.base },
-              TelescopePromptTitle   = { fg = colors.peach, bg = colors.base },
+              TelescopeTitle         = { fg = colors.mauve, bg = colors.base },
+              TelescopePromptTitle   = { fg = colors.mauve, bg = colors.base },
+              CursorLineNr           = { fg = colors.mauve, style = { "bold" } },
+              FloatBorder             = { fg = colors.mauve, bg = colors.base },
+              PmenuSel                = { fg = colors.base, bg = colors.mauve },
+              Search                  = { fg = colors.base, bg = colors.mauve },
+              IncSearch               = { fg = colors.base, bg = colors.mauve },
+              TabLineSel              = { fg = colors.base, bg = colors.mauve },
             }
           end,
         },
       })
       vim.cmd([[colorscheme catppuccin]])
 
-      -- Active split separator = teal, matching tmux active pane border color.
+      -- match split accent to mauve theme
       -- Skip floating windows (Telescope, cmp, etc.): they have borders, not
       -- WinSeparators, and blindly setting winhighlight would clobber the
       -- Normal:Telescope*Normal mappings those plugins rely on.
