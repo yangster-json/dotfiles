@@ -304,13 +304,14 @@ hl.bind(mainMod .. " + N", hl.dsp.exec_cmd("systemctl --user kill --signal=USR1 
 -- Vim-style directional bindings.
 local directions = {
 	{ key = "H", hypr = "l", name = "left" },
-	{ key = "J", hypr = "d", name = "down" },
-	{ key = "K", hypr = "u", name = "up" },
+	{ key = "J", hypr = "d", name = "down", monitor = "eDP-1" },
+	{ key = "K", hypr = "u", name = "up", monitor = "HDMI-A-1" },
 	{ key = "L", hypr = "r", name = "right" },
 }
 
 for _, direction in ipairs(directions) do
-	hl.bind(mainMod .. " + " .. direction.key, hl.dsp.focus({ direction = direction.name }))
+	local focus = direction.monitor and { monitor = direction.monitor } or { direction = direction.name }
+	hl.bind(mainMod .. " + " .. direction.key, hl.dsp.focus(focus))
 	hl.bind(mainMod .. " + SHIFT + " .. direction.key, hl.dsp.window.move({ direction = direction.name }))
 	hl.bind(mainMod .. " + CTRL + " .. direction.key, hl.dsp.exec_cmd("hyprctl dispatch focusmonitor " .. direction.hypr))
 	hl.bind(
@@ -318,6 +319,12 @@ for _, direction in ipairs(directions) do
 		hl.dsp.exec_cmd("hyprctl dispatch movecurrentworkspacetomonitor " .. direction.hypr)
 	)
 end
+
+hl.config({
+	binds = {
+		window_direction_monitor_fallback = true,
+	},
+})
 
 -- Rotate through existing workspaces on the focused monitor.
 hl.bind(mainMod .. " + ALT + H", hl.dsp.exec_cmd("hypr-cycle-workspace prev"))
