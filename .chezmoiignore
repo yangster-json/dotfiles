@@ -15,6 +15,7 @@ source-only
 .oh-my-zsh
 .config/nvim
 .config/herdr
+.config/neru/
 .claude
 .pi/agent/skills/remote-testbed*
 {{ end -}}
