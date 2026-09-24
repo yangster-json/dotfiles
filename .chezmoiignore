@@ -47,5 +47,6 @@ source-only
 {{- end }}
 
 {{- if ne .chezmoi.os "windows" }}
+AppData/Roaming/neru
 .glzr/zebar/
 {{- end }}
