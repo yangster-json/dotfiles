@@ -43,14 +43,20 @@ text = "#CDD6F4"
 # Hotkeys
 # See https://github.com/y3owk1n/neru/blob/main/docs/CONFIGURATION.md#hotkeys
 # See https://github.com/y3owk1n/neru/blob/main/docs/CLI.md
-# Global hotkeys are disabled by default on Linux to avoid conflicts with
-# terminal and application shortcuts (e.g. Ctrl+Shift+C / copy).
-# Uncomment to enable, or bind \`neru <mode>` in your DE/WM.
-# [hotkeys]
-# "Primary+Shift+Space" = "hints"
-# "Primary+Shift+G" = "grid"
-# "Primary+Shift+C" = "recursive_grid"
-# "Primary+Shift+S" = "scroll"
+# Render Windows- and macOS-specific launcher bindings.
+{{ $leader := "Primary" -}}
+{{ if or (eq .chezmoi.os "windows") (eq .chezmoi.os "darwin") -}}
+{{ $leader = "Alt" }}
+[hotkeys]
+"Primary+Shift+Space" = "__disabled__"
+"Primary+Shift+G" = "__disabled__"
+"Primary+Shift+C" = "__disabled__"
+"Primary+Shift+S" = "__disabled__"
+"{{ $leader }}+Shift+Space" = "hints"
+"{{ $leader }}+Shift+G" = "grid"
+"{{ $leader }}+Shift+C" = "recursive_grid"
+"{{ $leader }}+Shift+S" = "scroll"
+{{- end }}
 
 # Macros — named action sequences, reused from any binding.
 # Written by hand, not recorded. $1, $2 ... are the call's arguments.
