@@ -1,6 +1,5 @@
 {{- $profile := index .hostProfiles .chezmoi.hostname | default "default" -}}
 {{- $models := index .profiles $profile "models" -}}
-{{- $agents := index .profiles $profile "agents" -}}
 {{- $isWork := eq $profile "fw-work" -}}
 {
   "defaultProvider": "{{ $models.provider }}",
@@ -18,31 +17,31 @@
     {{- end }}
     "agentOverrides": {
       "scout": {
-        "model": "{{ $agents.low }}",
+        "model": "{{ $models.low }}",
         "thinking": "low"
       },
       "delegate": {
-        "model": "{{ $agents.low }}",
+        "model": "{{ $models.low }}",
         "thinking": "low"
       },
       "researcher": {
-        "model": "{{ $agents.mid }}",
+        "model": "{{ $models.mid }}",
         "thinking": "medium"
       },
       "worker": {
-        "model": "{{ $agents.mid }}",
+        "model": "{{ $models.mid }}",
         "thinking": "medium"
       },
       "reviewer": {
-        "model": "{{ $agents.mid }}",
+        "model": "{{ $models.mid }}",
         "thinking": "high"
       },
       "oracle": {
-        "model": "{{ $agents.top }}",
+        "model": "{{ $models.top }}",
         "thinking": "high"
       },
       "advisor": {
-        "model": "{{ $agents.top }}",
+        "model": "{{ $models.top }}",
         "thinking": "high"
       }
     }
@@ -80,10 +79,9 @@
     "gpulab/Kimi-K3-lab-claude-compatible[1m]",
     "gpulab/glm-5.3-flash-claude-compatible"
     {{- else }}
-    "openai-codex/gpt-5.6-luna",
-    "openai-codex/gpt-5.6-sol",
-    "openai-codex/gpt-5.6-terra",
     "openai-codex/gpt-6-astra",
+    "openai-codex/gpt-6-sol",
+    "openai-codex/gpt-6-luna",
     "openai-codex/gpt-5.3-codex-spark",
     "openai-codex/gpt-5.4",
     "openai-codex/gpt-5.4-mini",

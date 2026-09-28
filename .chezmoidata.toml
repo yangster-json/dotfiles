@@ -1,26 +1,17 @@
 [hostProfiles]
 dev-jasyang = "fw-work"
 
+# tiers: top/mid/low. default = mid tier model id (provider-relative)
 [profiles.default.models]
 provider = "openai-codex"
-default = "gpt-5.6-terra"
-luna = "openai-codex/gpt-5.6-luna"
-terra = "openai-codex/gpt-5.6-terra"
-sol = "openai-codex/gpt-5.6-sol"
-
-[profiles.default.agents]
+default = "gpt-6-sol"
 top = "openai-codex/gpt-6-astra"
-mid = "openai-codex/gpt-5.6-terra"
-low = "openai-codex/gpt-5.6-luna"
+mid = "openai-codex/gpt-6-sol"
+low = "openai-codex/gpt-6-luna"
 
 [profiles.fw-work.models]
-provider = "everpure-foundry"
-default = "gpt-5.6-terra"
-luna = "everpure-foundry/gpt-5.6-luna"
-terra = "everpure-foundry/gpt-5.6-sol"
-sol = "everpure-foundry/gpt-5.6-sol"
-
-[profiles.fw-work.agents]
+provider = "gpulab"
+default = "gpt-6-sol-claude-compatible[1m]"
 top = "gpulab/claude-opus-5-5"
 mid = "gpulab/gpt-6-sol-claude-compatible[1m]"
 low = "gpulab/gpt-6-luna-claude-compatible[1m]"

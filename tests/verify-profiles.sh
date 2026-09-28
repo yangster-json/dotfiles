@@ -45,8 +45,8 @@ fw_btw_config=$(render dev-jasyang linux "$btw_config")
 generic_btw_config=$(render generic-host linux "$btw_config")
 windows_ignore=$(render generic-host windows "$ignore")
 
-jq -e '.defaultProvider == "everpure-foundry" and
-  .defaultModel == "gpt-5.6-terra" and
+jq -e '.defaultProvider == "gpulab" and
+  .defaultModel == "gpt-6-sol-claude-compatible[1m]" and
   .enabledModels[0] == "gpulab/claude-opus-5-5" and
   (.enabledModels | length) == 7 and
   .subagents.agentOverrides.oracle.model == "gpulab/claude-opus-5-5" and
@@ -57,11 +57,11 @@ jq -e '.defaultProvider == "everpure-foundry" and
   .subagents.agentOverrides.delegate.model == "gpulab/gpt-6-luna-claude-compatible[1m]"' \
   <<<"$fw_settings" >/dev/null
 jq -e '.defaultProvider == "openai-codex" and
-  .defaultModel == "gpt-5.6-terra" and
+  .defaultModel == "gpt-6-sol" and
   (.enabledModels | index("openai-codex/gpt-6-astra")) != null and
   .subagents.agentOverrides.oracle.model == "openai-codex/gpt-6-astra" and
-  .subagents.agentOverrides.worker.model == "openai-codex/gpt-5.6-terra" and
-  .subagents.agentOverrides.scout.model == "openai-codex/gpt-5.6-luna"' \
+  .subagents.agentOverrides.worker.model == "openai-codex/gpt-6-sol" and
+  .subagents.agentOverrides.scout.model == "openai-codex/gpt-6-luna"' \
   <<<"$generic_settings" >/dev/null
 jq -e '.subagents.defaultExtensions == null and
   .subagents.defaultSubagentOnlyExtensions == ["/u/jasyang/.config/everpure-foundry/pi-extension"]' \
@@ -79,13 +79,13 @@ jq -e '(.packages | index("npm:pi-chatgpt-limit")) == null' \
   <<<"$fw_settings" >/dev/null
 jq -e '(.packages | index("npm:pi-chatgpt-limit")) != null' \
   <<<"$generic_settings" >/dev/null
-jq -e '.model == "everpure-foundry/gpt-5.6-luna"' \
+jq -e '.model == "gpulab/gpt-6-luna-claude-compatible[1m]"' \
   <<<"$fw_rename_config" >/dev/null
-jq -e '.model == "openai-codex/gpt-5.6-luna"' \
+jq -e '.model == "openai-codex/gpt-6-luna"' \
   <<<"$generic_rename_config" >/dev/null
-jq -e '.model == "everpure-foundry/gpt-5.6-luna"' \
+jq -e '.model == "gpulab/gpt-6-luna-claude-compatible[1m]"' \
   <<<"$fw_btw_config" >/dev/null
-jq -e '.model == "openai-codex/gpt-5.6-luna"' \
+jq -e '.model == "openai-codex/gpt-6-luna"' \
   <<<"$generic_btw_config" >/dev/null
 
 assert_contains "$windows_ignore" '.pi/agent/skills/firmware-tlogs-search'

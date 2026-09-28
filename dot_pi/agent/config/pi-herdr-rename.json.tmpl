@@ -1,7 +1,7 @@
 {{- $profile := index .hostProfiles .chezmoi.hostname | default "default" -}}
 {{- $models := index .profiles $profile "models" -}}
 {
-  "model": "{{ $models.luna }}",
+  "model": "{{ $models.low }}",
   "maxWords": 4,
   "maxChars": 40
 }
