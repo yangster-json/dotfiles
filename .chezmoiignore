@@ -1,6 +1,7 @@
 README.md
 .gitignore
 source-only
+tests
 .claude/plugins/known_marketplaces.json
 .pi/agent/mcp-cache.json
 .pi/agent/mcp-onboarding.json
@@ -48,6 +49,6 @@ source-only
 {{- end }}
 
 {{- if ne .chezmoi.os "windows" }}
-AppData/Roaming/neru
+AppData
 .glzr/zebar/
 {{- end }}

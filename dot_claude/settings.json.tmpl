@@ -60,7 +60,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash '/home/json/.claude/hooks/herdr-agent-state.sh' session",
+            "command": "bash '{{ .chezmoi.homeDir }}/.claude/hooks/herdr-agent-state.sh' session",
             "timeout": 10
           }
         ]
@@ -100,7 +100,7 @@
     "jasyang-dotfiles": {
       "source": {
         "source": "directory",
-        "path": "/u/jasyang/.claude"
+        "path": "{{ .chezmoi.homeDir }}/.claude"
       },
       "autoUpdate": true
     }
@@ -113,6 +113,9 @@
   "autoCompactEnabled": false,
   "modelSettings": {
     "claude-opus-5": {
+      "effortLevel": "medium"
+    },
+    "claude-fable-5-1": {
       "effortLevel": "medium"
     }
   }

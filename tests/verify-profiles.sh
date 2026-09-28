@@ -46,7 +46,7 @@ generic_btw_config=$(render generic-host linux "$btw_config")
 windows_ignore=$(render generic-host windows "$ignore")
 
 jq -e '.defaultProvider == "gpulab" and
-  .defaultModel == "gpt-6-sol-claude-compatible[1m]" and
+  .defaultModel == "claude-opus-5-5" and
   .enabledModels[0] == "gpulab/claude-opus-5-5" and
   (.enabledModels | length) == 7 and
   .subagents.agentOverrides.oracle.model == "gpulab/claude-opus-5-5" and
