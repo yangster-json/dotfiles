@@ -46,15 +46,35 @@ generic_btw_config=$(render generic-host linux "$btw_config")
 windows_ignore=$(render generic-host windows "$ignore")
 
 jq -e '.defaultProvider == "everpure-foundry" and
-  .defaultModel == "gpt-5.6-sol" and
-  .enabledModels == ["everpure-foundry/gpt-5.6-luna", "everpure-foundry/gpt-5.6-sol"] and
-  .subagents.agentOverrides.oracle.model == "everpure-foundry/gpt-5.6-sol"' \
+  .defaultModel == "gpt-5.6-terra" and
+  .enabledModels[0] == "gpulab/claude-opus-5-5" and
+  (.enabledModels | length) == 7 and
+  .subagents.agentOverrides.oracle.model == "gpulab/claude-opus-5-5" and
+  .subagents.agentOverrides.advisor.model == "gpulab/claude-opus-5-5" and
+  .subagents.agentOverrides.worker.model == "gpulab/gpt-6-sol-claude-compatible[1m]" and
+  .subagents.agentOverrides.reviewer.model == "gpulab/gpt-6-sol-claude-compatible[1m]" and
+  .subagents.agentOverrides.scout.model == "gpulab/gpt-6-luna-claude-compatible[1m]" and
+  .subagents.agentOverrides.delegate.model == "gpulab/gpt-6-luna-claude-compatible[1m]"' \
   <<<"$fw_settings" >/dev/null
 jq -e '.defaultProvider == "openai-codex" and
   .defaultModel == "gpt-5.6-terra" and
   (.enabledModels | index("openai-codex/gpt-6-astra")) != null and
-  .subagents.agentOverrides.oracle.model == "openai-codex/gpt-6-astra"' \
+  .subagents.agentOverrides.oracle.model == "openai-codex/gpt-6-astra" and
+  .subagents.agentOverrides.worker.model == "openai-codex/gpt-5.6-terra" and
+  .subagents.agentOverrides.scout.model == "openai-codex/gpt-5.6-luna"' \
   <<<"$generic_settings" >/dev/null
+jq -e '.subagents.defaultExtensions == null and
+  .subagents.defaultSubagentOnlyExtensions == ["/u/jasyang/.config/everpure-foundry/pi-extension"]' \
+  <<<"$fw_settings" >/dev/null
+jq -e '(.packages | index("git:github.com/pure-shared/pi-provider-gpulab")) != null' \
+  <<<"$fw_settings" >/dev/null
+jq -e '(.packages | index("git:github.com/pure-shared/pi-provider-gpulab")) == null and
+  (.enabledModels | map(startswith("gpulab/")) | any) == false' \
+  <<<"$generic_settings" >/dev/null
+jq -e '[$fw, $generic][] | (.packages | index("npm:pi-google-services")) != null and
+  (.packages | index("npm:pi-loop-police")) != null and
+  .enableInstallTelemetry == false' \
+  --argjson fw "$fw_settings" --argjson generic "$generic_settings" -n >/dev/null
 jq -e '(.packages | index("npm:pi-chatgpt-limit")) == null' \
   <<<"$fw_settings" >/dev/null
 jq -e '(.packages | index("npm:pi-chatgpt-limit")) != null' \
