@@ -1,0 +1,125 @@
+#!/usr/bin/env python3
+"""Renames the active herdr tab with an AI-generated title."""
+import glob
+import json
+import os
+import shutil
+import subprocess
+import sys
+import time
+
+CONFIG = os.path.expanduser("~/.pi/agent/config/pi-herdr-rename.json")
+LOG = os.path.expanduser("~/.cache/herdr-ai-rename-tab.log")
+GPULAB_EXT = os.path.expanduser("~/.pi/agent/git/github.com/pure-shared/pi-provider-gpulab")
+LINES_PER_PANE = 40
+MAX_PANES = 4
+MAX_CONTEXT_CHARS = 6000
+
+
+def log(msg):
+    os.makedirs(os.path.dirname(LOG), exist_ok=True)
+    with open(LOG, "a", encoding="utf-8") as handle:
+        handle.write(f"{time.strftime('%F %T')} {msg}\n")
+
+
+def herdr(*args):
+    binary = os.environ.get("HERDR_BIN_PATH") or shutil.which("herdr") or "herdr"
+    out = subprocess.run([binary, *args], capture_output=True, text=True, timeout=10)
+    if out.returncode != 0:
+        raise RuntimeError(f"herdr {' '.join(args)}: {out.stderr.strip()}")
+    return out.stdout
+
+
+def pi_binary():
+    found = shutil.which("pi")
+    if found:
+        return found
+    # herdr server may lack nvm on PATH
+    matches = sorted(glob.glob(os.path.expanduser("~/.nvm/versions/node/*/bin/pi")))
+    if not matches:
+        raise RuntimeError("pi not found")
+    return matches[-1]
+
+
+def config():
+    try:
+        with open(CONFIG, encoding="utf-8") as handle:
+            values = json.load(handle)
+    except (OSError, ValueError):
+        values = {}
+    return (
+        values.get("model"),
+        int(values.get("maxWords") or 4),
+        int(values.get("maxChars") or 40),
+    )
+
+
+def tab_context(tab_id, workspace_id):
+    panes = json.loads(herdr("pane", "list", "--workspace", workspace_id))["result"]["panes"]
+    panes = [p for p in panes if p.get("tab_id") == tab_id]
+    # focused pane first, it best reflects intent
+    panes.sort(key=lambda p: not p.get("focused"))
+    sections = []
+    for pane in panes[:MAX_PANES]:
+        header = [
+            f"cwd: {pane.get('foreground_cwd') or pane.get('cwd', '')}",
+            f"terminal title: {pane.get('terminal_title_stripped', '')}",
+        ]
+        if pane.get("agent"):
+            header.append(f"agent: {pane['agent']}")
+        if pane.get("label"):
+            header.append(f"pane label: {pane['label']}")
+        try:
+            screen = herdr(
+                "pane", "read", pane["pane_id"],
+                "--source", "recent-unwrapped", "--lines", str(LINES_PER_PANE),
+            )
+        except (RuntimeError, subprocess.TimeoutExpired):
+            screen = ""
+        screen = "\n".join(line.rstrip() for line in screen.splitlines() if line.strip())
+        sections.append("\n".join(header) + "\nrecent output:\n" + screen)
+    return "\n\n---\n\n".join(sections)[-MAX_CONTEXT_CHARS:]
+
+
+def generate(context):
+    model, max_words, max_chars = config()
+    if not model:
+        raise RuntimeError(f"no model in {CONFIG}; run /rename-model in pi")
+    cmd = [pi_binary(), "-p", "--no-session", "-nt", "-ns", "-nc", "-ne", "--thinking", "off"]
+    # gpulab is an extension provider, load only it for speed
+    if model.startswith("gpulab/") and os.path.isdir(GPULAB_EXT):
+        cmd += ["-e", GPULAB_EXT]
+    cmd += [
+        "--model", model,
+        "--system-prompt",
+        "You name terminal multiplexer tabs. Return only a short title describing "
+        f"what the user is working on: lowercase, at most {max_words} words, "
+        f"at most {max_chars} characters, no quotes or punctuation.",
+        "Name this tab from its panes:\n\n" + context,
+    ]
+    out = subprocess.run(cmd, capture_output=True, text=True, timeout=60, cwd=os.path.expanduser("~"))
+    title = out.stdout.strip().splitlines()[-1] if out.stdout.strip() else ""
+    title = " ".join(title.strip().strip("\"'`.").lower().split())
+    if out.returncode != 0 or not title:
+        raise RuntimeError(f"pi failed ({out.returncode}): {out.stderr.strip()[-500:]}")
+    return " ".join(title.split()[:max_words])[:max_chars]
+
+
+def main():
+    tab_id = os.environ.get("HERDR_ACTIVE_TAB_ID") or os.environ.get("HERDR_TAB_ID")
+    workspace_id = os.environ.get("HERDR_ACTIVE_WORKSPACE_ID") or os.environ.get("HERDR_WORKSPACE_ID")
+    if not tab_id or not workspace_id:
+        raise RuntimeError("no active herdr tab")
+    title = generate(tab_context(tab_id, workspace_id))
+    herdr("tab", "rename", tab_id, title)
+    log(f"{tab_id} -> {title}")
+    if sys.stdout.isatty():
+        print(title)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as error:  # detached, so the log is the only sink
+        log(f"error: {error}")
+        sys.exit(1)
