@@ -1,5 +1,6 @@
 [hostProfiles]
 dev-jasyang = "fw-work"
+dev-jasyang-sim = "fw-work"
 
 # tiers: top/mid/low. default = main model id (provider-relative)
 [profiles.default.models]
