@@ -112,6 +112,25 @@ function usageFromRaw(value: RawUsage | undefined): UsageTotals {
 	};
 }
 
+// acp-headroom-pi publishes delegate usage only as a footer status
+const ACP_STATUS_KEY = "acp-headroom-pi";
+const COMPACT_SCALES: Record<string, number> = { "": 1, k: 1e3, M: 1e6 };
+
+function parseCompactTokens(text: string | undefined): number {
+	const match = /^([\d.]+)([kM]?)$/.exec(text ?? "");
+	return match ? Number(match[1]) * COMPACT_SCALES[match[2]] : 0;
+}
+
+// format: "sub-agents ↑84k ↓2.8M ($14.2995)"
+function usageFromAcpStatus(status: string | undefined): UsageTotals {
+	const text = status ?? "";
+	return {
+		input: parseCompactTokens(/↑(\S+)/.exec(text)?.[1]),
+		output: parseCompactTokens(/↓(\S+)/.exec(text)?.[1]),
+		cost: numberOrZero(Number(/\(\$([\d.]+)\)/.exec(text)?.[1])),
+	};
+}
+
 function runIdOf(value: { runId?: unknown; id?: unknown }): string | null {
 	if (typeof value.runId === "string") return value.runId;
 	if (typeof value.id === "string") return value.id;
@@ -212,10 +231,12 @@ export default function (pi: ExtensionAPI) {
 						}
 					}
 
+					const statuses = footerData.getExtensionStatuses();
 					const child = childUsage();
-					const childCost = child.cost;
-					const displayedInput = totalInput + child.input;
-					const displayedOutput = totalOutput + child.output;
+					const acp = usageFromAcpStatus(statuses.get(ACP_STATUS_KEY));
+					const childCost = child.cost + acp.cost;
+					const displayedInput = totalInput + child.input + acp.input;
+					const displayedOutput = totalOutput + child.output + acp.output;
 					const displayedCost = totalCost + childCost;
 					const contextUsage = ctx.getContextUsage();
 					const contextWindow = contextUsage?.contextWindow ?? ctx.model?.contextWindow ?? 200000;
@@ -244,7 +265,7 @@ export default function (pi: ExtensionAPI) {
 					);
 					parts.push(`${OVERLAY0}${formatDuration(elapsed)}${RESET}`);
 
-					const line = vimModeLabel(footerData.getExtensionStatuses()) + " " + parts.join(SEP);
+					const line = vimModeLabel(statuses) + " " + parts.join(SEP);
 					return [truncateToWidth(line, width, "")];
 				},
 			};
