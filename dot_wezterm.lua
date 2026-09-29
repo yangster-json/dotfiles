@@ -19,9 +19,14 @@ config.window_padding = {
 config.window_close_confirmation = 'NeverPrompt'
 config.front_end = "WebGpu"
 config.adjust_window_size_when_changing_font_size = false
--- legacy encoding sends ctrl+enter as ctrl+j (herdr nav-down)
-config.enable_kitty_keyboard = true
+-- kitty protocol breaks esc/shift in wezterm
 config.keys = {
+  -- legacy ctrl+enter is ctrl+j (herdr nav-down)
+  {
+    key = 'Enter',
+    mods = 'CTRL',
+    action = wezterm.action.SendString '\x1b[13;5u',
+  },
   -- Terminals traditionally encode Ctrl+Backspace as Ctrl+H.  Send Ctrl+W
   -- instead: readline, ZLE, and Pi use it for backward word deletion.
   {
