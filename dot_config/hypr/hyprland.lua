@@ -341,8 +341,8 @@ end
 -- Example special workspace (scratchpad)
 hl.bind(mainMod .. " + S", hl.dsp.workspace.toggle_special("magic"))
 hl.bind(
-	mainMod .. " + SHIFT + S",
-	hl.dsp.exec_cmd("capture region"),
+	mainMod .. " + ALT + S",
+	hl.dsp.exec_cmd("$HOME/.local/bin/capture region"),
 	{ locked = true }
 )
 
