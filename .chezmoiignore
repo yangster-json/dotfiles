@@ -9,6 +9,7 @@ tests
 {{- $isFwWork := eq (index .hostProfiles .chezmoi.hostname | default "default") "fw-work" -}}
 
 {{ if eq .chezmoi.os "windows" -}}
+.ssh/rc
 .zshrc
 .zshenv
 .oh-my-zsh

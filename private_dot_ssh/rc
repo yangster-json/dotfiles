@@ -1,0 +1,13 @@
+# repoint stable agent symlink on each login
+if [ -S "$SSH_AUTH_SOCK" ] && [ "$SSH_AUTH_SOCK" != "$HOME/.ssh/agent.sock" ]; then
+  ln -sfn "$SSH_AUTH_SOCK" "$HOME/.ssh/agent.sock"
+fi
+
+# sshd skips xauth when rc exists
+if read proto cookie && [ -n "$DISPLAY" ]; then
+  if [ "$(echo "$DISPLAY" | cut -c1-10)" = 'localhost:' ]; then
+    echo add unix:"$(echo "$DISPLAY" | cut -c11-)" "$proto" "$cookie"
+  else
+    echo add "$DISPLAY" "$proto" "$cookie"
+  fi | xauth -q -
+fi

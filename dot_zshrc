@@ -1,5 +1,8 @@
 unset ZSH ZSH_THEME
 
+# survive stale forwarded agents in herdr/tmux
+[[ -L ~/.ssh/agent.sock ]] && export SSH_AUTH_SOCK=~/.ssh/agent.sock
+
 HISTFILE=$HOME/.zsh_history
 HISTSIZE=100000
 SAVEHIST=100000
