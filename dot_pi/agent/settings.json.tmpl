@@ -4,25 +4,28 @@
 {
   "defaultProvider": "{{ $models.provider }}",
   "defaultModel": "{{ $models.default }}",
-  "lastChangelogVersion": "0.87.1",
+  "lastChangelogVersion": "0.99.1",
   "compaction": {
     "enabled": false
   },
   "defaultThinkingLevel": "high",
   "subagents": {
-    {{- if $isWork }}
     "defaultSubagentOnlyExtensions": [
-      "/u/jasyang/.config/everpure-foundry/pi-extension"
+      {{- if $isWork }}
+      "/u/jasyang/.config/everpure-foundry/pi-extension",
+      {{- end }}
+      "{{ .chezmoi.homeDir }}/.pi/agent/npm/node_modules/acp-headroom-pi/dist/index.js"
     ],
-    {{- end }}
     "agentOverrides": {
       "scout": {
         "model": "{{ $models.low }}",
-        "thinking": "low"
+        "thinking": "low",
+        "tools": ["read", "grep", "find", "ls", "bash", "write", "contact_supervisor", "compress", "decompress", "search_context", "acp_status", "headroom_retrieve"]
       },
       "delegate": {
         "model": "{{ $models.low }}",
-        "thinking": "low"
+        "thinking": "low",
+        "tools": ["read", "grep", "find", "ls", "bash", "edit", "write", "contact_supervisor", "compress", "decompress", "search_context", "acp_status", "headroom_retrieve"]
       },
       "researcher": {
         "model": "{{ $models.mid }}",
@@ -30,15 +33,18 @@
       },
       "worker": {
         "model": "{{ $models.mid }}",
-        "thinking": "medium"
+        "thinking": "medium",
+        "tools": ["read", "grep", "find", "ls", "bash", "edit", "write", "contact_supervisor", "compress", "decompress", "search_context", "acp_status", "headroom_retrieve"]
       },
       "reviewer": {
         "model": "{{ $models.mid }}",
-        "thinking": "high"
+        "thinking": "high",
+        "tools": ["read", "grep", "find", "ls", "watchdog_diff", "contact_supervisor", "compress", "decompress", "search_context", "acp_status", "headroom_retrieve"]
       },
       "oracle": {
         "model": "{{ $models.top }}",
-        "thinking": "high"
+        "thinking": "high",
+        "tools": ["read", "grep", "find", "ls", "bash", "compress", "decompress", "search_context", "acp_status", "headroom_retrieve"]
       },
       "advisor": {
         "model": "{{ $models.top }}",
