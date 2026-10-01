@@ -5,7 +5,7 @@ tests
 .claude/plugins/known_marketplaces.json
 .config/systemd/user/neru.service
 
-{{- $fwOnlySkills := list "fw-herdr-hw-test" "remote-testbed*" "triage-jira" "triage-local-logs" "firmware-tlogs-search" "web-browse" -}}
+{{- $fwOnlySkills := list "fw-hw-test" "remote-testbed*" "triage-jira" "triage-local-logs" "firmware-tlogs-search" "web-browse" -}}
 {{- $isFwWork := eq (index .hostProfiles .chezmoi.hostname | default "default") "fw-work" -}}
 
 {{ if eq .chezmoi.os "windows" -}}

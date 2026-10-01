@@ -50,8 +50,8 @@ a multiline script through `bash -lc`.
 ## Update and test
 
 Run the pytest using the RAS testbed name and correct slot/bay mapping. Add
-`--update-fw` only when the user explicitly requested an update. Run it inside a
-Herdr pane using the `fw-herdr-hw-test` workflow and record the pane ID and log.
+`--update-fw` only when the user explicitly requested an update. Run it with the
+`fw-hw-test` workflow (detached `hwtest start`) and record the label and log.
 
 A testlauncher package issue must be corrected locally before attempting the
 remote update; copying firmware cannot fix local pytest discovery.

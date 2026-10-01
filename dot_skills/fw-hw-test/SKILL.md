@@ -1,123 +1,97 @@
 ---
-name: fw-herdr-hw-test
-description: Safely run and monitor a long WSSD hardware pytest in an independent Herdr pane. Use with drun/testlauncher hardware tests that may outlive the current Pi tool call.
-compatibility: Requires HERDR_ENV=1, Herdr CLI, drun, and a firmware checkout.
+name: fw-hw-test
+description: Run a long WSSD hardware pytest detached in the background with `hwtest`, optionally watched from a Herdr observer pane, with completion reported through bg-cmd-runner so the agent stays usable. Use for drun/testlauncher hardware tests that may outlive the current Pi tool call, and to list, watch, or kill such runs.
+compatibility: Requires `~/.pi/agent/bin/hwtest`, drun, a built firmware checkout, and pi-subagents with the bg-cmd-runner agent. Herdr is optional (observer pane only).
 ---
 
-# Herdr Hardware Test
+# Background hardware test
 
-Use this after the `fw-hw-pytest` target preflight passes. Herdr protects the
-test from cancellation of Pi's initiating tool call; it does not protect it from
-closing its own tab/pane or sending that pane Ctrl-C.
+Use after `fw-hw-pytest` target preflight passes (testbed, slot/bay, build and
+copy done). The test runs detached (`setsid`, no terminal), so closing a pane,
+the Pi session, or the watcher never stops it. Only `hwtest kill` does.
+
+## Layout
+
+| Role | What |
+|---|---|
+| Runner | `hwtest start` → detached wrapper → `drun --env-file` → testlauncher, output to log |
+| Tag | `HWTEST_ID=<label>` passed into the container; `kill` finds processes by it |
+| Observer | Herdr pane running `tail -F <log>` (`--view` / `hwtest view`); safe to close |
+| Completion | bg-cmd-runner runs `hwtest wait <label>`; Pi notifies on finish |
+| State | `~/.local/state/hwtest/<label>/` (`meta.json`, `test.log`, `exit`, `run.sh`) |
 
 ## Launch
 
-Require Herdr and no existing test on the target:
+Run from the firmware checkout:
 
 ```bash
-test "${HERDR_ENV:-}" = 1
-pgrep -af 'testlauncher.*<test-name>'
+hwtest start --testbed <node> --slot <slot> --test <test-name> --view [--update-fw] [-- <extra testlauncher args>]
 ```
 
-Create an unfocused sibling pane within the current tab, and record the
-returned `pane_id`. Do not open a new tab. Name the pane so it is
-identifiable in the pane list:
+- `--test` accepts `wssd.<name>` or `<name>`.
+- `--update-fw` only when the user explicitly requested it.
+- `start` refuses if the testbed/slot already has a testlauncher (`--force`
+  overrides only with user approval). Run tests sequentially per slot.
+- Label defaults to `<test>-<node>-s<slot>-<MMDD-HHMMSS>`; record it with the log path.
+
+## Monitor (default: non-blocking)
+
+Immediately launch the watcher and return control to the user:
+
+```
+subagent({
+  agent: "bg-cmd-runner",
+  async: true,
+  timeoutMs: 86400000,
+  task: '<BACKGROUND_TEST_RUNNER_JSON>{"cwd":"<repo>","command":["<abs path to ~/.pi/agent/bin/hwtest>","wait","<label>"],"iterations":1,"label":"<label>-watch","stop_on_failure":true}</BACKGROUND_TEST_RUNNER_JSON>'
+})
+```
+
+- Use the absolute `hwtest` path (`$HOME/.pi/agent/bin/hwtest`, expanded) in `command`.
+
+- Always pass `timeoutMs` (default subagent deadline is 30 min). `hwtest wait`
+  gives up after `--max-hours` (24) with exit 124 and leaves the test running.
+- Do not sleep/poll; the completion notification arrives in chat. Then read the
+  `HWTEST <label>: ...` line and key lines from the iteration log it names.
+- Only block (`hwtest wait <label>` directly) if the user asks to wait.
+
+`hwtest wait` exit codes: `0` PASS, testlauncher code on FAIL, `130` killed,
+`125` unconfirmed (missing exit marker or verdict), `124` wait window elapsed.
+
+## Inspect
 
 ```bash
-current_pane=$(herdr pane current --current)
-herdr pane split <current-pane-id> --direction right --cwd "$PWD" --no-focus
-herdr pane rename <pane-id> "<test-name>-<node>-bay<bay>"
+hwtest ls [--running]      # label, status, testbed/slot, elapsed, log
+hwtest status <label>      # summary + tagged in-container processes
+hwtest view <label>        # reopen the Herdr observer pane (or prints tail -F cmd)
+rg -n 'RESULT:|TESTLAUNCHER_EXIT=|Test Passed|Test Failed|FAILED|FAILURES|Traceback' <log> | tail -100
 ```
 
-Run a saved Bash wrapper, not the pane's unspecified default shell and not
-an inline `bash -lc` script. Some Herdr versions do not preserve a multiline
-`-c` argument reliably; that can run the body but lose the final exit marker,
-leaving `wait-output` blocked. Record both the shell status and test report:
-testlauncher can return zero even when its report is `RESULT: FAIL`.
+## Kill
 
-Create the wrapper locally, then pass its path as a normal positional argument:
+Only on user request:
 
 ```bash
-script_path=/tmp/run-<test-name>-<node>-bay<bay>.sh
-cat >"$script_path" <<'EOF'
-#!/usr/bin/env bash
-set -o pipefail
-log_path=/tmp/<test-name>-<node>-bay<bay>.log
-drun build/wssd-testkit/testlauncher \
-  --testbed <node> --slot <slot> --user "$USER" --repeat 1 \
-  wssd.<test-name> 2>&1 | tee "$log_path"
-shell_status=${PIPESTATUS[0]}
-test_result=$(grep -E "RESULT: (PASS|FAIL)" "$log_path" | tail -1 || true)
-printf "\nTESTLAUNCHER_EXIT=%s\n%s\n" "$shell_status" "$test_result" | tee -a "$log_path"
-EOF
-chmod 700 "$script_path"
-herdr pane run <pane-id> bash "$script_path"
+hwtest kill <label>
 ```
 
-The marker must contain a numeric status. If it is blank or absent, do not wait
-indefinitely: inspect the saved log and check whether the underlying process is
-still active.
+- Sends SIGINT to the tagged in-container processes, waits 60s.
+- If they exit, reports the result; then confirm the slot is released.
+- If still alive, it prints manual SIGTERM → SIGKILL steps with the exact PIDs.
+  Relay those to the user; do not escalate without approval.
+- Never kill the `docker exec` client or the wrapper: docker does not forward
+  signals, and killing the client orphans testlauncher inside the container.
 
-`RESULT: FAIL`, missing `RESULT`, or a nonzero shell status is failure. Add
-`--update-fw` only when explicitly requested. Run several hardware tests
-sequentially; do not run conflicting tests concurrently.
+## Result rules
 
-## Monitor
-
-Default: wait and report final PASS/FAIL in this turn. Herdr's timeout is in
-milliseconds and is capped near 2,147,483,647; use 1,800,000 (30 minutes) per
-wait:
-
-```bash
-herdr pane wait-output <pane-id> --match TESTLAUNCHER_EXIT= \
-  --source recent-unwrapped --timeout 1800000
-```
-
-A `wait-output` timeout is **not** a test result. Immediately inspect both the
-saved log and process state. If the wrapper/testlauncher remains active, repeat
-the 30-minute wait and continue this loop until its numeric exit marker appears.
-Do not give an intermediate test step, expected injected fault, or a running
-status as the final result.
-
-```bash
-herdr pane process-info --pane <pane-id>
-rg -n 'RESULT:|TESTLAUNCHER_EXIT=|Test Passed|Test Failed|FAILED|FAILURES|Traceback' \
-  /tmp/<test-name>-<node>-bay<bay>.log | tail -100
-```
-
-Herdr may reap a tab/pane as soon as its command exits. Therefore the saved log
-is authoritative when `pane read`, `wait-output`, or `process-info --pane
-<pane-id>` reports `pane_not_found`:
-
-```bash
-rg -n 'RESULT:|TESTLAUNCHER_EXIT=|Test Passed|Test Failed|FAILED|FAILURES|Traceback' \
-  /tmp/<test-name>-<node>-bay<bay>.log | tail -100
-```
-
-A nonzero `TESTLAUNCHER_EXIT`, `RESULT: FAIL`, `Test Failed`, `FAILED`, or
-`FAILURES` is a failure even when diagnostics/artifact collection also fails.
-Always report that failure promptly with its log path; artifact-collection errors
-must not mask the primary test failure. If no exit marker exists after checking
-both log and process state, report that the test is still unconfirmed and include
-the tab/pane ID plus log path. Do not claim completion solely because a pane
-disappeared.
-
-Return immediately only when the user explicitly asks for background/no-wait
-execution. Always report node, controller, bay, slot, pane ID, log path, and final
-`RESULT` plus `TESTLAUNCHER_EXIT`; `RESULT` is the pass/fail authority.
-
-## Stop
-
-Only on explicit request:
-
-```bash
-herdr pane send-keys <pane-id> ctrl+c
-```
-
-Then confirm termination in the log or with:
-
-```bash
-herdr pane process-info --pane <pane-id>
-```
-
-Never close unrelated tabs/panes or stop Herdr.
+- Pass requires `TESTLAUNCHER_EXIT=0` plus `RESULT: PASS` or testlauncher's
+  final `---------------- Test Passed ----------------` banner. This branch of
+  testlauncher may emit only the banner, not a `RESULT:` line.
+- `RESULT: FAIL`, final `Test Failed` banner, or nonzero exit is failure even
+  when other subtests passed or artifact collection also fails. Do not treat
+  expected in-test `FAILED` diagnostics as the final verdict.
+- `UNCONFIRMED` (missing exit marker or exit 0 without a final verdict):
+  report with label and log; do not claim pass or fail.
+- Report node, slot/bay, label, log path, final banner/`RESULT` and
+  `TESTLAUNCHER_EXIT`.
+- Never close unrelated Herdr tabs/panes or stop Herdr.

@@ -57,6 +57,6 @@ SSH user from the target's name.
 - Do not run generic `make cp` until the RAS topology has been translated into a
   reviewed target-specific copy command. Generic `config.mk` HLOB settings do not
   describe every testbed.
-- For a hardware test, use the `fw-herdr-hw-test` skill after this routing step.
+- For a hardware test, use the `fw-hw-test` skill after this routing step.
 - Preserve the resolved platform, connection route, target bay/slot, and command
   log path in the final report.

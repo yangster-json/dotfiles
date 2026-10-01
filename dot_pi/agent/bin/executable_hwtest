@@ -1,0 +1,437 @@
+#!/usr/bin/env python3
+"""Run WSSD hardware pytests detached from any terminal."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import pathlib
+import re
+import shlex
+import shutil
+import signal
+import subprocess
+import sys
+import time
+from datetime import datetime
+
+STATE_ROOT = pathlib.Path(os.environ.get("HWTEST_STATE", "~/.local/state/hwtest")).expanduser()
+TESTLAUNCHER = "build/wssd-testkit/testlauncher"
+LABEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
+RESULT_RE = re.compile(r"RESULT: (PASS|FAIL)\b")
+FINAL_REPORT_RE = re.compile(r"-{3,}\s*Test (Passed|Failed)\s*-{3,}")
+FAIL_RE = re.compile(r"RESULT:|TESTLAUNCHER_EXIT=|Test Passed|Test Failed|FAILED|FAILURES|Traceback")
+EXIT_UNCONFIRMED = 125
+EXIT_KILLED = 130
+
+
+def die(message: str, code: int = 2) -> None:
+    print(f"hwtest: {message}", file=sys.stderr)
+    raise SystemExit(code)
+
+
+def run_dir(label: str) -> pathlib.Path:
+    if not LABEL_RE.match(label):
+        die(f"bad label {label!r}")
+    return STATE_ROOT / label
+
+
+def load_meta(label: str) -> dict:
+    path = run_dir(label) / "meta.json"
+    if not path.exists():
+        die(f"no run named {label!r} (see: hwtest ls)")
+    return json.loads(path.read_text())
+
+
+def pid_alive(pid: int | None) -> bool:
+    if not pid:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    # zombie counts as dead
+    try:
+        return pathlib.Path(f"/proc/{pid}/stat").read_text().split(") ")[1][0] != "Z"
+    except (OSError, IndexError):
+        return False
+
+
+def read_int(path: pathlib.Path) -> int | None:
+    try:
+        return int(path.read_text().strip())
+    except (OSError, ValueError):
+        return None
+
+
+def tagged_pids(label: str) -> list[int]:
+    """Return in-container processes tagged with HWTEST_ID=label."""
+    needle = f"HWTEST_ID={label}".encode()
+    uid = os.getuid()
+    pids = []
+    for proc in pathlib.Path("/proc").iterdir():
+        if not proc.name.isdigit():
+            continue
+        try:
+            if proc.stat().st_uid != uid:
+                continue
+            if needle not in (proc / "environ").read_bytes().split(b"\0"):
+                continue
+            # never touch the docker client
+            if (proc / "comm").read_text().strip() == "docker":
+                continue
+        except OSError:
+            continue
+        pids.append(int(proc.name))
+    return sorted(pid for pid in pids if pid_alive(pid))
+
+
+def cmdline(pid: int) -> str:
+    try:
+        raw = pathlib.Path(f"/proc/{pid}/cmdline").read_bytes()
+    except OSError:
+        return "?"
+    return " ".join(part.decode(errors="replace") for part in raw.split(b"\0") if part)[:200]
+
+
+def last_result(log: pathlib.Path) -> str:
+    result = ""
+    try:
+        with log.open(errors="replace") as handle:
+            for line in handle:
+                explicit = RESULT_RE.search(line)
+                final_report = FINAL_REPORT_RE.search(line)
+                if explicit:
+                    if explicit.group(1) == "FAIL":
+                        return "RESULT: FAIL"
+                    result = "RESULT: PASS"
+                elif final_report:
+                    if final_report.group(1) == "Failed":
+                        return "Test Failed"
+                    result = "Test Passed"
+    except OSError:
+        pass
+    return result
+
+
+def tail_lines(log: pathlib.Path, pattern: re.Pattern | None, count: int) -> list[str]:
+    try:
+        lines = log.read_text(errors="replace").splitlines()
+    except OSError:
+        return []
+    if pattern:
+        lines = [line for line in lines if pattern.search(line)]
+    return lines[-count:]
+
+
+def state(label: str) -> tuple[str, int | None]:
+    """Return (status, exit code) for a run."""
+    directory = run_dir(label)
+    exit_code = read_int(directory / "exit")
+    killed = (directory / "killed").exists()
+    if exit_code is None:
+        if pid_alive(read_int(directory / "wrapper.pid")) or tagged_pids(label):
+            return ("KILLING" if killed else "RUNNING"), None
+        return ("KILLED" if killed else "UNCONFIRMED"), None
+    if killed:
+        return "KILLED", exit_code
+    result = last_result(directory / "test.log")
+    if exit_code == 0 and result in ("RESULT: PASS", "Test Passed"):
+        return "PASS", 0
+    if exit_code == 0 and not result:
+        return "UNCONFIRMED", exit_code
+    return "FAIL", exit_code
+
+
+def elapsed(meta: dict, directory: pathlib.Path) -> str:
+    end = (directory / "exit").stat().st_mtime if (directory / "exit").exists() else time.time()
+    seconds = int(end - meta["started"])
+    return f"{seconds // 3600}h{seconds % 3600 // 60:02d}m{seconds % 60:02d}s"
+
+
+def busy_slot(testbed: str, slot: str) -> str | None:
+    """Return a description of any testlauncher already using testbed/slot."""
+    if STATE_ROOT.exists():
+        for directory in STATE_ROOT.iterdir():
+            meta_path = directory / "meta.json"
+            if not meta_path.exists():
+                continue
+            meta = json.loads(meta_path.read_text())
+            if meta["testbed"] == testbed and meta["slot"] == slot:
+                if state(meta["label"])[0] in ("RUNNING", "KILLING"):
+                    return f"hwtest run {meta['label']}"
+    # match real testlauncher argv, not shells quoting it
+    for proc in pathlib.Path("/proc").iterdir():
+        if not proc.name.isdigit():
+            continue
+        try:
+            argv = (proc / "cmdline").read_bytes().decode(errors="replace").split("\0")
+        except OSError:
+            continue
+        if not any(arg.endswith("testlauncher") for arg in argv[:2]):
+            continue
+        pairs = set(zip(argv, argv[1:]))
+        if ("--testbed", testbed) in pairs and ("--slot", slot) in pairs:
+            return f"pid {proc.name}: {cmdline(int(proc.name))}"
+    return None
+
+
+def cmd_start(args: argparse.Namespace) -> int:
+    repo = pathlib.Path(args.repo).resolve()
+    if not (repo / TESTLAUNCHER).exists():
+        die(f"{repo / TESTLAUNCHER} missing; build first")
+    if not shutil.which("drun"):
+        die("drun not on PATH")
+    test = args.test if args.test.startswith("wssd.") else f"wssd.{args.test}"
+    label = args.label or "{}-{}-s{}-{}".format(
+        test.split(".")[-1][:40], args.testbed, args.slot, datetime.now().strftime("%m%d-%H%M%S")
+    )
+    directory = run_dir(label)
+    if directory.exists():
+        die(f"run {label!r} already exists")
+    busy = None if args.force else busy_slot(args.testbed, args.slot)
+    if busy:
+        die(f"testbed {args.testbed} slot {args.slot} busy: {busy} (--force to override)")
+
+    directory.mkdir(parents=True, mode=0o700)
+    log = directory / "test.log"
+    (directory / "docker.env").write_text(f"HWTEST_ID={label}\nPYTHONUNBUFFERED=1\n")
+    command = ["drun", "--env-file", str(directory / "docker.env"), TESTLAUNCHER,
+               "--testbed", args.testbed, "--slot", args.slot,
+               "--user", os.environ.get("USER", ""), "--repeat", str(args.repeat)]
+    if args.update_fw:
+        command.append("--update-fw")
+    command += args.extra + [test]
+    script = f"""#!/bin/bash
+echo $$ > {shlex.quote(str(directory / 'wrapper.pid'))}
+cd {shlex.quote(str(repo))} || exit 1
+log={shlex.quote(str(log))}
+echo "HWTEST_START label={label} $(date -Is)" >> "$log"
+echo "HWTEST_CMD {shlex.join(command)}" >> "$log"
+{shlex.join(command)} </dev/null >> "$log" 2>&1
+status=$?
+result=$(grep -aE 'RESULT: (PASS|FAIL)' "$log" | tail -1)
+printf '\\nTESTLAUNCHER_EXIT=%s\\n%s\\n' "$status" "$result" >> "$log"
+echo "$status" > {shlex.quote(str(directory / 'exit'))}
+"""
+    (directory / "run.sh").write_text(script)
+    meta = {
+        "label": label, "test": test, "testbed": args.testbed, "slot": args.slot,
+        "repo": str(repo), "log": str(log), "command": command, "started": time.time(),
+    }
+    (directory / "meta.json").write_text(json.dumps(meta, indent=2) + "\n")
+    subprocess.Popen(
+        ["bash", str(directory / "run.sh")],
+        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        start_new_session=True, close_fds=True,
+    )
+    for _ in range(50):
+        if read_int(directory / "wrapper.pid"):
+            break
+        time.sleep(0.1)
+    print(f"label:   {label}")
+    print(f"log:     {log}")
+    print(f"wrapper: pid {read_int(directory / 'wrapper.pid')} (detached)")
+    print(f"watch:   {sys.argv[0]} wait {label}")
+    if args.view:
+        view(label, log)
+    return 0
+
+
+def view(label: str, log: pathlib.Path) -> None:
+    if os.environ.get("HERDR_ENV") != "1" or not shutil.which("herdr"):
+        print(f"view:    tail -n +1 -F {log}")
+        return
+    split = subprocess.run(
+        ["herdr", "pane", "split", "--current", "--direction", "down", "--no-focus"],
+        capture_output=True, text=True,
+    )
+    try:
+        pane = json.loads(split.stdout)["result"]["pane"]["pane_id"]
+    except (json.JSONDecodeError, KeyError, TypeError):
+        print(f"view:    herdr split failed ({split.stderr.strip()}); tail -n +1 -F {log}")
+        return
+    subprocess.run(["herdr", "pane", "rename", pane, f"hwtest {label}"], capture_output=True)
+    subprocess.run(["herdr", "pane", "run", pane, f"tail -n +1 -F {shlex.quote(str(log))}"],
+                   capture_output=True)
+    print(f"view:    herdr pane {pane} (safe to close)")
+
+
+def cmd_view(args: argparse.Namespace) -> int:
+    meta = load_meta(args.label)
+    view(args.label, pathlib.Path(meta["log"]))
+    return 0
+
+
+def cmd_ls(args: argparse.Namespace) -> int:
+    if not STATE_ROOT.exists():
+        print("no runs")
+        return 0
+    rows = []
+    for directory in sorted(STATE_ROOT.iterdir(), key=lambda path: path.stat().st_mtime):
+        if not (directory / "meta.json").exists():
+            continue
+        meta = json.loads((directory / "meta.json").read_text())
+        status, code = state(meta["label"])
+        if args.running and status not in ("RUNNING", "KILLING"):
+            continue
+        rows.append((meta["label"], status if code is None else f"{status}({code})",
+                     f"{meta['testbed']}/{meta['slot']}", elapsed(meta, directory), meta["log"]))
+    if not rows:
+        print("no runs")
+        return 0
+    widths = [max(len(row[i]) for row in rows) for i in range(4)]
+    for row in rows:
+        print("  ".join(cell.ljust(widths[i]) for i, cell in enumerate(row[:4])) + "  " + row[4])
+    return 0
+
+
+def summary(label: str) -> tuple[str, int]:
+    meta = load_meta(label)
+    directory = run_dir(label)
+    log = pathlib.Path(meta["log"])
+    status, code = state(label)
+    lines = [f"test: {meta['test']}  testbed: {meta['testbed']}  slot: {meta['slot']}",
+             f"elapsed: {elapsed(meta, directory)}", f"log: {log}"]
+    if status not in ("RUNNING", "KILLING"):
+        lines += ["--- key lines ---", *tail_lines(log, FAIL_RE, 40)]
+    result = last_result(log) or "no RESULT or final Test banner"
+    lines.append(f"HWTEST {label}: {status} exit={code} {result} log={log}")
+    if status == "PASS":
+        rc = 0
+    elif status == "KILLED":
+        rc = EXIT_KILLED
+    elif status == "UNCONFIRMED":
+        rc = EXIT_UNCONFIRMED
+    else:
+        rc = code or 1
+    return "\n".join(lines), rc
+
+
+def cmd_status(args: argparse.Namespace) -> int:
+    text, _ = summary(args.label)
+    print(text)
+    pids = tagged_pids(args.label)
+    if pids:
+        print("tagged processes:")
+        for pid in pids:
+            print(f"  {pid}  {cmdline(pid)}")
+    return 0
+
+
+def cmd_wait(args: argparse.Namespace) -> int:
+    meta = load_meta(args.label)
+    log = pathlib.Path(meta["log"])
+    deadline = time.time() + args.max_hours * 3600
+    next_beat = 0.0
+    print(f"waiting for {args.label}; log={log}", flush=True)
+    while True:
+        status, _ = state(args.label)
+        if status not in ("RUNNING", "KILLING"):
+            text, rc = summary(args.label)
+            print(text, flush=True)
+            return rc
+        now = time.time()
+        if now >= deadline:
+            print(f"HWTEST {args.label}: still {status} after {args.max_hours}h; "
+                  f"test left running; log={log}", flush=True)
+            return 124
+        if now >= next_beat:
+            last = tail_lines(log, None, 1)
+            print(f"{status} elapsed={elapsed(meta, run_dir(args.label))} "
+                  f"last: {last[0][:160] if last else '-'}", flush=True)
+            next_beat = now + args.heartbeat
+        time.sleep(args.poll)
+
+
+def cmd_kill(args: argparse.Namespace) -> int:
+    meta = load_meta(args.label)
+    directory = run_dir(args.label)
+    status, _ = state(args.label)
+    if status not in ("RUNNING", "KILLING"):
+        print(f"{args.label} is not running ({status})")
+        return 0
+    pids = tagged_pids(args.label)
+    if not pids:
+        print(f"no tagged in-container processes for {args.label} yet; wrapper pid "
+              f"{read_int(directory / 'wrapper.pid')} still running (drun startup?). Retry shortly.")
+        return 1
+    (directory / "killed").write_text(f"{time.time()}\n")
+    print(f"SIGINT -> {' '.join(map(str, pids))}", flush=True)
+    for pid in pids:
+        try:
+            os.kill(pid, signal.SIGINT)
+        except ProcessLookupError:
+            pass
+    deadline = time.time() + args.grace
+    while time.time() < deadline:
+        if not tagged_pids(args.label):
+            break
+        time.sleep(1)
+    remaining = tagged_pids(args.label)
+    if not remaining:
+        # give the wrapper a moment to record the exit marker
+        for _ in range(15):
+            if (directory / "exit").exists():
+                break
+            time.sleep(1)
+        print(f"{args.label}: test processes exited after SIGINT")
+        print(summary(args.label)[0])
+        print(f"check the testbed/slot is released before reusing {meta['testbed']} slot {meta['slot']}")
+        return 0
+    joined = " ".join(map(str, remaining))
+    print(f"{args.label}: still running {args.grace}s after SIGINT:")
+    for pid in remaining:
+        print(f"  {pid}  {cmdline(pid)}")
+    print(f"""
+Not escalating automatically. To escalate by hand (in-container test processes only):
+  1. kill -TERM {joined}
+  2. wait ~30s, then confirm:  {sys.argv[0]} status {args.label}
+  3. if still alive:           kill -KILL {joined}
+Do not kill the docker exec client or the wrapper; once the container processes
+exit, docker exec returns and the wrapper writes TESTLAUNCHER_EXIT to {meta['log']}.
+After SIGKILL the testbed slot may stay reserved; clean it up before reuse.""")
+    return 1
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(prog="hwtest", description=__doc__)
+    sub = parser.add_subparsers(dest="cmd", required=True)
+    start = sub.add_parser("start", help="launch a detached testlauncher run")
+    start.add_argument("--testbed", required=True)
+    start.add_argument("--slot", required=True)
+    start.add_argument("--test", required=True, help="wssd.<name> or <name>")
+    start.add_argument("--repo", default=".", help="firmware checkout (default: cwd)")
+    start.add_argument("--label")
+    start.add_argument("--repeat", type=int, default=1)
+    start.add_argument("--update-fw", action="store_true")
+    start.add_argument("--view", action="store_true", help="open a herdr observer pane")
+    start.add_argument("--force", action="store_true", help="skip busy-slot check")
+    start.add_argument("extra", nargs="*", help="extra testlauncher args after --")
+    for name, func in (("view", cmd_view), ("status", cmd_status)):
+        sub_parser = sub.add_parser(name)
+        sub_parser.add_argument("label")
+        sub_parser.set_defaults(func=func)
+    wait = sub.add_parser("wait", help="block until done; exit with the test result")
+    wait.add_argument("label")
+    wait.add_argument("--poll", type=float, default=10)
+    wait.add_argument("--heartbeat", type=float, default=300)
+    wait.add_argument("--max-hours", type=float, default=24)
+    kill = sub.add_parser("kill", help="SIGINT test processes, then print escalation steps")
+    kill.add_argument("label")
+    kill.add_argument("--grace", type=float, default=60)
+    ls = sub.add_parser("ls")
+    ls.add_argument("--running", action="store_true")
+    start.set_defaults(func=cmd_start)
+    wait.set_defaults(func=cmd_wait)
+    kill.set_defaults(func=cmd_kill)
+    ls.set_defaults(func=cmd_ls)
+    args = parser.parse_args()
+    return args.func(args)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
