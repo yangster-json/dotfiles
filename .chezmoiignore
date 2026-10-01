@@ -21,7 +21,6 @@ tests
 {{ end -}}
 
 {{ if not $isFwWork -}}
-.pi/agent/extensions/compat-provider-bridge.ts
 {{ range $fwOnlySkills -}}
 .pi/agent/skills/{{ . }}
 .claude/skills/{{ . }}
