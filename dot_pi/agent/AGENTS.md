@@ -26,3 +26,11 @@ the change instead of the whole file.
 N Edits to one file = N context re-reads. Mechanical change (strip a marker,
 rename a symbol) → one `sed`, one Write, or one `edit` call with multiple
 `edits[]` entries. Batch independent tool calls into one message.
+Preplan tool calls; batch the independent ones.
+
+# Communication
+
+- If my request is too ambiguous, ask clarifying questions before doing anything.
+- Do not apologize, just fix it and tell me what changed.
+- When reporting information to me, be extremely concise and sacrifice grammar
+  for sake of concision.
