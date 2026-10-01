@@ -71,8 +71,11 @@ jq -e '(.packages | index("git:github.com/pure-shared/pi-provider-gpulab")) != n
 jq -e '(.packages | index("git:github.com/pure-shared/pi-provider-gpulab")) == null and
   (.enabledModels | map(startswith("gpulab/")) | any) == false' \
   <<<"$generic_settings" >/dev/null
-jq -e '[$fw, $generic][] | (.packages | index("npm:pi-google-services")) != null and
-  (.packages | index("npm:pi-loop-police")) != null and
+jq -e '(.packages | index("npm:pi-google-services")) == null' \
+  <<<"$fw_settings" >/dev/null
+jq -e '(.packages | index("npm:pi-google-services")) != null' \
+  <<<"$generic_settings" >/dev/null
+jq -e '[$fw, $generic][] | (.packages | index("npm:pi-loop-police")) != null and
   .enableInstallTelemetry == false' \
   --argjson fw "$fw_settings" --argjson generic "$generic_settings" -n >/dev/null
 jq -e '(.packages | index("npm:pi-chatgpt-limit")) == null' \

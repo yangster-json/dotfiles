@@ -64,8 +64,8 @@
     {{- if $isWork }}
     "git:github.com/pure-shared/pi-provider-gpulab",
     {{- end }}
-    "npm:pi-google-services",
     "npm:pi-loop-police"{{ if not $isWork }},
+    "npm:pi-google-services",
     "npm:pi-chatgpt-limit"{{ end }}
   ],
   "terminal": {
