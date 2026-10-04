@@ -5,10 +5,17 @@ dev-jasyang-sim = "fw-work"
 # tiers: top/mid/low. default = main model id (provider-relative)
 [profiles.default.models]
 provider = "openai-codex"
-default = "gpt-6-sol"
-top = "openai-codex/gpt-6-astra"
+default = "gpt-6.1-sol"
+top = "openai-codex/gpt-6.1-sol"
 mid = "openai-codex/gpt-6-sol"
 low = "openai-codex/gpt-6-luna"
+enabled = [
+  "openai-codex/gpt-6.1-sol",
+  "openai-codex/gpt-6-sol",
+  "openai-codex/gpt-6-luna",
+  "openai-codex/gpt-5.3-codex-spark",
+  "openai-codex/gpt-5.5",
+]
 
 [profiles.fw-work.models]
 provider = "gpulab"
@@ -16,3 +23,12 @@ default = "claude-opus-5-5"
 top = "gpulab/claude-opus-5-5"
 mid = "gpulab/gpt-6-sol-claude-compatible[1m]"
 low = "gpulab/gpt-6-luna-claude-compatible[1m]"
+enabled = [
+  "gpulab/claude-opus-5-5",
+  "gpulab/gpt-6-astra-claude-compatible[1m]",
+  "gpulab/gpt-6-sol-claude-compatible[1m]",
+  "gpulab/gpt-6-luna-claude-compatible[1m]",
+  "gpulab/Qwen3.8-27B-claude-compatible",
+  "gpulab/Kimi-K3-lab-claude-compatible[1m]",
+  "gpulab/glm-5.3-flash-claude-compatible",
+]

@@ -1,10 +1,17 @@
 {{- $profile := index .hostProfiles .chezmoi.hostname | default "default" -}}
 {{- $models := index .profiles $profile "models" -}}
 {{- $isWork := eq $profile "fw-work" -}}
+{{- $localSettings := dict -}}
+{{- $settingsPath := joinPath .chezmoi.homeDir ".pi" "agent" "settings.json" -}}
+{{- if stat $settingsPath -}}
+{{- $localSettings = include $settingsPath | fromJson -}}
+{{- end -}}
 {
   "defaultProvider": "{{ $models.provider }}",
   "defaultModel": "{{ $models.default }}",
-  "lastChangelogVersion": "0.99.1",
+  {{- if hasKey $localSettings "lastChangelogVersion" }}
+  "lastChangelogVersion": {{ index $localSettings "lastChangelogVersion" | toJson }},
+  {{- end }}
   "compaction": {
     "enabled": false
   },
@@ -69,28 +76,10 @@
   ],
   "terminal": {
     "showTerminalProgress": true,
-    "images": "kitty"
+    "images": "auto"
   },
   "tuiMode": "fullscreen",
   "hideThinkingBlock": false,
-  "enabledModels": [
-    {{- if $isWork }}
-    "gpulab/claude-opus-5-5",
-    "gpulab/gpt-6-astra-claude-compatible[1m]",
-    "gpulab/gpt-6-sol-claude-compatible[1m]",
-    "gpulab/gpt-6-luna-claude-compatible[1m]",
-    "gpulab/Qwen3.8-27B-claude-compatible",
-    "gpulab/Kimi-K3-lab-claude-compatible[1m]",
-    "gpulab/glm-5.3-flash-claude-compatible"
-    {{- else }}
-    "openai-codex/gpt-6-astra",
-    "openai-codex/gpt-6-sol",
-    "openai-codex/gpt-6-luna",
-    "openai-codex/gpt-5.3-codex-spark",
-    "openai-codex/gpt-5.4",
-    "openai-codex/gpt-5.4-mini",
-    "openai-codex/gpt-5.5"
-    {{- end }}
-  ],
+  "enabledModels": {{ $models.enabled | toJson }},
   "enableInstallTelemetry": false
 }
