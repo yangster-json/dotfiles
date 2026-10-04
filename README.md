@@ -60,9 +60,41 @@ herdr configuration.
 | `dot_pi/` | `~/.pi/` |
 | `dot_claude/` | `~/.claude/` |
 | `dot_wezterm.lua` | `~/.wezterm.lua` |
-| `dot_config/kanata/kanata.kbd` | `~/.config/kanata/kanata.kbd` |
+| `dot_config/kanata/kanata.kbd.tmpl` | `~/.config/kanata/kanata.kbd` |
 | `dot_config/herdr/config.toml` | `~/.config/herdr/config.toml` |
 | `dot_oh-my-zsh/private_custom/` | `~/.oh-my-zsh/custom/` |
+
+### Kanata: Linux, Windows, and macOS
+
+`dot_config/kanata/kanata.kbd.tmpl` renders to `~/.config/kanata/kanata.kbd`
+through chezmoi. It follows `custom-voyager-qmk/jy0DZ/keymap.c` for the three
+letter rows, number/navigation/extra layers, and seven base-layer combos.
+The source and layers use standard keyboard rows, including native number,
+punctuation, Shift, and bottom-row modifier keys; there is no split/thumb block.
+
+- Space: tap Space, hold number layer (150 ms).
+- Caps Lock: no tap output; navigation layer while held, immediately.
+- Tab: tap Tab, hold extra layer (200 ms).
+- Left Alt, Backspace, Enter, and keys outside those rows remain native.
+- Linux: S/L hold Alt; D/K hold Meta. Windows/macOS: reversed.
+- Home-row modifiers: 200 ms hold, 100 ms quick-tap, 125 ms prior-idle guard.
+  Same-hand ordinary keys favor taps; modifier-to-modifier chords remain allowed.
+- Firmware boot/RGB actions are disabled. Media Stop works on Linux/Windows;
+  macOS has no Kanata mapping and uses a no-op. Brightness/media support depends
+  on the OS and hardware.
+- QMK retro-tapping, selective flow-tap, mouse acceleration/jiggle timing, and
+  firmware layer-reset semantics are not exact equivalents in Kanata. The
+  jiggler toggles a small movement every five seconds; extra-layer P selects
+  the base default, with held layers releasing normally.
+
+Validate all three rendered variants with `bash tests/verify-kanata.sh`
+(requires chezmoi and Kanata 1.12+). This checks parsing with the installed
+binary, not runtime behavior on other operating systems. Run Kanata with the
+rendered file on Windows/macOS using the platform's required permissions and
+input driver. Linux retains this machine's built-in-keyboard device selection;
+other Linux machines may need a different `linux-dev` path.
+
+Action reference: [Kanata configuration guide](https://jtroo.github.io/config-1.12.0.html).
 
 ### Arch Linux: Kanata
 

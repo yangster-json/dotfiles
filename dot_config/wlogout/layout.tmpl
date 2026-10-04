@@ -1,36 +1,36 @@
 {
     "label": "lock",
     "action": "swaylock -f",
-    "text": "Lock",
+    "text": "Lock (L)",
     "keybind": "l"
 }
 {
     "label": "logout",
-    "action": "loginctl terminate-user $USER",
-    "text": "Logout",
+    "action": "{{ .chezmoi.homeDir }}/.local/bin/wlogout-logout",
+    "text": "Logout (E)",
     "keybind": "e"
 }
 {
     "label": "shutdown",
     "action": "systemctl poweroff",
-    "text": "Shutdown",
+    "text": "Shutdown (S)",
     "keybind": "s"
 }
 {
     "label": "suspend",
     "action": "systemctl suspend",
-    "text": "Suspend",
+    "text": "Suspend (U)",
     "keybind": "u"
 }
 {
     "label": "reboot",
     "action": "systemctl reboot",
-    "text": "Reboot",
+    "text": "Reboot (R)",
     "keybind": "r"
 }
 {
     "label": "nightlight",
     "action": "systemctl --user is-active --quiet gammastep.service && systemctl --user kill --signal=USR1 gammastep.service || systemctl --user start gammastep.service",
-    "text": "Night light",
+    "text": "Night light (N)",
     "keybind": "n"
 }

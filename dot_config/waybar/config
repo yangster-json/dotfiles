@@ -131,7 +131,7 @@
     "interval": 3600,
     "format": "{text}",
     "align": 1,
-    "justify": "right",
+    "justify": "left",
     "tooltip": true,
     "on-click": "wezterm start --class SystemUpdate -- bash -lc 'yay -Syu; exec $SHELL'"
   },

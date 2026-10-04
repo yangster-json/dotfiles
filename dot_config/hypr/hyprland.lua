@@ -49,8 +49,13 @@ hl.on("hyprland.start", function()
 	hl.exec_cmd("wl-paste --type text --watch cliphist store")
 	hl.exec_cmd("wl-paste --type image --watch cliphist store")
 	hl.exec_cmd("update-timezone")
+	hl.exec_cmd("systemctl --user start hyprland-session.target")
 	hl.exec_cmd("systemctl --user start elephant.service")
 	hl.exec_cmd("waybar")
+end)
+
+hl.on("hyprland.shutdown", function()
+	hl.exec_cmd("systemctl --user stop hyprland-session.target")
 end)
 
 -------------------------------
@@ -312,7 +317,9 @@ local directions = {
 for _, direction in ipairs(directions) do
 	local focus = direction.monitor and { monitor = direction.monitor } or { direction = direction.name }
 	hl.bind(mainMod .. " + " .. direction.key, hl.dsp.focus(focus))
-	hl.bind(mainMod .. " + SHIFT + " .. direction.key, hl.dsp.window.move({ direction = direction.name }))
+	if direction.monitor then
+		hl.bind(mainMod .. " + SHIFT + " .. direction.key, hl.dsp.window.move({ monitor = direction.monitor }))
+	end
 	hl.bind(mainMod .. " + CTRL + " .. direction.key, hl.dsp.exec_cmd("hyprctl dispatch focusmonitor " .. direction.hypr))
 	hl.bind(
 		mainMod .. " + CTRL + SHIFT + " .. direction.key,
@@ -407,6 +414,21 @@ hl.window_rule({
 	name = "chat-workspace",
 	match = { class = "^discord$" },
 	workspace = 4,
+})
+hl.window_rule({
+	name = "inhibit-idle-steam-games",
+	match = { class = "^steam_app_.*$" },
+	idle_inhibit = "always",
+})
+hl.window_rule({
+	name = "inhibit-idle-stardew",
+	match = { class = "^[Ss]tardew.*" },
+	idle_inhibit = "always",
+})
+hl.window_rule({
+	name = "inhibit-idle-games",
+	match = { content = 3 },
+	idle_inhibit = "always",
 })
 
 -- Example window rules that are useful

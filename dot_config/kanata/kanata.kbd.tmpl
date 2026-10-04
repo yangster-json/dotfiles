@@ -1,100 +1,114 @@
-;; mirrors custom-voyager-qmk keymap
+;; mirrors custom-voyager-qmk/jy0DZ/keymap.c
 (defcfg
-  process-unmapped-keys           no
-  tap-hold-require-prior-idle     125
-  delegate-to-first-layer         yes
-  concurrent-tap-hold             yes
+  process-unmapped-keys no
+  tap-hold-require-prior-idle 125
+  delegate-to-first-layer yes
+  concurrent-tap-hold yes
 {{ if eq .chezmoi.os "linux" }}
-  ;; prevents USB keyboard interception
-  linux-dev                       /dev/input/by-path/platform-i8042-serio-0-event-kbd
-  linux-dev-names-exclude         ("neru-keyboard-proxy" "neru-pointer-proxy" "neru-keyboard")
+  ;; avoid remapping the voyager twice
+  linux-dev /dev/input/by-path/platform-i8042-serio-0-event-kbd
+  linux-dev-names-exclude ("neru-keyboard-proxy" "neru-pointer-proxy" "neru-keyboard")
 {{ end }}
 )
 
 (defsrc
-  1 2 3 4 5        8 9 0 - =
-  q w e r t        i o p [ ]
-  a s d f g        k l ; ' ret
-  v b              m ,
-  f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 f11 f12
+  grv 1 2 3 4 5 6 7 8 9 0 - = bspc
+  tab q w e r t y u i o p [ ] bksl
+  caps a s d f g h j k l ; ' ret
+  lsft z x c v b n m , . / rsft
+  lctl lmet lalt spc ralt rmet menu rctl
+)
+
+(defvar
+  ;; allow same-hand home-row modifier chords
+  left-tap (q w e r t f g z x c v b)
+  right-tap (y u i o p h j n m , . /)
+{{ if eq .chezmoi.os "linux" }}
+  left-s lalt
+  left-d lmet
+  right-k rmet
+  right-l ralt
+{{ else }}
+  left-s lmet
+  left-d lalt
+  right-k ralt
+  right-l rmet
+{{ end }}
+)
+
+(defvirtualkeys
+  jiggle (macro-repeat
+    (movemouse-right 1 1)
+    (movemouse-left 1 1)
+    5000)
 )
 
 (defalias
-  a_ctl       (tap-hold-release 250 250 a lctl)
+  a-ctrl (tap-hold-release-keys 100 200 a lctl $left-tap)
+  s-mod (tap-hold-release-keys 100 200 s $left-s $left-tap)
+  d-mod (tap-hold-release-keys 100 200 d $left-d $left-tap)
+  k-mod (tap-hold-release-keys 100 200 k $right-k $right-tap)
+  l-mod (tap-hold-release-keys 100 200 l $right-l $right-tap)
+  semi-ctrl (tap-hold-release-keys 100 200 ; rctl $right-tap)
+  space-num (tap-hold-release 100 150 spc (layer-while-held num)
+    (require-prior-idle 0))
+  tab-extra (tap-hold-release 100 200 tab (layer-while-held extra)
+    (require-prior-idle 0))
+  nav (layer-while-held nav)
+  jiggle (on-press toggle-vkey jiggle)
 {{ if eq .chezmoi.os "linux" }}
-  s_alt       (tap-hold-release 250 250 s lalt)
-  d_met       (tap-hold-release 250 250 d lmet)
-  k_rmet      (tap-hold-release 250 250 k rmet)
-  l_ralt      (tap-hold-release 250 250 l ralt)
+  media-stop (arbitrary-code 166)
+{{ else if eq .chezmoi.os "windows" }}
+  media-stop (arbitrary-code 178)
 {{ else }}
-  s_alt       (tap-hold-release 250 250 s lmet)
-  d_met       (tap-hold-release 250 250 d lalt)
-  k_rmet      (tap-hold-release 250 250 k ralt)
-  l_ralt      (tap-hold-release 250 250 l rmet)
+  ;; macos lacks kanata's media-stop mapping
+  media-stop XX
 {{ end }}
-  semi_rctl   (tap-hold-release 250 250 ; rctl)
-
-  bspc_shift  (tap-hold-release 200 200 bspc lsft)
-  del_nav     (tap-hold-press 200 200 del (layer-while-held nav))
-  spc_nav     (tap-hold-press 200 200 spc (layer-while-held nav))
-  ret_nav     (tap-hold-press 200 200 ret (layer-while-held nav))
-
-  1_ctl       (tap-hold-press 250 250 1 lctl)
-{{ if eq .chezmoi.os "linux" }}
-  2_alt       (tap-hold-press 250 250 2 lalt)
-  3_met       (tap-hold-press 250 250 3 lmet)
-  8_rmet      (tap-hold-press 250 250 8 rmet)
-  9_ralt      (tap-hold-press 250 250 9 ralt)
-{{ else }}
-  2_alt       (tap-hold-press 250 250 2 lmet)
-  3_met       (tap-hold-press 250 250 3 lalt)
-  8_rmet      (tap-hold-press 250 250 8 ralt)
-  9_ralt      (tap-hold-press 250 250 9 rmet)
-{{ end }}
-  0_rctl      (tap-hold-press 250 250 0 rctl)
-
-  prev_tab    (multi lctl lsft tab)
-  next_tab    (multi lctl tab)
-  copy        (multi lctl lsft c)
-  paste       (multi lctl lsft v)
-
-  mouse_left  (movemouse-left 1 1)
-  mouse_down  (movemouse-down 1 1)
-  mouse_up    (movemouse-up 1 1)
-  mouse_right (movemouse-right 1 1)
+  mouse-left (movemouse-left 20 10)
+  mouse-down (movemouse-down 20 10)
+  mouse-up (movemouse-up 20 10)
+  mouse-right (movemouse-right 20 10)
 )
 
-;; Kanata lacks QMK retro tapping.
 (deflayer base
-  q       w       e       r       t         y       u       i         o       p
-  @a_ctl  @s_alt  @d_met  f       g         h       j       @k_rmet   @l_ralt @semi_rctl
-  z       x       c       v       b         n       m       ,         .       /
-  @bspc_shift @del_nav                      @ret_nav   @spc_nav
-  f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 f11 f12
+  grv 1 2 3 4 5 6 7 8 9 0 - = bspc
+  @tab-extra q w e r t y u i o p [ ] bksl
+  @nav @a-ctrl @s-mod @d-mod f g h j @k-mod @l-mod @semi-ctrl ' ret
+  lsft z x c v b n m , . / rsft
+  lctl lmet lalt @space-num ralt rmet menu rctl
 )
 
 (deflayer num
-  S-1    S-2     S-3     S-4     S-5       S-6   S-7  S-8       -       =
-  @1_ctl @2_alt  @3_met  4       5         6     7    @8_rmet  @9_ralt @0_rctl
-  _      _       _       grave   bksl      _     tab  esc      _       _
-  _      _                         _       _
-  _ _ _ _ _ _ _ _ _ _ _ _
+  _ _ _ _ _ _ _ _ _ _ _ _ _ _
+  _ S-1 S-2 S-3 S-4 S-5 S-6 S-7 S-8 - = _ _ _
+  _ 1 2 3 4 5 6 7 8 9 0 _ _
+  _ esc _ grv bksl _ _ tab _ _ ' _
+  _ _ _ _ _ _ _ _
 )
 
 (deflayer nav
-  mute   vold      volu       prev  next     home        pgdn        pgup  end  _
-  nop0   mmid      mrgt       mlft  pp       left        down        up    rght brup
-  @prev_tab @next_tab @copy @paste nop0      @mouse_left @mouse_down @mouse_up @mouse_right brdown
-  _      _                                  _           _
-  _ _ _ _ _ _ _ _ _ _ _ _
+  _ _ _ _ _ _ _ _ _ _ _ _ _ _
+  _ mute vold volu prev next home pgdn pgup end _ _ _ _
+  _ @jiggle mmid mrgt mlft pp left down up rght brup _ _
+  _ C-S-tab C-tab C-S-c C-S-v @media-stop @mouse-left @mouse-down @mouse-up @mouse-right brdn _
+  _ _ _ _ _ _ _ _
+)
+
+(deflayer extra
+  _ _ _ _ _ _ _ _ _ _ _ _ _ _
+  ;; firmware-only controls have no host equivalent
+  _ XX XX XX XX XX XX XX XX XX (layer-switch base) _ _ _
+  _ f2 f3 f4 f5 f6 f7 f8 f9 f10 f11 _ _
+  _ f1 XX XX XX XX mbck mfwd _ _ f12 _
+  _ _ _ _ _ _ _ _
 )
 
 (defchordsv2
-  (4 5) S-9  50 all-released (num nav)
-  (r t) [    50 all-released (num nav)
-  (f g) S-[  50 all-released (num nav)
-  (8 9) S-0  50 all-released (num nav)
-  (k l) ]    50 all-released (num nav)
-  (l ;) esc  50 all-released (num nav)
-  (; ') S-]  50 all-released (num nav)
+  (r t) S-9 50 all-released (num nav extra)
+  (f g) [ 50 all-released (num nav extra)
+  (v b) S-[ 50 all-released (num nav extra)
+  (y u) S-0 50 all-released (num nav extra)
+  (h j) ] 50 all-released (num nav extra)
+  (n m) S-] 50 all-released (num nav extra)
+  (j k) esc 50 all-released (num nav extra)
 )

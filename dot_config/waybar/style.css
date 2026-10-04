@@ -133,6 +133,12 @@ tooltip {
     margin-right: 7px;
 }
 
+#custom-updates.hidden {
+    margin-left: 0;
+    margin-right: 0;
+    min-width: 0;
+}
+
 #custom-player {
  color: #cba6f7;
  border-radius: 7px 7px 7px 7px;

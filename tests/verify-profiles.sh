@@ -124,4 +124,15 @@ assert_contains "$windows_ignore" '.pi/agent/skills/firmware-tlogs-search'
 assert_contains "$windows_ignore" '.pi/agent/skills/remote-testbed*'
 assert_excludes "$windows_ignore" '.wezterm.lua'
 
+for os in darwin windows; do
+  unsupported_ignore=$(render generic-host "$os" "$ignore")
+  assert_contains "$unsupported_ignore" '.config/systemd/user/hyprland-session.target'
+  assert_contains "$unsupported_ignore" '.config/wlogout/'
+  assert_contains "$unsupported_ignore" '.local/bin/wlogout-logout'
+done
+logout_layout=$(render generic-host linux "$source_dir/dot_config/wlogout/layout.tmpl")
+jq -se --arg helper "$test_home/.local/bin/wlogout-logout" \
+  'length == 6 and any(.[]; .label == "logout" and .action == $helper)' \
+  <<<"$logout_layout" >/dev/null
+
 printf 'profile verification passed\n'
