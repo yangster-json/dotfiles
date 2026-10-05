@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# Move the active herdr pane to another tab.
+#   herdr-move-pane new-tab        break pane into a new tab
+#   herdr-move-pane new-workspace  break pane into a new workspace
+#   herdr-move-pane pick           fzf picker (enter=split right, ctrl-d=split down)
+set -euo pipefail
+
+herdr_bin="${HERDR_BIN_PATH:-herdr}"
+pane_id="${HERDR_ACTIVE_PANE_ID:-}"
+if [[ -z "$pane_id" ]]; then
+    pane_id="$("$herdr_bin" pane current | jq -r '.result.pane.pane_id')"
+fi
+
+move() {
+    "$herdr_bin" pane move "$pane_id" "$@" --focus >/dev/null
+}
+
+pick() {
+    local current_tab workspaces tabs selection key choice direction
+    current_tab="$("$herdr_bin" pane get "$pane_id" | jq -r '.result.pane.tab_id')"
+    workspaces="$("$herdr_bin" workspace list)"
+    tabs="$("$herdr_bin" tab list)"
+
+    selection="$(
+        {
+            printf 'new-tab\t+ new tab\n'
+            printf 'new-workspace\t+ new workspace\n'
+            jq -r --arg cur "$current_tab" --argjson ws "$workspaces" '
+                ($ws.result.workspaces | map({(.workspace_id): .label}) | add) as $names
+                | .result.tabs[] | select(.tab_id != $cur)
+                | "\(.tab_id)\t\($names[.workspace_id] // .workspace_id) / \(.number): \(.label) (\(.pane_count) panes)"
+            ' <<<"$tabs"
+        } | fzf --delimiter='\t' --with-nth=2 --expect=ctrl-d \
+                --prompt="move $pane_id > " \
+                --header='enter: split right  ctrl-d: split down'
+    )" || exit 0
+
+    key="$(head -n1 <<<"$selection")"
+    choice="$(sed -n 2p <<<"$selection" | cut -f1)"
+    [[ -z "$choice" ]] && exit 0
+    direction=right
+    [[ "$key" == ctrl-d ]] && direction=down
+
+    case "$choice" in
+        new-tab) move --new-tab ;;
+        new-workspace) move --new-workspace ;;
+        *) move --tab "$choice" --split "$direction" ;;
+    esac
+}
+
+case "${1:-pick}" in
+    new-tab) move --new-tab ;;
+    new-workspace) move --new-workspace ;;
+    pick) pick ;;
+    *) echo "usage: herdr-move-pane [pick|new-tab|new-workspace]" >&2; exit 2 ;;
+esac

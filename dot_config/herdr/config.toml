@@ -129,6 +129,20 @@ command = "exec \"$HOME/.local/bin/herdr-ai-rename-tab\""
 description = "ai rename tab"
 
 [[keys.command]]
+key = "prefix+m"
+type = "popup"
+command = "exec \"$HOME/.local/bin/herdr-move-pane\" pick"
+description = "move pane to tab"
+width = "60%"
+height = "50%"
+
+[[keys.command]]
+key = "prefix+!"
+type = "shell"
+command = "exec \"$HOME/.local/bin/herdr-move-pane\" new-tab"
+description = "break pane to new tab"
+
+[[keys.command]]
 key = "prefix+alt+g"
 type = "popup"
 command = "lazygit"
