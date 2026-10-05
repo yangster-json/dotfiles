@@ -4,7 +4,8 @@
   "mcpServers": {
     "exa": {
       "url": "https://mcp.exa.ai/mcp?tools=web_search_exa,web_fetch_exa",
-      "exposure": "direct"
+      "exposure": "direct",
+      "headers": { "User-Agent": "pi-coding-agent" }
     },
     "deepwiki": {
       "url": "https://mcp.deepwiki.com/mcp"
@@ -15,6 +16,9 @@
         "serve"
       ],
       "enabled": {{ not $isWork }}
-    }
+    }{{ if $isWork }},
+    "glean": {
+      "url": "https://purestorage-be.glean.com/mcp/glean-mcp"
+    }{{ end }}
   }
 }
