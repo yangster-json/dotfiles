@@ -1,14 +1,16 @@
 ---
 name: fw-hw-test
-description: Run a long WSSD hardware pytest detached in the background with `hwtest`, optionally watched from a Herdr observer pane, with completion reported through bg-cmd-runner so the agent stays usable. Use for drun/testlauncher hardware tests that may outlive the current Pi tool call, and to list, watch, or kill such runs.
+description: Run WSSD hardware pytests by default through detached `hwtest`, optionally watched from a Herdr observer pane, with completion reported through bg-cmd-runner so the agent stays usable. Use for drun/testlauncher hardware tests and to list, watch, or kill such runs.
 compatibility: Requires `~/.pi/agent/bin/hwtest`, drun, a built firmware checkout, and pi-subagents with the bg-cmd-runner agent. Herdr is optional (observer pane only).
 ---
 
 # Background hardware test
 
-Use after `fw-hw-pytest` target preflight passes (testbed, slot/bay, build and
-copy done). The test runs detached (`setsid`, no terminal), so closing a pane,
-the Pi session, or the watcher never stops it. Only `hwtest kill` does.
+Start with the `remote-testbed` skill. It resolves the testlauncher target,
+controller or blade route, copy command, slot, and drive claim/deny state; do
+not infer them from a testbed name. The test runs detached (`setsid`, no
+terminal), so closing a pane, the Pi session, or the watcher never stops it.
+Only `hwtest kill` does.
 
 ## Layout
 
