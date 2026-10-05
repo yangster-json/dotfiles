@@ -5,6 +5,7 @@ source_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 settings="$source_dir/dot_pi/agent/settings.json.tmpl"
 rename_config="$source_dir/dot_pi/agent/config/pi-herdr-rename.json.tmpl"
 btw_config="$source_dir/dot_pi/agent/pi-btw.json.tmpl"
+mcp_config="$source_dir/dot_pi/agent/mcp.json.tmpl"
 ignore="$source_dir/.chezmoiignore"
 test_dir=$(mktemp -d)
 trap 'rm -rf -- "$test_dir"' EXIT
@@ -47,6 +48,8 @@ assert_excludes() {
 
 fw_settings=$(render dev-jasyang linux "$settings")
 generic_settings=$(render generic-host linux "$settings")
+fw_mcp=$(render dev-jasyang linux "$mcp_config")
+generic_mcp=$(render generic-host linux "$mcp_config")
 fw_rename_config=$(render dev-jasyang linux "$rename_config")
 generic_rename_config=$(render generic-host linux "$rename_config")
 fw_btw_config=$(render dev-jasyang linux "$btw_config")
@@ -104,6 +107,8 @@ jq -e '(.packages | index("npm:pi-google-services")) == null' \
   <<<"$fw_settings" >/dev/null
 jq -e '(.packages | index("npm:pi-google-services")) != null' \
   <<<"$generic_settings" >/dev/null
+jq -e '.mcpServers["google-services"].enabled == false' <<<"$fw_mcp" >/dev/null
+jq -e '.mcpServers["google-services"].enabled == true' <<<"$generic_mcp" >/dev/null
 jq -e '[$fw, $generic][] | (.packages | index("npm:pi-loop-police")) != null and
   .enableInstallTelemetry == false' \
   --argjson fw "$fw_settings" --argjson generic "$generic_settings" -n >/dev/null
