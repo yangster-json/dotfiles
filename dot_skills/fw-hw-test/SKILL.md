@@ -1,7 +1,7 @@
 ---
 name: fw-hw-test
-description: Run WSSD hardware pytests by default through detached `hwtest`, optionally watched from a Herdr observer pane, with completion reported through bg-cmd-runner so the agent stays usable. Use for drun/testlauncher hardware tests and to list, watch, or kill such runs.
-compatibility: Requires `~/.pi/agent/bin/hwtest`, drun, a built firmware checkout, and pi-subagents with the bg-cmd-runner agent. Herdr is optional (observer pane only).
+description: Run WSSD hardware pytests by default through detached `hwtest` after drives.app, bay-presence, dry-run, and build/copy preflight, optionally watched from a Herdr observer pane, with completion reported through bg-cmd-runner so the agent stays usable. Use for drun/testlauncher hardware tests and to list, watch, or kill such runs.
+compatibility: Requires `hwtest` (in `scripts/`, linked as `~/.pi/agent/bin/hwtest`), drun, a built firmware checkout, and pi-subagents with the bg-cmd-runner agent. Herdr is optional (observer pane only).
 ---
 
 # Background hardware test
@@ -22,16 +22,64 @@ Only `hwtest kill` does.
 | Completion | bg-cmd-runner runs `hwtest wait <label>`; Pi notifies on finish |
 | State | `~/.local/state/hwtest/<label>/` (`meta.json`, `test.log`, `exit`, `run.sh`) |
 
+## Preflight gates
+
+Do not launch until every gate passes:
+
+1. **drives.app:** do not use a bay with an active deny, or a claim you are not
+   authorized to overlap. Use the claim/deny state from `remote-testbed`.
+2. **Bay present:** using the `remote-testbed` SSH route, check the exact
+   physical bay with the copied tools:
+
+   ```bash
+   ssh <route> '/root/$USER/testlauncher/wssd-tools-test-test/bin/wssdtool ls'
+   ```
+
+   Proceed only when that bay's line has a `/dev/nvme*` device node. Stop and
+   report `MISSING DEVICE`, `not_present`, or a different bay.
+3. **Slot idle:** `hwtest start` refuses a busy testbed/slot.
+
+## Build and copy
+
+Build and copy when source or packaged tools changed, using the reviewed
+`make cp` command from `remote-testbed` (`access-methods/pytest.md`). Confirm the
+copied script contains the expected change before testing it. Copying installs
+tools; it does not upgrade the drive.
+
+## Upgrade firmware only when requested
+
+Use `--update-fw` or `wssdtool ... upgrade` only when the user explicitly asks.
+First build with `FW_TEST_9999=debug`, then upgrade on the resolved
+controller or blade as described in `remote-testbed`.
+
+## Dry run
+
+Resolve the test plan without touching hardware, and stop on an import,
+discovery, or package mismatch:
+
+```bash
+drun build/wssd-testkit/testlauncher \
+  <target> --slot <slot> --user "$USER" --dry-run \
+  wssd.<test_name>
+```
+
 ## Launch
 
 Run from the firmware checkout:
 
 ```bash
-hwtest start --testbed <node> --slot <slot> --test <test-name> --view [--update-fw] [-- <extra testlauncher args>]
+hwtest start <target> --slot <slot> --test <test-name> --view [--update-fw] [-- <extra testlauncher args>]
 ```
 
 - `--test` accepts `wssd.<name>` or `<name>`.
-- `--update-fw` only when the user explicitly requested it.
+- `--update-fw` only when the user explicitly requested it (see above).
+- `<target>` is the one `remote-testbed` resolved: `--testbed <RAS node>`, or
+  `--server <host>` when the testbed is not in RAS (mutually exclusive). The
+  busy-slot check matches the same flag and value.
+- Long tests such as `open_block_close`, `cache`, and `remap` can set
+  `PRECOMMIT` through the init hook (a shell `export PRECOMMIT=1` does not
+  reach the pytest process, which gets its environment over Pyro RPC):
+  `hwtest start ... --test remap_fixup_test -- --init wssd.set_precommit_env`.
 - `start` refuses if the testbed/slot already has a testlauncher (`--force`
   overrides only with user approval). Run tests sequentially per slot.
 - Label defaults to `<test>-<node>-s<slot>-<MMDD-HHMMSS>`; record it with the log path.
@@ -84,6 +132,16 @@ hwtest kill <label>
 - Never kill the `docker exec` client or the wrapper: docker does not forward
   signals, and killing the client orphans testlauncher inside the container.
 
+## Stale Pyro daemons
+
+If the log shows `ConnectionRefusedError: cannot connect to (<host>, 8xxx)` or
+`remote object was not found`, confirm the slot is idle (`hwtest ls --running`), then run
+this on each resolved controller or blade and relaunch:
+
+```bash
+ssh <route> "pkill -9 -f pyro; pkill -9 -f wssd_api"
+```
+
 ## Result rules
 
 - Pass requires `TESTLAUNCHER_EXIT=0` plus `RESULT: PASS` or testlauncher's
@@ -94,6 +152,8 @@ hwtest kill <label>
   expected in-test `FAILED` diagnostics as the final verdict.
 - `UNCONFIRMED` (missing exit marker or exit 0 without a final verdict):
   report with label and log; do not claim pass or fail.
-- Report node, slot/bay, label, log path, final banner/`RESULT` and
+- A setup or preflight failure is not a test result; quote the error exactly.
+- Report node, controller, slot/bay, label, log path, final banner/`RESULT` and
   `TESTLAUNCHER_EXIT`.
+- For persistent artifact capture across runs, use `fw-run-pytest`.
 - Never close unrelated Herdr tabs/panes or stop Herdr.

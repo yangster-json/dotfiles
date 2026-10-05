@@ -152,15 +152,16 @@ def elapsed(meta: dict, directory: pathlib.Path) -> str:
     return f"{seconds // 3600}h{seconds % 3600 // 60:02d}m{seconds % 60:02d}s"
 
 
-def busy_slot(testbed: str, slot: str) -> str | None:
-    """Return a description of any testlauncher already using testbed/slot."""
+def busy_slot(flag: str, testbed: str, slot: str) -> str | None:
+    """Return a description of any testlauncher already using the target/slot."""
     if STATE_ROOT.exists():
         for directory in STATE_ROOT.iterdir():
             meta_path = directory / "meta.json"
             if not meta_path.exists():
                 continue
             meta = json.loads(meta_path.read_text())
-            if meta["testbed"] == testbed and meta["slot"] == slot:
+            if (meta.get("target_flag", "--testbed") == flag and meta["testbed"] == testbed
+                    and meta["slot"] == slot):
                 if state(meta["label"])[0] in ("RUNNING", "KILLING"):
                     return f"hwtest run {meta['label']}"
     # match real testlauncher argv, not shells quoting it
@@ -174,7 +175,7 @@ def busy_slot(testbed: str, slot: str) -> str | None:
         if not any(arg.endswith("testlauncher") for arg in argv[:2]):
             continue
         pairs = set(zip(argv, argv[1:]))
-        if ("--testbed", testbed) in pairs and ("--slot", slot) in pairs:
+        if (flag, testbed) in pairs and ("--slot", slot) in pairs:
             return f"pid {proc.name}: {cmdline(int(proc.name))}"
     return None
 
@@ -186,21 +187,22 @@ def cmd_start(args: argparse.Namespace) -> int:
     if not shutil.which("drun"):
         die("drun not on PATH")
     test = args.test if args.test.startswith("wssd.") else f"wssd.{args.test}"
+    flag, target = ("--server", args.server) if args.server else ("--testbed", args.testbed)
     label = args.label or "{}-{}-s{}-{}".format(
-        test.split(".")[-1][:40], args.testbed, args.slot, datetime.now().strftime("%m%d-%H%M%S")
-    )
+        test.split(".")[-1][:40], target, args.slot, datetime.now().strftime("%m%d-%H%M%S")
+    ).replace("/", "_")
     directory = run_dir(label)
     if directory.exists():
         die(f"run {label!r} already exists")
-    busy = None if args.force else busy_slot(args.testbed, args.slot)
+    busy = None if args.force else busy_slot(flag, target, args.slot)
     if busy:
-        die(f"testbed {args.testbed} slot {args.slot} busy: {busy} (--force to override)")
+        die(f"{flag[2:]} {target} slot {args.slot} busy: {busy} (--force to override)")
 
     directory.mkdir(parents=True, mode=0o700)
     log = directory / "test.log"
     (directory / "docker.env").write_text(f"HWTEST_ID={label}\nPYTHONUNBUFFERED=1\n")
     command = ["drun", "--env-file", str(directory / "docker.env"), TESTLAUNCHER,
-               "--testbed", args.testbed, "--slot", args.slot,
+               flag, target, "--slot", args.slot,
                "--user", os.environ.get("USER", ""), "--repeat", str(args.repeat)]
     if args.update_fw:
         command.append("--update-fw")
@@ -219,7 +221,7 @@ echo "$status" > {shlex.quote(str(directory / 'exit'))}
 """
     (directory / "run.sh").write_text(script)
     meta = {
-        "label": label, "test": test, "testbed": args.testbed, "slot": args.slot,
+        "label": label, "test": test, "testbed": target, "target_flag": flag, "slot": args.slot,
         "repo": str(repo), "log": str(log), "command": command, "started": time.time(),
     }
     (directory / "meta.json").write_text(json.dumps(meta, indent=2) + "\n")
@@ -401,7 +403,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(prog="hwtest", description=__doc__)
     sub = parser.add_subparsers(dest="cmd", required=True)
     start = sub.add_parser("start", help="launch a detached testlauncher run")
-    start.add_argument("--testbed", required=True)
+    target = start.add_mutually_exclusive_group(required=True)
+    target.add_argument("--testbed", help="RAS testbed node")
+    target.add_argument("--server", help="direct server host when the testbed is not in RAS")
     start.add_argument("--slot", required=True)
     start.add_argument("--test", required=True, help="wssd.<name> or <name>")
     start.add_argument("--repo", default=".", help="firmware checkout (default: cwd)")
