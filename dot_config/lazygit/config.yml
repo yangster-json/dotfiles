@@ -26,3 +26,15 @@ theme:
     - '#cdd6f4'
   authorColors:
     '*': '#b4befe'
+git:
+  # cycle with | (reverse \)
+  diffRenderers:
+    - name: delta
+      command: delta --dark --paging=never --line-numbers --hyperlinks --hyperlinks-file-link-format="lazygit-edit://{path}:{line}"
+    - name: delta split
+      command: delta --dark --paging=never --side-by-side --width={{columnWidth}}
+    - name: difftastic
+      type: extDiff
+      command: difft --color=always --background=dark --context={{diffContext}}
+    - name: raw
+      type: rawGit

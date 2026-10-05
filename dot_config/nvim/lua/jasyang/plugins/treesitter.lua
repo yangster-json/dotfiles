@@ -1,71 +1,85 @@
-return {
-  "nvim-treesitter/nvim-treesitter",
-  branch = "master",
-  event = { "BufReadPre", "BufNewFile" },
-  build = ":TSUpdate",
-  dependencies = {
-    "windwp/nvim-ts-autotag",
-  },
-  config = function()
-    -- import nvim-treesitter plugin
-    local treesitter = require("nvim-treesitter.configs")
+local parsers = {
+  "json",
+  "javascript",
+  "typescript",
+  "tsx",
+  "yaml",
+  "html",
+  "css",
+  "prisma",
+  "markdown",
+  "markdown_inline",
+  "svelte",
+  "graphql",
+  "bash",
+  "lua",
+  "vim",
+  "dockerfile",
+  "gitignore",
+  "query",
+  "vimdoc",
+  "c",
+  "cpp",
+  "python",
+}
 
-    -- configure treesitter
-    treesitter.setup({ -- enable syntax highlighting
-      highlight = {
-        enable = true,
-        -- Skip parsing and highlighting files over 1 MiB (e.g. minified JSON).
-        disable = function(_, buf)
-          local stat = vim.uv.fs_stat(vim.api.nvim_buf_get_name(buf))
-          return stat and stat.size > 1024 * 1024
+-- skip treesitter on files over 1 MiB
+local function too_big(buf)
+  local stat = vim.uv.fs_stat(vim.api.nvim_buf_get_name(buf))
+  return stat and stat.size > 1024 * 1024
+end
+
+return {
+  {
+    "nvim-treesitter/nvim-treesitter",
+    branch = "main",
+    lazy = false, -- main does not support lazy-loading
+    build = ":TSUpdate",
+    config = function()
+      require("nvim-treesitter").install(parsers)
+
+      vim.api.nvim_create_autocmd("FileType", {
+        group = vim.api.nvim_create_augroup("jasyang_treesitter", { clear = true }),
+        callback = function(args)
+          local buf = args.buf
+          local lang = vim.treesitter.language.get_lang(vim.bo[buf].filetype)
+          if not lang or too_big(buf) or not vim.treesitter.language.add(lang) then
+            return
+          end
+          vim.treesitter.start(buf, lang)
+          if vim.treesitter.query.get(lang, "indents") then
+            vim.bo[buf].indentexpr = "v:lua.require'nvim-treesitter'.indentexpr()"
+          end
         end,
-      },
-      -- enable indentation
-      indent = {
-        enable = true,
-        disable = function(_, buf)
-          local stat = vim.uv.fs_stat(vim.api.nvim_buf_get_name(buf))
-          return stat and stat.size > 1024 * 1024
-        end,
-      },
-      -- enable autotagging (w/ nvim-ts-autotag plugin)
-      autotag = {
-        enable = true,
-      },
-      -- ensure these language parsers are installed
-      ensure_installed = {
-        "json",
-        "javascript",
-        "typescript",
-        "tsx",
-        "yaml",
-        "html",
-        "css",
-        "prisma",
-        "markdown",
-        "markdown_inline",
-        "svelte",
-        "graphql",
-        "bash",
-        "lua",
-        "vim",
-        "dockerfile",
-        "gitignore",
-        "query",
-        "vimdoc",
-        "c",
-        "cpp",
-        "python",
-      },
-      incremental_selection = {
-        enable = true,
-        keymaps = {
-          init_selection = "<C-space>",
-          node_incremental = "<C-space>",
-          scope_incremental = false,
-          node_decremental = "<bs>",
-        },
-      },
-    })
-  end,
+      })
+
+      -- incremental selection; nvim 0.12 also has native an/in
+      vim.keymap.set("n", "<C-space>", "van", { remap = true, desc = "Start treesitter selection" })
+      vim.keymap.set("x", "<C-space>", "an", { remap = true, desc = "Expand treesitter selection" })
+      vim.keymap.set("x", "<bs>", "in", { remap = true, desc = "Shrink treesitter selection" })
+    end,
+  },
+  {
+    "windwp/nvim-ts-autotag",
+    event = { "BufReadPre", "BufNewFile" },
+    opts = {},
+  },
+  {
+    "JoosepAlviste/nvim-ts-context-commentstring",
+    event = { "BufReadPre", "BufNewFile" },
+    init = function()
+      vim.g.skip_ts_context_commentstring_module = true
+    end,
+    config = function()
+      require("ts_context_commentstring").setup({ enable_autocmd = false })
+      -- make native gc use context-aware commentstring
+      local get_option = vim.filetype.get_option
+      ---@diagnostic disable-next-line: duplicate-set-field
+      vim.filetype.get_option = function(filetype, option)
+        return option == "commentstring"
+            and require("ts_context_commentstring.internal").calculate_commentstring()
+          or get_option(filetype, option)
+      end
+    end,
+  },
 }
