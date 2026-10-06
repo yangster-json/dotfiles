@@ -1,13 +1,7 @@
-# FlashArray access
+# FlashArray
 
-Use the controller endpoints recorded in RAS, normally `<testbed>-ct0` and
-`<testbed>-ct1`. Confirm the requested bay's current visibility read-only before
-running a test or collecting logs:
+Use RAS controller endpoints (normally `<testbed>-ct0`/`-ct1`, but trust RAS over the nickname). Check bay visibility read-only first; a bay may show on one controller only:
 
 ```bash
-ssh -o BatchMode=yes -o ConnectTimeout=15 <controller> \
-  'wssdtool --bay <bay> ls'
+ssh -o BatchMode=yes -o ConnectTimeout=15 <controller> 'wssdtool --bay <bay> ls'
 ```
-
-A bay may be visible on one controller only. Do not assume controller topology
-from the testbed nickname if RAS reports another route.

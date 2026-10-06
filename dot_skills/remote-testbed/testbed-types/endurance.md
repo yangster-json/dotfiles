@@ -1,26 +1,13 @@
-# Endurance / Hyperscaler access
+# Endurance / Hyperscaler
 
-RAS signals: `hm_computenode` set, labels `hyper:*`, `hyperscale:hydrogen`,
-often `hyper:chassis:endurance` and `split_node`. One CentOS host, no
-`-ct0`/`-ct1`; SSH as `root@<hm_computenode>`.
+RAS: `hm_computenode`, labels `hyper:*`, `hyperscale:hydrogen`, often `hyper:chassis:endurance`, `split_node`. One CentOS host, no `-ct0/-ct1`; SSH `root@<hm_computenode>`. Confirm host read-only before mutation.
 
-- Split node: the host is shared by several `lp-<host>-node<N>` RAS entries.
-  Use the node that owns the slot for `--testbed`; copy and SSH to the host.
-- Slots come from `PARTITIONED_SLOTS` (30 + bay convention).
-- BMC: `env.BMC_IPMI_ADDR` (`https://<host>-bmc.dev.purestorage.com/`);
-  credentials in RAS notes/env. A BMC power action hits **all** nodes, so
-  every node must be claimed first.
-- Logs live under `/var/log/pure`; determine exact filenames before searching
-  (see access-methods/logs.md).
+- Split node: host shared by `lp-<host>-node<N>`; `--testbed` = node owning the slot; copy/SSH to host.
+- Slots from `PARTITIONED_SLOTS` (30 + bay).
+- BMC: `env.BMC_IPMI_ADDR` (`https://<host>-bmc.dev.purestorage.com/`), creds in RAS. Power action hits **all** nodes → claim every node first.
+- Logs: `/var/log/pure`; read ../access-methods/logs.md only for a log task.
 
-Confirm the host with a shallow read-only probe before mutation.
-
-## Known failures
-
-Fixes are in `fw-fix-drives`:
-
-| Symptom | Section |
-|---|---|
-| SSH rc 255, host not pingable (thermal shutdown / panic) | §4.20 Endurance testbed unreachable — BMC power-cycle, user-driven |
-| Boots into lifeguard (extra `vmlinuz`) | §4.21 Endurance testbed stuck in lifeguard |
-| VFIO loopback failure | §4.18 VFIO on — `TUNE_NVME_DISABLE_VFIO = 1` in RAS env |
+Known failures (fix sections in `fw-fix-drives`):
+- SSH rc 255, not pingable (thermal/panic) → §4.20 BMC power-cycle, user-driven
+- Boots into lifeguard (extra `vmlinuz`) → §4.21
+- VFIO loopback failure → §4.18 `TUNE_NVME_DISABLE_VFIO = 1` in RAS env
