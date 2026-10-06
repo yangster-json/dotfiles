@@ -180,7 +180,7 @@ rows = [
 ]
 
 [ui.toast]
-delivery = "off"
+delivery = "herdr"
 
 [ui.sound]
 enabled = false
