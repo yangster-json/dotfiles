@@ -80,13 +80,17 @@ jq -e '.defaultProvider == "openai-codex" and
   .subagents.agentOverrides.scout.model == "openai-codex/gpt-6-luna" and
   .subagents.agentOverrides.delegate.model == "openai-codex/gpt-6-luna"' \
   <<<"$generic_settings" >/dev/null
-jq -e --arg headroom "$test_home/.pi/agent/npm/node_modules/acp-headroom-pi/dist/index.js" \
-  '.subagents.defaultExtensions == null and
-  .subagents.defaultSubagentOnlyExtensions == ["/u/jasyang/.config/everpure-foundry/pi-extension", $headroom]' \
+jq -e '.subagents.defaultExtensions == null and
+  .subagents.defaultSubagentOnlyExtensions == ["/u/jasyang/.config/everpure-foundry/pi-extension"] and
+  .compaction.enabled == true and
+  (.packages | index("npm:acp-headroom-pi@0.1.2")) == null and
+  all(.subagents.agentOverrides[]; (.tools // []) | index("compress") == null)' \
   <<<"$fw_settings" >/dev/null
 jq -e --arg headroom "$test_home/.pi/agent/npm/node_modules/acp-headroom-pi/dist/index.js" \
   '.subagents.defaultExtensions == null and
-  .subagents.defaultSubagentOnlyExtensions == [$headroom]' \
+  .subagents.defaultSubagentOnlyExtensions == [$headroom] and
+  .compaction.enabled == false and
+  (.packages | index("npm:acp-headroom-pi@0.1.2")) != null' \
   <<<"$generic_settings" >/dev/null
 jq -e '[$fw, $generic][] |
   .lastChangelogVersion == "local-version" and
