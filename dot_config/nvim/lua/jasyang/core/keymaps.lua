@@ -82,3 +82,6 @@ keymap.set("n", "<leader>bp", function()
   end
   vim.notify(("Pruned %d buffer(s)%s"):format(deleted, skipped > 0 and (", skipped " .. skipped .. " modified") or ""))
 end, { desc = "Prune buffers (keep 5 MRU + visible)" })
+
+-- q: typo opens cmdwin; treat as plain :
+keymap.set("n", "q:", ":", { desc = "Cmdline (no cmdwin)" })
