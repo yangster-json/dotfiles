@@ -240,22 +240,26 @@ export default function (pi: ExtensionAPI) {
 					const displayedCost = totalCost + childCost;
 					const contextUsage = ctx.getContextUsage();
 					const contextWindow = contextUsage?.contextWindow ?? ctx.model?.contextWindow ?? 200000;
-					const ctxTokens = contextUsage?.tokens ?? totalInput + totalCacheRead + totalCacheWrite;
+					// null after compaction until next reply; summed usage isn't context
+					const ctxTokens = contextUsage?.tokens ?? null;
 					const ctxPct =
-						contextUsage?.percent != null ? Math.round(contextUsage.percent) : 0;
+						contextUsage?.percent != null ? Math.round(contextUsage.percent) : null;
+					const ctxTokensText = ctxTokens != null ? formatTokens(ctxTokens) : "?";
+					const ctxPctText = ctxPct != null ? `${ctxPct}%` : "?";
 
 					const branch = footerData.getGitBranch() ?? "";
 					const model = ctx.model?.id ?? "unknown";
 					const elapsed = Date.now() - sessionStart;
 
 					const costColor = displayedCost >= 2.0 ? RED : displayedCost >= 0.5 ? PEACH : GREEN;
-					const ctxColor = ctxPct >= 80 ? RED : ctxPct >= 50 ? YELLOW : BLUE;
+					const ctxColor =
+						ctxPct == null ? OVERLAY0 : ctxPct >= 80 ? RED : ctxPct >= 50 ? YELLOW : BLUE;
 
 					const parts: string[] = [];
 					if (branch) parts.push(`${MAUVE}${branch}${RESET}`);
 					parts.push(`${PINK}${model}${RESET}`);
 					parts.push(
-						`${ctxColor}Ctx: ${formatTokens(ctxTokens)}/${formatTokens(contextWindow)} (${ctxPct}%)${RESET}`,
+						`${ctxColor}Ctx: ${ctxTokensText}/${formatTokens(contextWindow)} (${ctxPctText})${RESET}`,
 					);
 					parts.push(`${costColor}${formatCost(displayedCost)}${RESET}`);
 					if (childCost > 0) parts.push(`${PINK}Child: ${formatCost(childCost)}${RESET}`);
