@@ -1,6 +1,6 @@
 ---
 name: bg-cmd-runner
-description: Deterministic background command repeater with failure classification
+description: Run any potentially long-running command (build, copy, soak, repro, test wait) in the background, locally or over ssh, and notify the session when it exits. Use instead of blocking or polling.
 runner:
   type: external-cli
   command: /u/jasyang/.pi/agent/bin/bg-cmd-runner
