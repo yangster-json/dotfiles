@@ -90,7 +90,7 @@ def run_iteration(workdir: pathlib.Path, command: list[str], remote: str | None,
                 if separator:
                     remote_command = f"exec runuser -u {shlex.quote(run_as)} -- bash -lc {shlex.quote(remote_command)}"
                 process = subprocess.Popen(
-                    ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=15", destination, remote_command],
+                    ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=15", "-o", "ServerAliveInterval=30", "-o", "ServerAliveCountMax=4", destination, remote_command],
                     stdout=log_file,
                     stderr=subprocess.STDOUT,
                     text=True,
