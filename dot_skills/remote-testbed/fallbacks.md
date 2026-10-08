@@ -14,6 +14,8 @@ Snapshot verified vs RAS 2026-10-01, not truth: tell user, confirm route with a 
 
 ## Name → RAS entry
 
+Maps names RAS knows; on `RAS target not found`, don't derive hosts from it.
+
 | Name | RAS entry | Physical host(s) |
 |---|---|---|
 | `fw-<name>` (FA) | `lp-fw-<name>` | `fw-<name>-ct0`, `-ct1` |
@@ -36,3 +38,7 @@ drun build/wssd-testkit/testlauncher --server <host> --slot <slot> --user $USER 
 ## SSH config
 
 Wildcards: `*-ct0`, `*-ct1`, `fw*`, `hw*`, `lp*` → `root` + `id_rsa_pureroot`; `legend*`, `ir*`, `*zeus*` → `ir` + `id_rsa_iros_root`. Verify `ssh -G <host> | grep -E '^(user|identityfile|proxyjump) '`; else pass `-l root -i <key>`.
+
+## Direct SSH (launchpad down)
+
+Launchpad unreachable → SSH the host directly from the dev VM: `ssh <testbed>-ct0`/`-ct1` (Hyper: `ssh <testbed>`; strip `-node<N>`). Copy with `JUMP_HOST=null` ([access-methods/pytest.md](access-methods/pytest.md)).

@@ -5,47 +5,41 @@ description: RAS-first router for remote WSSD testbeds (name, bay/slot, firmware
 
 # Remote Testbed
 
-Single entry point. Read only the references matching the classified platform and requested task (usually one type + one task file); never preload the rest.
+Read only the references for the classified platform and task (usually one type + one task file); never preload the rest.
 
 ## First: resolve + check reservations
 
-Before SSH, `make cp`, `drun`/testlauncher, fw update, or log search:
+Before SSH, `make cp`, testlauncher, fw update, or log search:
 
-1. `python3 scripts/resolve-testbed.py <name> [--json]` — tries `<name>`, `lp-<name>`, `lp-<name>-node<N>`. Exits `RAS target not found` / `RAS unreachable` → say so, use [fallbacks.md](fallbacks.md), confirm topology with user, pass `--server <host>`. Never guess a `fw-*` nickname is an SSH host.
-2. Record canonical RAS name, physical hosts, labels, env, notes. `-node<N>` = slot partition of one host: SSH/`make cp` → host in `hm_computenode`/`controllers`; `--testbed` → node whose `PARTITIONED_SLOTS` has the slot. Each node has own claim; BMC/power hits all nodes.
-3. `shared_testbed` in output (labels `shared_testbed`/`wssd_shared_testbed`, or claimant `shared_testbed`): RAS claim isn't yours → testlauncher needs `--user $USER --slot <slot>` (else `testbed <name> claimed to <claimant>`); follow RAS notes for per-drive claiming.
-4. Drive reservations: https://drives.app.purestorage.com/ is authoritative for per-drive **claim**/**deny** (not RAS claims/jobs, not the old Google-sheet deny list; look up by serial+bay). Model number → `/decode`. Report any claim/deny before mutating: deny = don't use; claim = no overlap without claimant's OK.
-5. Classify (below), read the reference.
+1. `python3 <this skill's dir>/scripts/resolve-testbed.py <name>` (no `--json`; output already has platform, hosts, ready `ssh` route, jump host, slots, claim, notes): path is next to this SKILL.md, not in the cwd; don't search for it. Tries `<name>`, `lp-<name>`, `lp-hw-`/`lp-fw-<name>`, `lp-<name>-node<N>`. `RAS unreachable` → [fallbacks.md](fallbacks.md). `RAS target not found` → stop: tell user, ask for platform + hosts (don't offer example host names); give no command with guessed hosts (`<name>-ct0`, `lp-<name>`, jump host), not even as an example; testlauncher then needs `--server <host>`. Never treat a `fw-*` nickname as an SSH host.
+2. `lp-<host>-node<N>` = slot partition of one host (any platform): SSH/`make cp`/logs → the host; `--testbed` → node whose `partitioned_slots` has the slot; BMC/power hits all partitions → claim every node (resolver lists siblings).
+3. `shared_testbed` in output → RAS claim isn't yours: testlauncher needs `--user $USER --slot <slot>` (else `testbed <name> claimed to <claimant>`); follow RAS notes for per-drive claims.
+4. https://drives.app.purestorage.com/ is authoritative for per-drive claim/deny (by serial+bay; model → `/decode`). Deny = don't use; claim = no overlap without claimant's OK. Report before mutating.
 
-Credentials (BMC/console) are in RAS `notes`/env `BMC_IPMI_*`; resolver masks them. Use `--json` only for a requested BMC/console action; never paste into reports/Jira/memory. Don't infer HLOB, FlashArray, or SSH user from the name.
+## Route
 
-## Classify by RAS signals (never by name)
+Default: the resolver's `ssh` line = through the RAS launchpad, `ssh -J root@<ras_name> root@<host>` (every RAS record, partition nodes included, is a launchpad; never bare `ssh <host>`). Use the same `-J` for `scp`/`rsync`/`make cp`. Hosts take `root` + `~/.ssh/id_rsa_pureroot` (on every engineer VM). FlashBlade: resolver `jump_host` instead. Launchpad down → direct SSH from the dev VM ([fallbacks.md](fallbacks.md)). testlauncher connects directly (its `--jump-host` assumes `ir@`, FlashBlade only).
 
-| RAS signal | Platform | Read |
-|---|---|---|
-| 2 `controllers`, `PS_HA_CONTROLLER0/1` env | FlashArray dual-ct | [testbed-types/flasharray.md](testbed-types/flasharray.md) |
-| label `flashblade` + `env.JUMP_HOST` (Legend: `wssd_legend`; Zeus: jump `fw-zeus00`) | FlashBlade blade | [testbed-types/flashblade.md](testbed-types/flashblade.md) |
-| `hm_computenode`, labels `hyper:*`/`hyperscale:hydrogen` | Endurance/Hyperscaler, one CentOS host, often `split_node` | [testbed-types/endurance.md](testbed-types/endurance.md) |
+BMC/console creds live in RAS `notes`/`BMC_IPMI_*`: resolver masks them (best-effort for free-text notes); `--json` only for a requested BMC/console action; never paste them anywhere. Never infer platform, HLOB, or SSH user from the name.
 
-Task refs (plus type ref): copy/update fw or hw pytest → [access-methods/pytest.md](access-methods/pytest.md); remote fw logs → [access-methods/logs.md](access-methods/logs.md).
+## testlauncher command
 
-## Hand off
+`drun build/wssd-testkit/testlauncher --testbed <ras_name> --slot <slot> --user "$USER" --repeat 1 wssd.<test>` (Endurance: the partition node; `--server <host>` only if not in RAS; add `--update-fw` only when asked). Executing it, dry run, upgrade → `fw-hw-test`.
 
-Pass resolved topology (RAS name, hosts, jump host, slot, shared/claim state) to the fw-skill (installed by name, or `pure-experimental/fw-skills/skills/<group>/<name>/SKILL.md`):
+Slot: FlashArray `400 + bay`; FlashBlade `400 + (bay - 1)` (bays from 1); Endurance/single host = the bay's entry in `partitioned_slots` (`30 + bay`). Wrong slot → `MissingDeviceException: Unable to find any wssd devices`.
 
-| Task | Skill |
-|---|---|
-| hw pytest / `--update-fw` | `fw-hw-test` |
-| one build → many testbeds | `fw-multi-testbed-cp` |
-| drive state, overrides, deny, endurance host down | `fw-fix-drives` |
-| SBL / bootrom / MISSING DEVICE | `fw-recover-missing-drives` |
-| orphan bad_plane_map, "Not a block device" | `fw-cleanup-drive` |
-| UECC / bad block | `fw-bad-block-triage` |
-| PLP power plot | `fw-plot-power-test` |
-| Jira/Jenkins failure here | `fw-debug-triage`, `fw-pcie-triage` |
+## Platform refs (resolver `platform`)
+
+FlashArray → [testbed-types/flasharray.md](testbed-types/flasharray.md); FlashBlade → [testbed-types/flashblade.md](testbed-types/flashblade.md); Endurance → [testbed-types/endurance.md](testbed-types/endurance.md). Copy/update fw → [access-methods/pytest.md](access-methods/pytest.md); remote logs → [access-methods/logs.md](access-methods/logs.md). Slot-only or route-only questions need no ref.
+
+## Hand off (pass resolved topology)
+
+- hw pytest / `--update-fw` → `fw-hw-test`; one build → many testbeds → `fw-multi-testbed-cp`
+- drive state, overrides, deny, endurance host down → `fw-fix-drives`; SBL/bootrom/MISSING DEVICE → `fw-recover-missing-drives`; bad_plane_map, "Not a block device" → `fw-cleanup-drive`
+- UECC → `fw-bad-block-triage`; PLP plot → `fw-plot-power-test`; Jira/Jenkins failure → `fw-debug-triage`, `fw-pcie-triage`
 
 ## Safety
 
-- Read-only first. No claim changes, resets, bay power-cycles, fw copy, or test start unless asked.
-- No generic `make cp`: translate RAS topology into a reviewed target-specific command; `config.mk` HLOB defaults don't fit every testbed.
-- Report resolved platform, route, bay/slot, and command log path.
+- Read-only first: no claim changes, resets, power-cycles, copies, or tests unless asked.
+- No generic `make cp`: build a target-specific command from RAS (`config.mk` defaults don't fit every testbed).
+- Report platform, route, bay/slot, log path.

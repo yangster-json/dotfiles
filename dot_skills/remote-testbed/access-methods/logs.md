@@ -5,7 +5,7 @@ Logs still on a testbed. Use after RAS classification; keep the RAS route. Not J
 ## Rules
 
 - Read-only: no service restarts, mutating `wssdtool`, claim changes, power-cycles.
-- `ssh -o BatchMode=yes -o ConnectTimeout=15`.
+- Define `rssh` first: `rssh() { ssh -o BatchMode=yes -o ConnectTimeout=15 -J root@<ras_name> "$@"; }` (FlashBlade: `-J <jump-host>`; launchpad down: drop `-J`).
 - `ls` archive names/retention before content search. Never recurse `/var/log`, `/logs`, or `/`.
 - Bound searches to one log family + time window; `grep` plain, `zgrep` (or Python `gzip`) for `.gz`.
 - Binary search only on a sparse ordered series with an established monotonic presence boundary; else coarse evenly spaced probes, then bounded search.
@@ -14,9 +14,9 @@ Logs still on a testbed. Use after RAS classification; keep the RAS route. Not J
 
 | Platform | Connection | Root | Primary family |
 |---|---|---|---|
-| FlashArray | `-ct0`/`-ct1` | `/var/log/purity` | `wssd.log*`, `wssd-structured.log*` |
+| FlashArray | launchpad → `-ct0`/`-ct1` | `/var/log/purity` | `wssd.log*`, `wssd-structured.log*` |
 | FlashBlade | jump → `root@ir<N>` | `/logs` | inspect first |
-| Endurance | host | `/var/log/pure` | `dfm.log*` (+ structured if present) |
+| Endurance | launchpad → host | `/var/log/pure` | `dfm.log*` (+ structured if present) |
 
 ## FlashArray
 
@@ -24,14 +24,14 @@ Search named controller, then peer if it matters: drive may be visible on one ct
 
 1. Inventory:
    ```bash
-   ssh "$host" 'ls -1 /var/log/purity/wssd.log* | wc -l; ls -1tr /var/log/purity/wssd.log* | head -3; ls -1t /var/log/purity/wssd.log* | head -3; ls -1t /var/log/purity/wssd-device-dump* /var/log/purity/inventory_tool.log* 2>/dev/null | head -40'
+   rssh "$host" 'ls -1 /var/log/purity/wssd.log* | wc -l; ls -1tr /var/log/purity/wssd.log* | head -3; ls -1t /var/log/purity/wssd.log* | head -3; ls -1t /var/log/purity/wssd-device-dump* /var/log/purity/inventory_tool.log* 2>/dev/null | head -40'
    ```
    `scripts/purity.wssdlog.upstart` writes `wssd.log`, `wssd-structured.log`, `wssd-err.log`, `wssd-auto-triage.log` via `wssdtool --all dump debugtail` — all bays; correlate by `CH<n>.BAY<nn>`.
 2. Sparse sources first (if present): `wssd-device-dumps.tar*` (periodic `dump device`; check members), `wssd-device-dump-all.log*`, `inventory_tool.log*`, `syslog*` (insert/PCIe/reset/service). Probe oldest/newest/evenly spaced; if serial absent, they only bound recent retention.
 3. Hourly: `wssd.log-YYYYMMDDHH.gz`, `wssd-structured.log-YYYYMMDDHH.gz`; current interval plain. Narrow window first, then e.g.:
    ```bash
-   ssh "$host" 'zgrep -H -i -C 4 -- "<serial>\|CH0.BAY04" /var/log/purity/wssd.log-YYYYMMDD{08,09,10}*.gz'
-   ssh "$host" 'grep -H -i -- "<serial>" /var/log/purity/wssd.log'
+   rssh "$host" 'zgrep -H -i -C 4 -- "<serial>\|CH0.BAY04" /var/log/purity/wssd.log-YYYYMMDD{08,09,10}*.gz'
+   rssh "$host" 'grep -H -i -- "<serial>" /var/log/purity/wssd.log'
    ```
    No unbounded all-archive globs.
 4. For fw events search text + structured (JSON-like or legacy msgpack; `test/common/wct_trace_plot.py` reads both, gzip ok). Correlate `wssd-err.log*`, `wssd-auto-triage.log*`, `syslog*`.
