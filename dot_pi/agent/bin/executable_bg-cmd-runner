@@ -14,6 +14,8 @@ from datetime import datetime, timezone
 from typing import Any
 
 MAX_ITERATIONS = 500
+PLACEHOLDER_CWDS = ("/absolute/path", "/root/dir")
+PLACEHOLDER_HOSTS = ("optional-ssh-host", "host-ct0")
 HEARTBEAT_SECONDS = 30
 PROCESS_POLL_SECONDS = 1
 SIGNATURES = (
@@ -38,6 +40,9 @@ def load_payload() -> dict[str, Any]:
     value = json.loads(matches[-1])
     if not isinstance(value, dict):
         raise ValueError("BACKGROUND_TEST_RUNNER_JSON payload must be an object")
+    # agent-file schema leaking in means the caller sent prose
+    if value.get("cwd") in PLACEHOLDER_CWDS or (value.get("remote") or {}).get("host") in PLACEHOLDER_HOSTS:
+        raise ValueError("task missing BACKGROUND_TEST_RUNNER_JSON; got the agent-file example payload")
     return value
 
 

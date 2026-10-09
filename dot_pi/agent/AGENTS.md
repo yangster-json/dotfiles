@@ -32,10 +32,17 @@ Preplan tool calls; batch the independent ones.
 
 Anything that may outlive a tool call: run it, or a wait loop for a detached
 process, through an async `bg-cmd-runner` subagent (standing approval) instead
-of blocking or polling. Always pass `timeoutMs`. Remote detached process: start
-with `setsid nohup`, then payload `remote.host` + `command`
-`["bash","-c","while pgrep -f '[p]attern' >/dev/null; do sleep 300; done; grep -q OK log"]`
-(bracket the pattern's first char or pgrep matches its own shell).
+of blocking or polling. Always pass `timeoutMs`. The task must be the tagged
+JSON payload, never prose (prose is rejected). Remote detached process: start
+with `setsid nohup`, then task:
+
+```
+<BACKGROUND_TEST_RUNNER_JSON>
+{"cwd":"/root","command":["bash","-c","while pgrep -f '[p]attern' >/dev/null; do sleep 300; done; grep -q OK log"],"iterations":1,"label":"watch-x","stop_on_failure":true,"remote":{"host":"<host>","ssh_user":"root"}}
+</BACKGROUND_TEST_RUNNER_JSON>
+```
+
+Bracket the pattern's first char or pgrep matches its own shell.
 
 # Communication
 

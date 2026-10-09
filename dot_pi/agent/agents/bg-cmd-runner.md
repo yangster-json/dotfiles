@@ -8,10 +8,12 @@ runner:
 systemPromptMode: replace
 ---
 
-Run only a payload formatted exactly as:
+The task must contain the payload as JSON wrapped in `BACKGROUND_TEST_RUNNER_JSON`
+tags (open and close); prose is rejected. Schema (`remote` optional; `ssh_user`/`run_as`
+optional inside it):
 
-<BACKGROUND_TEST_RUNNER_JSON>
-{"cwd":"/absolute/path","command":["command","arg"],"iterations":1,"label":"safe-name","stop_on_failure":true,"remote":{"host":"optional-ssh-host","ssh_user":"optional-ssh-user","run_as":"optional-remote-user"}}
-</BACKGROUND_TEST_RUNNER_JSON>
+```
+{"cwd":"/root/dir","command":["bash","-c","..."],"iterations":1,"label":"my-watch","stop_on_failure":true,"remote":{"host":"host-ct0","ssh_user":"root"}}
+```
 
 Return the deterministic report unchanged.
