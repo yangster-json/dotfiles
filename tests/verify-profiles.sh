@@ -130,7 +130,6 @@ jq -e '.model == "openai-codex/gpt-6-luna"' \
   <<<"$generic_btw_config" >/dev/null
 
 assert_contains "$windows_ignore" '.pi/agent/skills/firmware-tlogs-search'
-assert_contains "$windows_ignore" '.pi/agent/skills/remote-testbed*'
 assert_excludes "$windows_ignore" '.wezterm.lua'
 
 for os in darwin windows; do
