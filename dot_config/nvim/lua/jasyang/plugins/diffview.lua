@@ -16,6 +16,28 @@ return {
       end,
       desc = "Diff against rev (PR review)",
     },
+    {
+      "<leader>gr",
+      function()
+        -- pick a commit; <cr> opens it in diffview
+        local actions = require("telescope.actions")
+        local state = require("telescope.actions.state")
+        require("telescope.builtin").git_commits({
+          prompt_title = "Review commit",
+          attach_mappings = function(bufnr)
+            actions.select_default:replace(function()
+              local entry = state.get_selected_entry()
+              actions.close(bufnr)
+              if entry then
+                vim.cmd("DiffviewOpen " .. entry.value .. "^!")
+              end
+            end)
+            return true
+          end,
+        })
+      end,
+      desc = "Review commit (pick)",
+    },
     { "<leader>gh", "<cmd>DiffviewFileHistory %<cr>", desc = "File history" },
     { "<leader>gh", ":DiffviewFileHistory<cr>", mode = "x", desc = "Line history" },
     { "<leader>gH", "<cmd>DiffviewFileHistory<cr>", desc = "Repo history" },
