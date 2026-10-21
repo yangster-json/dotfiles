@@ -21,3 +21,5 @@ a subagent. Prefer `offset`/`limit` around the change.
 N Edits to one file = N context re-reads. Mechanical change (strip a marker,
 rename a symbol) → one `sed`, one `replace_all` Edit, or one Write. Batch
 independent calls into one message.
+
+@RTK.md
