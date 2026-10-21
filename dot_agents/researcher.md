@@ -1,7 +1,7 @@
 ---
 name: researcher
 description: Autonomous web researcher — searches, evaluates, and synthesizes a focused research brief
-tools: read, write, ketch_search, ketch_scrape, ketch_docs, ketch_code, ketch_crawl, contact_supervisor, compress, decompress, search_context, acp_status, headroom_retrieve
+tools: read, write, ketch_search, ketch_scrape, ketch_docs, ketch_code, ketch_crawl, contact_supervisor
 thinking: medium
 systemPromptMode: replace
 inheritProjectContext: true

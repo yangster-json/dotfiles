@@ -81,17 +81,19 @@ jq -e '.defaultProvider == "openai-codex" and
   .subagents.agentOverrides.delegate.model == "openai-codex/gpt-6-luna"' \
   <<<"$generic_settings" >/dev/null
 jq -e '.subagents.defaultExtensions == null and
-  .subagents.defaultSubagentOnlyExtensions == ["/u/jasyang/.config/everpure-foundry/pi-extension"] and
-  .compaction.enabled == true and
-  (.packages | index("npm:acp-headroom-pi@0.1.2")) == null and
-  all(.subagents.agentOverrides[]; (.tools // []) | index("compress") == null)' \
+  .subagents.defaultSubagentOnlyExtensions == ["/u/jasyang/.config/everpure-foundry/pi-extension", $rtk]' \
+  --arg rtk "$test_home/.pi/agent/npm/node_modules/pi-rtk-optimizer/index.ts" \
   <<<"$fw_settings" >/dev/null
-jq -e --arg headroom "$test_home/.pi/agent/npm/node_modules/acp-headroom-pi/dist/index.js" \
-  '.subagents.defaultExtensions == null and
-  .subagents.defaultSubagentOnlyExtensions == [$headroom] and
-  .compaction.enabled == false and
-  (.packages | index("npm:acp-headroom-pi@0.1.2")) != null' \
+jq -e '.subagents.defaultExtensions == null and
+  .subagents.defaultSubagentOnlyExtensions == [$rtk]' \
+  --arg rtk "$test_home/.pi/agent/npm/node_modules/pi-rtk-optimizer/index.ts" \
   <<<"$generic_settings" >/dev/null
+jq -e '[$fw, $generic][] |
+  .compaction.enabled == true and
+  (.packages | index("npm:pi-rtk-optimizer")) != null and
+  (.packages | map(select(test("headroom"))) | length) == 0 and
+  all(.subagents.agentOverrides[]; (.tools // []) | index("compress") == null)' \
+  --argjson fw "$fw_settings" --argjson generic "$generic_settings" -n >/dev/null
 jq -e '[$fw, $generic][] |
   .lastChangelogVersion == "local-version" and
   .terminal.images == "auto" and

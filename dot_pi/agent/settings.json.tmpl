@@ -1,7 +1,6 @@
 {{- $profile := index .hostProfiles .chezmoi.hostname | default "default" -}}
 {{- $models := index .profiles $profile "models" -}}
 {{- $isWork := eq $profile "fw-work" -}}
-{{- $acpTools := ternary "" (`, "compress", "decompress", "search_context", "acp_status", "headroom_retrieve"`) $isWork -}}
 {{- $localSettings := dict -}}
 {{- $settingsPath := joinPath .chezmoi.homeDir ".pi" "agent" "settings.json" -}}
 {{- if stat $settingsPath -}}
@@ -14,15 +13,13 @@
   "lastChangelogVersion": {{ index $localSettings "lastChangelogVersion" | toJson }},
   {{- end }}
   "compaction": {
-    "enabled": {{ $isWork }}
+    "enabled": true
   },
   "defaultThinkingLevel": "high",
   "subagents": {
     "defaultSubagentOnlyExtensions": [
       {{- if $isWork }}
       "/u/jasyang/.config/everpure-foundry/pi-extension",
-      {{- else }}
-      "{{ .chezmoi.homeDir }}/.pi/agent/npm/node_modules/acp-headroom-pi/dist/index.js",
       {{- end }}
       "{{ .chezmoi.homeDir }}/.pi/agent/npm/node_modules/pi-rtk-optimizer/index.ts"
     ],
@@ -30,12 +27,12 @@
       "scout": {
         "model": "{{ $models.low }}",
         "thinking": "low",
-        "tools": ["read", "grep", "find", "ls", "bash", "write", "contact_supervisor"{{ $acpTools }}]
+        "tools": ["read", "grep", "find", "ls", "bash", "write", "contact_supervisor"]
       },
       "delegate": {
         "model": "{{ $models.low }}",
         "thinking": "low",
-        "tools": ["read", "grep", "find", "ls", "bash", "edit", "write", "contact_supervisor"{{ $acpTools }}]
+        "tools": ["read", "grep", "find", "ls", "bash", "edit", "write", "contact_supervisor"]
       },
       "researcher": {
         "model": "{{ $models.mid }}",
@@ -44,17 +41,17 @@
       "worker": {
         "model": "{{ $models.mid }}",
         "thinking": "medium",
-        "tools": ["read", "grep", "find", "ls", "bash", "edit", "write", "contact_supervisor"{{ $acpTools }}]
+        "tools": ["read", "grep", "find", "ls", "bash", "edit", "write", "contact_supervisor"]
       },
       "reviewer": {
         "model": "{{ $models.mid }}",
         "thinking": "high",
-        "tools": ["read", "grep", "find", "ls", "watchdog_diff", "contact_supervisor"{{ $acpTools }}]
+        "tools": ["read", "grep", "find", "ls", "watchdog_diff", "contact_supervisor"]
       },
       "oracle": {
         "model": "{{ $models.top }}",
         "thinking": "high",
-        "tools": ["read", "grep", "find", "ls", "bash"{{ $acpTools }}]
+        "tools": ["read", "grep", "find", "ls", "bash"]
       },
       "advisor": {
         "model": "{{ $models.top }}",
@@ -69,9 +66,7 @@
     "npm:pi-subagents",
     "npm:pi-memory",
     "npm:pi-ketch@0.1.6",
-    {{- if not $isWork }}
-    "npm:acp-headroom-pi@0.1.2",
-    {{- else }}
+    {{- if $isWork }}
     "git:github.com/pure-shared/pi-provider-gpulab",
     {{- end }}
     "npm:pi-loop-police",
