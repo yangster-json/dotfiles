@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# PLANNOTATOR_BROWSER hook: surface review url over ssh
+url="${1:?usage: plannotator-notify <url>}"
+if [ -n "${HERDR_SOCKET_PATH:-}" ] && command -v herdr >/dev/null; then
+  herdr notification show "Plannotator review ready" --body "$url" --sound request >/dev/null 2>&1
+fi
+# keep last url for `plannotator-notify --last` style recall
+printf '%s\n' "$url" > "${XDG_STATE_HOME:-$HOME/.local/state}/plannotator-last-url" 2>/dev/null
+exit 0

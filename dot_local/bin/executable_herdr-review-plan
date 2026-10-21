@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# open newest changed markdown in focused pane's folder in plannotator-tui
+set -uo pipefail
+log="$HOME/.local/state/herdr-review-plan.log"
+exec 2>>"$log"
+echo "--- $(date '+%F %T') pane=${HERDR_ACTIVE_PANE_ID:-}/${HERDR_PANE_ID:-}" >&2
+
+herdr_bin="${HERDR_BIN_PATH:-herdr}"
+
+fail() {
+  echo "fail: $1" >&2
+  "$herdr_bin" notification show "Review plan" --body "$1" >/dev/null 2>&1
+  exit 1
+}
+
+# focused pane: id, workspace, cwd (shell bindings may lack pane env)
+read -r pane ws cwd < <("$herdr_bin" pane list 2>/dev/null | python3 -c '
+import json, os, sys
+panes = json.load(sys.stdin)["result"]["panes"]
+want = os.environ.get("HERDR_ACTIVE_PANE_ID")
+pick = [p for p in panes if p["pane_id"] == want] or [p for p in panes if p.get("focused")]
+if pick:
+    p = pick[0]
+    print(p["pane_id"], p["workspace_id"], p.get("foreground_cwd") or p.get("cwd") or "")
+')
+[ -n "${pane:-}" ] || fail "no focused pane"
+[ -d "${cwd:-}" ] || fail "pane folder unknown"
+cd "$cwd" || fail "cannot cd $cwd"
+
+# prefer uncommitted md (plans land there), else newest md nearby
+files=()
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  mapfile -t files < <(git ls-files -mo --exclude-standard -- '*.md')
+fi
+[ ${#files[@]} -gt 0 ] || mapfile -t files < <(find . -maxdepth 3 -name '*.md' -not -path '*/node_modules/*')
+[ ${#files[@]} -gt 0 ] || fail "no markdown in $cwd"
+plan="$cwd/$(ls -1t -- "${files[@]}" | head -1)"
+echo "pane=$pane ws=$ws plan=$plan" >&2
+
+"$herdr_bin" plugin pane open --plugin annotate --entrypoint doc \
+  --placement overlay --cwd "$(dirname "$plan")" \
+  --env "PLANNOTATOR_TUI_FILE=$plan" --env "PLANNOTATOR_TUI_DELIVER_TO=$pane" \
+  --focus >&2 || fail "plugin pane open failed"

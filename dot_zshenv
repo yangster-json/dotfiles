@@ -2,3 +2,9 @@
 
 export NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
 export SHELL=/usr/bin/zsh
+
+# plannotator over ssh: advertise real host, notify via herdr
+if [ -n "$SSH_CONNECTION" ]; then
+  export PLANNOTATOR_URL_HOST="$(hostname -f)"
+  export PLANNOTATOR_BROWSER="$HOME/.local/bin/plannotator-notify"
+fi

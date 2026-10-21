@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+# approve/deny the pending plannotator plan from the terminal
+set -uo pipefail
+
+base="${PLANNOTATOR_DECIDE_URL:-}"
+if [ -z "$base" ] && [ -s "$HOME/.local/state/plannotator-last-url" ]; then
+  base=$(sed -E 's#^(https?://[^/]+).*#\1#; s#//[^:/]+#//127.0.0.1#' "$HOME/.local/state/plannotator-last-url")
+fi
+base="${base:-http://127.0.0.1:19432}"
+tui=$(ls -1 "$HOME"/.config/herdr/plugins/github/annotate-*/bin/plannotator-tui.exe 2>/dev/null | head -1)
+
+info=$(curl -s -m 3 "$base/api/plan") || info=""
+meta=$(printf '%s' "$info" | python3 -c '
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit(1)
+title = next((l.lstrip("# ").strip() for l in d.get("plan", "").splitlines() if l.strip()), "?")
+print(d.get("planRevision", ""), d.get("serverSession", ""), d.get("projectRoot", ""), title, sep="\t")
+') || { echo "no pending plan at $base"; read -rsn1 -p "press any key"; exit 1; }
+IFS=$'\t' read -r rev sess root title <<<"$meta"
+
+# plan file in project: newest uncommitted md, for tui annotations
+plan=""
+if [ -d "$root" ]; then
+  plan=$(cd "$root" && git ls-files -mo --exclude-standard -- '*.md' 2>/dev/null |
+    xargs -r ls -1t 2>/dev/null | head -1)
+  [ -n "$plan" ] && plan="$root/$plan"
+fi
+notes=""
+[ -n "$plan" ] && [ -n "$tui" ] && notes=$("$tui" --export "$plan" 2>/dev/null) || notes=""
+[ "$notes" = "No annotations." ] && notes=""
+
+echo "Plan:     $title (rev $rev)"
+echo "Project:  $root"
+[ -n "$plan" ] && echo "File:     ${plan#"$root"/}"
+if [ -n "$notes" ]; then
+  echo "TUI notes: $(printf '%s\n' "$notes" | grep -c .) lines (ctrl+g o comments)"
+else
+  echo "TUI notes: none"
+fi
+echo
+echo "  a  approve (start implementation)"
+echo "  n  approve with tui notes"
+echo "  d  deny, send tui notes as feedback"
+echo "  w  write feedback here, deny"
+echo "  q  cancel"
+read -rsn1 -p "> " key
+echo
+
+post() {
+  local path=$1 feedback=${2:-}
+  FEEDBACK="$feedback" REV="$rev" SESS="$sess" python3 -c '
+import json, os
+b = {"planRevision": int(os.environ["REV"]), "serverSession": os.environ["SESS"]}
+if os.environ["FEEDBACK"]:
+    b["feedback"] = os.environ["FEEDBACK"]
+print(json.dumps(b))' | curl -s -m 10 -X POST -H 'Content-Type: application/json' --data @- "$base$path"
+  echo
+}
+
+case "$key" in
+  a) post /api/approve ;;
+  n) [ -n "$notes" ] || { echo "no tui notes; use a"; read -rsn1; exit 1; }
+     post /api/approve "$notes" ;;
+  d) [ -n "$notes" ] || { echo "no tui notes; use w"; read -rsn1; exit 1; }
+     post /api/deny "$notes" ;;
+  w) tmp=$(mktemp --suffix=.md)
+     "${EDITOR:-vi}" "$tmp"
+     fb=$(cat "$tmp"); rm -f "$tmp"
+     [ -n "$fb" ] || { echo "empty; cancelled"; read -rsn1; exit 1; }
+     post /api/deny "$fb" ;;
+  *) echo "cancelled"; exit 0 ;;
+esac
+sleep 1

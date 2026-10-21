@@ -150,6 +150,39 @@ description = "lazygit"
 width = "90%"
 height = "90%"
 
+# plannotator-tui document review (herdr-annotate plugin)
+[[keys.command]]
+key = "prefix+o"
+type = "shell"
+command = "exec \"$HOME/.local/bin/herdr-review-plan\""
+description = "review newest changed md (plan)"
+
+[[keys.command]]
+key = "prefix+y"
+type = "popup"
+command = "exec \"$HOME/.local/bin/plannotator-decide\""
+description = "approve/deny pending plan"
+width = 70
+height = 16
+
+[[keys.command]]
+key = "prefix+shift+f"
+type = "plugin_action"
+command = "annotate.open"
+description = "review docs in this folder"
+
+[[keys.command]]
+key = "prefix+shift+o"
+type = "plugin_action"
+command = "annotate.last"
+description = "review agent's recent replies"
+
+[[keys.command]]
+key = "prefix+ctrl+o"
+type = "plugin_action"
+command = "annotate.last-newest"
+description = "review agent's newest reply"
+
 [theme]
 name = "catppuccin"
 auto_switch = false
