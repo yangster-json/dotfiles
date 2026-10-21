@@ -1,6 +1,6 @@
 ---
 name: fw-hw-test
-description: Run WSSD hardware pytests by default through detached `hwtest` after drives.app, bay-presence, dry-run, and build/copy preflight, optionally watched from a Herdr observer pane, with completion reported through bg-cmd-runner so the agent stays usable. Use for drun/testlauncher hardware tests and to list, watch, or kill such runs.
+description: Run WSSD hardware pytests by default through detached `hwtest` after drives.app, bay-presence, static-check, and build/copy preflight, optionally watched from a Herdr observer pane, with completion reported through bg-cmd-runner so the agent stays usable. Use for drun/testlauncher hardware tests and to list, watch, or kill such runs.
 compatibility: Requires `hwtest` (in `scripts/`, linked as `~/.pi/agent/bin/hwtest`), drun, a built firmware checkout, and pi-subagents with the bg-cmd-runner agent. Herdr is optional (observer pane only).
 ---
 
@@ -18,7 +18,7 @@ Only `hwtest kill` does.
 |---|---|
 | Runner | `hwtest start` → detached wrapper → `drun --env-file` → testlauncher, output to log |
 | Tag | `HWTEST_ID=<label>` passed into the container; `kill` finds processes by it |
-| Observer | Herdr pane running `tail -F <log>` (`--view` / `hwtest view`); safe to close |
+| Observer | Herdr pane running `tail -F <log>` (`--view` / `hwtest view`), split to the right of the agent pane (`HWTEST_VIEW_DIRECTION=down` to stack); safe to close |
 | Completion | bg-cmd-runner runs `hwtest wait <label>`; Pi notifies on finish |
 | State | `~/.local/state/hwtest/<label>/` (`meta.json`, `test.log`, `exit`, `run.sh`) |
 
@@ -52,16 +52,22 @@ Use `--update-fw` or `wssdtool ... upgrade` only when the user explicitly asks.
 First build with `FW_TEST_9999=debug`, then upgrade on the resolved
 controller or blade as described in `remote-testbed`.
 
-## Dry run
+## Static check (no dry run)
 
-Resolve the test plan without touching hardware, and stop on an import,
-discovery, or package mismatch:
+Do not use testlauncher `--dry-run` for `wssd.*` pytests: the flag only skips
+`merge_tables` (`test/common/wssd_common.py`); the pytest still executes and
+touches hardware (power cycles, self-tests). Check locally instead:
 
 ```bash
-drun build/wssd-testkit/testlauncher \
-  <target> --slot <slot> --user "$USER" --dry-run \
-  wssd.<test_name>
+python3 -m py_compile test/remote-api/wssdapi/pytest/<module>.py
+# copied package carries the change and the test name is reachable
+ssh root@<controller> "grep -n '<changed symbol>' ~/<user>/testlauncher/wssd-testkit-*/remote-api/wssdapi/pytest/<module>.py"
 ```
+
+Whole-file names (`wssd.<module>_test`) must be in `PY_TESTS_OTHER` or
+`PY_TESTS_PRECOMMIT` (`test/test-pkg/wssd/tests.py`); per-method names
+(`wssd.<module>_<Class>_<method>`) are auto-registered. Import or discovery
+errors in the real run fail fast before any power cycle.
 
 ## Launch
 

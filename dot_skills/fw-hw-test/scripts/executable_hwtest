@@ -247,8 +247,10 @@ def view(label: str, log: pathlib.Path) -> None:
     if os.environ.get("HERDR_ENV") != "1" or not shutil.which("herdr"):
         print(f"view:    tail -n +1 -F {log}")
         return
+    # side by side keeps the agent pane full height
+    direction = os.environ.get("HWTEST_VIEW_DIRECTION", "right")
     split = subprocess.run(
-        ["herdr", "pane", "split", "--current", "--direction", "down", "--no-focus"],
+        ["herdr", "pane", "split", "--current", "--direction", direction, "--no-focus"],
         capture_output=True, text=True,
     )
     try:
