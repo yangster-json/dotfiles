@@ -21,10 +21,10 @@
     "defaultSubagentOnlyExtensions": [
       {{- if $isWork }}
       "/u/jasyang/.config/everpure-foundry/pi-extension",
-      "{{ .chezmoi.homeDir }}/.pi/agent/npm/node_modules/pi-rtk-optimizer/index.ts"
       {{- else }}
-      "{{ .chezmoi.homeDir }}/.pi/agent/npm/node_modules/acp-headroom-pi/dist/index.js"
+      "{{ .chezmoi.homeDir }}/.pi/agent/npm/node_modules/acp-headroom-pi/dist/index.js",
       {{- end }}
+      "{{ .chezmoi.homeDir }}/.pi/agent/npm/node_modules/pi-rtk-optimizer/index.ts"
     ],
     "agentOverrides": {
       "scout": {
@@ -75,9 +75,7 @@
     "git:github.com/pure-shared/pi-provider-gpulab",
     {{- end }}
     "npm:pi-loop-police",
-    {{- if $isWork }}
     "npm:pi-rtk-optimizer",
-    {{- end }}
     "npm:@plannotator/pi-extension",
     "npm:pi-blackhole"{{ if not $isWork }},
     "npm:pi-google-services",
