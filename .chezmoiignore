@@ -52,3 +52,5 @@ tests
 AppData
 .glzr/zebar/
 {{- end }}
+
+.pi/agent/bin/__pycache__
