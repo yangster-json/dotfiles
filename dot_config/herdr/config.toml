@@ -155,13 +155,13 @@ height = "90%"
 key = "prefix+o"
 type = "shell"
 command = "exec \"$HOME/.local/bin/herdr-review-plan\""
-description = "review newest changed md (plan)"
+description = "plannotator: review newest changed md (plan)"
 
 [[keys.command]]
 key = "prefix+y"
 type = "popup"
 command = "exec \"$HOME/.local/bin/plannotator-decide\""
-description = "approve/deny pending plan"
+description = "plannotator: approve/deny pending plan"
 width = 70
 height = 16
 
@@ -169,19 +169,25 @@ height = 16
 key = "prefix+shift+f"
 type = "plugin_action"
 command = "annotate.open"
-description = "review docs in this folder"
+description = "plannotator: review docs in this folder"
 
 [[keys.command]]
 key = "prefix+shift+o"
 type = "plugin_action"
 command = "annotate.last"
-description = "review agent's recent replies"
+description = "plannotator: review agent's recent replies"
 
 [[keys.command]]
 key = "prefix+ctrl+o"
 type = "plugin_action"
 command = "annotate.last-newest"
-description = "review agent's newest reply"
+description = "plannotator: review agent's newest reply"
+
+[[keys.command]]
+key = "prefix+ctrl+t"
+type = "plugin_action"
+command = "annotate.terminal"
+description = "plannotator: review pane's recent output"
 
 [theme]
 name = "catppuccin"
@@ -200,6 +206,7 @@ pane_borders = true
 pane_gaps = false
 prompt_new_tab_name = false
 
+agent_panel_sort = "spaces"
 [ui.sidebar.spaces]
 rows = [
   ["state_icon", "workspace"],
