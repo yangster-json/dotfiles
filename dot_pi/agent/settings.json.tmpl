@@ -25,7 +25,7 @@
     ],
     "agentOverrides": {
       "scout": {
-        "model": "{{ $models.low }}",
+        "model": "{{ get $models "scout" | default $models.low }}",
         "thinking": "low",
         "tools": ["read", "grep", "find", "ls", "bash", "write", "contact_supervisor"]
       },
