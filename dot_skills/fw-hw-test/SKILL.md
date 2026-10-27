@@ -80,8 +80,9 @@ hwtest start <target> --slot <slot> --test <test-name> --view [--update-fw] [-- 
 - `--test` accepts `wssd.<name>` or `<name>`.
 - `--update-fw` only when the user explicitly requested it (see above).
 - `<target>` is the one `remote-testbed` resolved: `--testbed <RAS node>`, or
-  `--server <host>` when the testbed is not in RAS (mutually exclusive). The
-  busy-slot check matches the same flag and value.
+  `--server <host>` (repeat per controller) when the testbed is not in RAS or its
+  launchpad is down/rejecting keys; use it directly, no user OK needed. Flags are
+  mutually exclusive. The busy-slot check matches the same flag and value.
 - Long tests such as `open_block_close`, `cache`, and `remap` can set
   `PRECOMMIT` through the init hook (a shell `export PRECOMMIT=1` does not
   reach the pytest process, which gets its environment over Pyro RPC):
