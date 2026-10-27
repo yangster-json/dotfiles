@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# plannotator-tui from the herdr annotate plugin (hash dir varies)
+bin=$(ls -1 "$HOME"/.config/herdr/plugins/github/annotate-*/bin/plannotator-tui.exe 2>/dev/null | head -1)
+[ -x "$bin" ] || { echo "plannotator-tui missing: herdr plugin install plannotator/herdr-annotate" >&2; exit 1; }
+exec "$bin" "$@"
