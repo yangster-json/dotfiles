@@ -115,7 +115,7 @@ jq -e '(.packages | index("npm:pi-google-services")) != null' \
   <<<"$generic_settings" >/dev/null
 jq -e '.mcpServers["google-services"].enabled == false' <<<"$fw_mcp" >/dev/null
 jq -e '.mcpServers["google-services"].enabled == true' <<<"$generic_mcp" >/dev/null
-jq -e '[$fw, $generic][] | (.packages | index("npm:pi-loop-police")) != null and
+jq -e '[$fw, $generic][] | (.packages | index("npm:pi-loop-police")) == null and
   .enableInstallTelemetry == false' \
   --argjson fw "$fw_settings" --argjson generic "$generic_settings" -n >/dev/null
 jq -e '(.packages | index("npm:pi-chatgpt-limit")) == null' \

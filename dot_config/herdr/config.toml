@@ -216,7 +216,8 @@ rows = [
 [ui.sidebar.agents]
 rows = [
   ["state_icon", "workspace", "tab"],
-  ["agent"],
+  # title-suffix: pi-subagents active count, e.g. "⏳2"
+  ["agent", { token = "$title-suffix", fg = "#89b4fa" }],
 ]
 
 [ui.toast]

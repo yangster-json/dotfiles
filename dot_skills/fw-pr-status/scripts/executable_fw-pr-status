@@ -1,0 +1,749 @@
+#!/usr/bin/env python3
+"""Show my PRs' review, CI, Orchestrator and JIRA state, and classify blockers."""
+
+import argparse
+import concurrent.futures as cf
+import datetime as dt
+import json
+import os
+import re
+import shlex
+import shutil
+import subprocess
+import sys
+import urllib.parse
+import urllib.request
+from pathlib import Path
+
+DEFAULT_REPO = "PURE-Firmware/wssd-firmware"
+ORG_LOGIN_SUFFIX = "_pure"  # pure enterprise github logins
+ORCH_CONTEXT = "Orchestrator Merge Status"
+TICKET_RE = re.compile(r"\b(?:FW|FAIL|SIM|PTA)-\d+\b")
+ANSI_RE = re.compile(r"(\x1b|\^\[)\[[0-9;]*m")
+NOISE_RE = re.compile(r"^\s*(shell:|##\[(group|endgroup|end-action)|\[command\]|post_job_hook|"
+                      r"[A-Z][A-Za-z0-9_-]*(: |=)|(with|env):$|set -euo|echo |#|.*Process completed with exit code|Node 20 is being deprecated)")
+TS_RE = re.compile(r"^\d{4}-\d\d-\d\dT[\d:.]+Z ?")
+PIPELINE_RE = re.compile(r"(.*/job/firmware-build-pipeline/job/PR-\d+)/+(\d+)")
+BOTS = ("fb-github-poster", "ci-orchestrator", "github-actions")
+# jira custom fields for branch coverage
+NEEDED, NOT_NEEDED = "customfield_34840", "customfield_34841"
+
+QUERY = """
+query($q: String!) {
+  search(query: $q, type: ISSUE, first: 50) {
+    nodes {
+      ... on PullRequest {
+        number title url state isDraft updatedAt
+        baseRefName headRefName reviewDecision mergeStateStatus
+        author { login }
+        repository { nameWithOwner }
+        labels(first: 20) { nodes { name } }
+        latestReviews(first: 20) { nodes { state author { login } } }
+        reviewRequests(first: 20) {
+          nodes { requestedReviewer { ... on User { login } ... on Team { name } } }
+        }
+        reviewThreads(first: 100) { nodes { isResolved } }
+        comments(last: 15) { nodes { author { login } body createdAt } }
+        commits(last: 1) { nodes { commit { oid committedDate statusCheckRollup { contexts(first: 100) { nodes {
+          __typename
+          ... on CheckRun { name status conclusion detailsUrl startedAt }
+          ... on StatusContext { context state description targetUrl createdAt }
+        } } } } } }
+      }
+    }
+  }
+}
+"""
+
+GH_ENV = dict(os.environ)
+
+
+def pick_gh_user(requested):
+    """Return the gh login to use: requested, active org login, or any org login."""
+    if requested:
+        return requested
+    try:
+        hosts = json.loads(subprocess.run(
+            ["gh", "auth", "status", "--json", "hosts"], capture_output=True,
+            text=True).stdout)["hosts"].get("github.com", [])
+    except (ValueError, KeyError, OSError):
+        return None
+    ok = [h for h in hosts if h.get("state") == "success"]
+    active = next((h["login"] for h in ok if h.get("active")), None)
+    if active and active.endswith(ORG_LOGIN_SUFFIX):
+        return None  # active account already works
+    return next((h["login"] for h in ok if h["login"].endswith(ORG_LOGIN_SUFFIX)), None)
+
+
+def setup_gh_env(requested):
+    """Pin gh calls to an org login without switching the global account."""
+    user = pick_gh_user(requested)
+    if not user:
+        return
+    try:
+        token = subprocess.run(
+            ["gh", "auth", "token", "--hostname", "github.com", "--user", user],
+            check=True, capture_output=True, text=True).stdout.strip()
+        GH_ENV["GH_TOKEN"] = token
+    except subprocess.CalledProcessError:
+        sys.exit(f"gh has no token for {user}; run: gh auth login")
+
+
+def gh(*args, timeout=60):
+    """Run gh with the pinned token and return stdout."""
+    return subprocess.run(["gh", *args], check=True, capture_output=True,
+                          text=True, env=GH_ENV, timeout=timeout).stdout
+
+
+def http_get(url, timeout=20, headers=None):
+    """Return the body of url as text, or None on failure."""
+    try:
+        req = urllib.request.Request(url, headers=headers or {})
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.read().decode(errors="replace")
+    except Exception:
+        return None
+
+
+def age(ts):
+    """Return a compact age like 3h or 2d for an ISO timestamp."""
+    if not ts:
+        return ""
+    then = dt.datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    secs = (dt.datetime.now(dt.timezone.utc) - then).total_seconds()
+    for unit, size in (("d", 86400), ("h", 3600), ("m", 60)):
+        if secs >= size:
+            return f"{int(secs // size)}{unit}"
+    return "now"
+
+
+def short_user(login):
+    return login.removesuffix(ORG_LOGIN_SUFFIX)
+
+
+# ---------------------------------------------------------------- jira
+
+class Jira:
+    """Cached JIRA lookups of status and Needed/Not needed versions."""
+
+    def __init__(self, enabled):
+        self.cache = {}
+        self.base = self.token = None
+        cfg = Path(os.environ.get("JIRA_CONFIG", Path.home() / ".jira_config"))
+        if enabled and cfg.is_file():
+            conf = dict(l.split("=", 1) for l in cfg.read_text().splitlines()
+                        if "=" in l and not l.lstrip().startswith("#"))
+            self.base, self.token = conf.get("JIRA_URL"), conf.get("JIRA_PERSONAL_TOKEN")
+
+    def fetch(self, keys):
+        """Load any keys not yet cached."""
+        keys = sorted(set(keys) - set(self.cache))
+        if not keys or not self.token:
+            return
+        url = f"{self.base}/rest/api/2/search?" + urllib.parse.urlencode({
+            "jql": f"key in ({','.join(keys)})", "maxResults": len(keys),
+            "fields": f"status,{NEEDED},{NOT_NEEDED}"})
+        body = http_get(url, headers={"Authorization": f"Bearer {self.token}"})
+        if body is None:
+            print("warning: jira lookup failed", file=sys.stderr)
+            return
+        for i in json.loads(body)["issues"]:
+            f = i["fields"]
+            names = lambda v: {x["name"] for x in (v or [])}
+            self.cache[i["key"]] = {"status": f["status"]["name"],
+                                    "needed": names(f.get(NEEDED)),
+                                    "not_needed": names(f.get(NOT_NEEDED))}
+
+    def get(self, key):
+        self.fetch([key])
+        return self.cache.get(key)
+
+
+# ---------------------------------------------------------------- checks
+
+def check_parts(c):
+    """Normalize a CheckRun/StatusContext to (name, state, url, started)."""
+    if c["__typename"] == "CheckRun":
+        state = c["conclusion"] if c["status"] == "COMPLETED" else "PENDING"
+        return c["name"], state or "", c.get("detailsUrl") or "", c.get("startedAt")
+    return c["context"], c["state"], c.get("targetUrl") or "", c.get("createdAt")
+
+
+def summarize_checks(contexts):
+    """Split checks into failed, pending and passed, ignoring orchestrator."""
+    failed, pending, passed = [], [], []
+    for c in contexts:
+        name, state, url, started = check_parts(c)
+        if name == ORCH_CONTEXT or state in ("SKIPPED", "NEUTRAL"):
+            continue
+        item = {"name": name, "state": state, "url": url, "started": started}
+        if state == "SUCCESS":
+            passed.append(item)
+        elif state in ("PENDING", "EXPECTED", "QUEUED", "IN_PROGRESS"):
+            pending.append(item)
+        else:
+            failed.append(item)
+    return failed, pending, passed
+
+
+def is_jenkins(chk):
+    """Return True for Jenkins checks/statuses."""
+    return "jenkins" in chk["url"] or "jenkins" in chk["name"].lower()
+
+
+def short_stage(name):
+    """Shorten a jenkins context name for the table."""
+    return re.sub(r"^.*/(stage/)?", "", name) if "/" in name else name.lower()
+
+
+def jenkins_summary(failed, pending, passed, contexts):
+    """Return a one-cell summary of the latest jenkins pipeline build."""
+    checks = [dict(c, bucket=b) for b, group in
+              (("fail", failed), ("run", pending), ("pass", passed))
+              for c in group if is_jenkins(c)]
+    if not checks:
+        return "-"
+    latest = latest_pipeline_build(contexts)
+    run = max((c for c in checks if c["name"] == "Jenkins"),
+              key=lambda c: c["started"] or "", default=None)
+    start = run["started"] if run else None
+
+    def current(c):
+        m = PIPELINE_RE.search(c["url"])
+        if m and latest and int(m.group(2)) < latest:
+            return False  # older pipeline build
+        return not (start and c["started"] and c["started"] < start)
+
+    cur = [c for c in checks if current(c)]
+    stages = [c for c in cur if "/stage/" in c["name"]]
+    tag = f"#{latest} " if latest else ""
+    running = [short_stage(c["name"]) for c in stages if c["bucket"] == "run"]
+    bad = [short_stage(c["name"]) for c in stages if c["bucket"] == "fail"]
+    if running or (run and run["bucket"] == "run" and run in cur):
+        return f"{tag}running" + (f": {','.join(running)}" if running else "")
+    if bad or any(c["bucket"] == "fail" for c in cur):
+        bad = bad or [short_stage(c["name"]) for c in cur if c["bucket"] == "fail"]
+        return f"{tag}FAIL: {','.join(dict.fromkeys(bad))}"
+    return f"{tag}pass" if cur else f"{tag}stale"
+
+
+def latest_pipeline_build(contexts):
+    """Return the newest firmware-build-pipeline build number seen."""
+    nums = [int(m.group(2)) for c in contexts
+            if (m := PIPELINE_RE.search(check_parts(c)[2]))]
+    return max(nums, default=None)
+
+
+_run_log_cache = {}
+
+
+def actions_failed_log(repo, run_id):
+    """Return {job_name: [clean lines]} for a run's failed jobs."""
+    if run_id not in _run_log_cache:
+        jobs = {}
+        try:
+            out = gh("run", "view", run_id, "--repo", repo, "--log-failed", timeout=120)
+        except Exception:
+            out = ""
+        for line in out.splitlines():
+            parts = ANSI_RE.sub("", line).split("\t", 2)
+            if len(parts) == 3:
+                jobs.setdefault(parts[0], []).append(TS_RE.sub("", parts[2]))
+        _run_log_cache[run_id] = jobs
+    return _run_log_cache[run_id]
+
+
+def error_snippet(lines, n=12):
+    """Return the most relevant error lines for an unknown failure."""
+    marks = [n for n, l in enumerate(lines) if "Process completed with exit code" in l]
+    if marks:
+        lines = lines[:marks[-1]]  # drop post-job cleanup
+    lines = [l.strip() for l in lines if l.strip() and not NOISE_RE.match(l)]
+    hits = [l for l in lines if re.search(r"error|fail|assert|exception|traceback|need|no such|can.t |not found", l, re.I)]
+    return (hits or lines)[-n:]
+
+
+def classify_actions(pr, chk, jira, required_cache):
+    """Classify a failed GitHub Actions job into a blocker item."""
+    m = re.search(r"/actions/runs/(\d+)/job/(\d+)", chk["url"])
+    if not m:
+        return triage(chk, [], "no log url")
+    run_id = m.group(1)
+    lines = actions_failed_log(pr["repo"], run_id).get(chk["name"], [])
+    text = "\n".join(lines)
+    rerun = f"gh run rerun {run_id} --failed --repo {pr['repo']}"
+
+    # story ticket must be In Progress
+    if (m2 := re.search(r"Story tickets: \[([^\]]*)\]\. need to be 'In Progress'", text)):
+        keys = re.findall(TICKET_RE, m2.group(1))
+        jira.fetch(keys)
+        if not jira.token:
+            return item("manual", f"{chk['name']}: {','.join(keys)} must be In Progress "
+                        "(no JIRA access to verify), then rerun", cmd=rerun)
+        bad = [k for k in keys if (jira.get(k) or {}).get("status") != "In Progress"]
+        if not bad:
+            return item("stale", f"{chk['name']}: tickets now In Progress", cmd=rerun)
+        return item("manual", f"{chk['name']}: move {','.join(bad)} to In Progress, then rerun",
+                    cmd=rerun)
+
+    # bug ticket without needed field
+    if (m2 := re.search(r"Bug tickets: \[([^\]]*)\]\. need to have 'Needed' field set", text)):
+        keys = re.findall(TICKET_RE, m2.group(1))
+        jira.fetch(keys)
+        bad = [k for k in keys if not (jira.get(k) or {}).get("needed")]
+        if not bad:
+            return item("stale", f"{chk['name']}: Needed now set on {','.join(keys)}", cmd=rerun)
+        return item("decide", f"{chk['name']}: set JIRA Needed on {','.join(bad)}, then rerun",
+                    cmd=rerun)
+
+    # jira needed/not-needed coverage
+    if "Needed / Not Needed coverage" in text or "missing branch coverage" in text:
+        req = re.search(r"required label coverage \(\d+\): \[([^\]]*)\]", text)
+        required = set(re.findall(r"'([^']+)'", req.group(1))) if req else set()
+        required_cache.update(required)
+        keys = re.findall(r"Checking JIRA tickets: \[([^\]]*)\]", text)
+        keys = re.findall(TICKET_RE, keys[0]) if keys else [pr["ticket"]]
+        jira.fetch(keys)
+        gaps = {}
+        for k in keys:
+            j = jira.get(k)
+            if not j or not required:
+                gaps[k] = "unknown"
+                continue
+            missing = required - j["needed"] - j["not_needed"]
+            both = j["needed"] & j["not_needed"]
+            if missing or both:
+                gaps[k] = ", ".join(filter(None, [
+                    f"unset {','.join(sorted(missing))}" if missing else "",
+                    f"in both {','.join(sorted(both))}" if both else ""]))
+        if not gaps:
+            return item("stale", f"{chk['name']}: JIRA Needed/Not needed now complete", cmd=rerun)
+        detail = "; ".join(f"{k} {v}" for k, v in gaps.items())
+        return item("decide", f"{chk['name']}: set JIRA Needed/Not needed ({detail}), then rerun",
+                    cmd=rerun)
+
+    # cbt mapping on files missing from a stale head
+    cbt_missing = len(re.findall(r"not exist, cannot be verified|to be verified does not exist", text))
+    if "check-cbt-mapping" in chk["name"] and cbt_missing:
+        n = cbt_missing
+        behind = compare_behind(pr)
+        return item("manual", f"{chk['name']}: {n} base files missing from head, "
+                    f"branch {behind} commits behind {pr['base']}; rebase and push")
+
+    if chk["name"] == "check-unique" and " FALSE " in text:
+        dups = re.findall(r"\[ERROR\] (Change-Id|JIRA): (\S+) FALSE (\w+)", text)
+        detail = ", ".join(f"{k} {v} on {c}" for k, v, c in dups)
+        return item("triage", f"{chk['name']}: commit not unique vs base ({detail})",
+                    url=chk["url"], hint="check whether these commits already landed on the "
+                    "base branch; amend Change-Id/JIRA or drop the commit")
+
+    return triage(chk, error_snippet(lines), "github actions")
+
+
+def compare_behind(pr):
+    """Return how many commits the PR head is behind its base."""
+    try:
+        return gh("api", f"repos/{pr['repo']}/compare/{pr['base']}...{pr['head_oid']}",
+                  "-q", ".behind_by").strip()
+    except Exception:
+        return "?"
+
+
+def jenkins_tail(build_url, nbytes=400_000):
+    """Return the last nbytes of a Jenkins build console."""
+    base = build_url.rstrip("/")
+    try:
+        req = urllib.request.Request(f"{base}/logText/progressiveText?start=999999999999")
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            size = int(resp.headers.get("X-Text-Size", "0"))
+    except Exception:
+        return None
+    return http_get(f"{base}/logText/progressiveText?start={max(0, size - nbytes)}", timeout=60)
+
+
+def precommit_failures(build_url):
+    """Return (result line, failed suite rows) from a precommit TEST REPORT."""
+    tail = jenkins_tail(build_url) or ""
+    if "TEST REPORT" not in tail:
+        return None, []
+    report = tail[tail.rindex("TEST REPORT"):].splitlines()
+    result = next((l.strip() for l in report if "RESULT:" in l), None)
+    rows = [re.sub(r"^\S+ \S+ \[\w+\]\s*", "", l).strip() for l in report
+            if re.search(r"\]\s+FAIL\s+\w", l) or re.match(r"\s+FAIL\s+\w", l)]
+    return result, rows[:15]
+
+
+def classify_jenkins(pr, checks, contexts):
+    """Classify failed Jenkins checks as one item per pipeline build."""
+    latest = latest_pipeline_build(contexts)
+    names = ", ".join(c["name"] for c in checks)
+    builds = {int(m.group(2)) for c in checks if (m := PIPELINE_RE.search(c["url"]))}
+    if latest and builds and max(builds) < latest and all(
+            PIPELINE_RE.search(c["url"]) for c in checks):
+        return item("stale", f"jenkins build {max(builds)} superseded by build {latest} ({names})")
+    pipe = next((m for c in checks if (m := PIPELINE_RE.search(c["url"]))), None)
+    if not latest or not pipe:
+        return triage({"name": names, "url": checks[0]["url"]}, [], "jenkins")
+    console = ""
+    for num in sorted({latest, *builds}, reverse=True):
+        build_url = f"{pipe.group(1)}/{num}/"
+        if console := http_get(build_url + "consoleText") or "":
+            latest = num
+            break
+    if not console:
+        return item("manual", f"jenkins logs purged ({names}); push or rebuild to rerun CI",
+                    url=f"{pipe.group(1)}/")
+    lines = console.splitlines()
+    errs = [l for l in lines if l.startswith("ERROR:")]
+
+    if "is_merge_ready label not set" in console:
+        if "is_merge_ready" in pr["labels"]:
+            return item("manual", f"jenkins build {latest} ran before is_merge_ready was set; "
+                        "rebuild in Jenkins", url=build_url)
+        return item("run", "jenkins needs is_merge_ready label",
+                    cmd=["gh", "pr", "edit", str(pr["number"]), "--repo", pr["repo"],
+                         "--add-label", "is_merge_ready"])
+    if any("was cancelled" in l for l in errs):
+        return item("manual", f"jenkins build {latest}: {errs[-1][7:]}; rebuild in Jenkins",
+                    url=build_url)
+    pc = next((re.search(r"JOB: (\S+) BUILD NUMBER: (\d+)", l) for l in errs
+               if "BUILD NUMBER" in l), None)
+    if pc:
+        root = build_url.split("/job/")[0]
+        pc_url = f"{root}/job/{pc.group(1)}/{pc.group(2)}/"
+        result, rows = precommit_failures(pc_url)
+        return triage({"name": f"{pc.group(1)} #{pc.group(2)}", "url": pc_url},
+                      ([result] if result else []) + rows, "precommit",
+                      hint=f"fw-tpe-fetch-logs PR-{pr['number']}; check if failure is "
+                           "related to the diff or a known flake")
+    return triage({"name": f"jenkins build {latest}", "url": build_url},
+                  error_snippet(lines[-200:]), "jenkins")
+
+
+def item(kind, msg, cmd=None, url=None, **extra):
+    """Build a blocker item; cmd is an argv list or a shell-style string."""
+    argv = shlex.split(cmd) if isinstance(cmd, str) else cmd
+    return {"kind": kind, "msg": msg, "argv": argv,
+            "cmd": shlex.join(argv) if argv else None, "url": url, **extra}
+
+
+def triage(chk, snippet, source, hint=""):
+    return item("triage", f"{chk['name']}: unrecognized {source} failure",
+                url=chk["url"], snippet=snippet, hint=hint)
+
+
+# ---------------------------------------------------------------- pr
+
+def orch_status(pr_raw, contexts):
+    """Return (short, desc, url, state) for the PR's orchestrator state."""
+    for c in pr_raw["comments"]["nodes"]:
+        login = (c.get("author") or {}).get("login", "")
+        m = re.search(r"Successfully merged .*?Orchestrator job (\d+)", c["body"])
+        if login.startswith("ci-orchestrator") and m:
+            return "merged", f"job {m.group(1)}", None, "merged"
+    ctx = next((c for c in contexts if c.get("context") == ORCH_CONTEXT), None)
+    if not ctx:
+        return "", "", None, ""
+    desc, url, state = ctx.get("description") or "", ctx.get("targetUrl"), ctx["state"]
+    job = re.search(r"job id: (\d+)", desc)
+    plan = re.search(r"/testplan/(\d+)", url or "")
+    if state == "PENDING":
+        if "queued" in desc:
+            short, st = (f"queued (job {job.group(1)})" if job else "queued"), "queued"
+        elif plan:
+            short, st = f"testing (plan {plan.group(1)})", "testing"
+        else:
+            short, st = desc or "pending", "pending"
+    elif state == "SUCCESS":
+        short, st = "passed, merging", "merging"
+    else:
+        short, st = (f"FAILED: {desc}" if desc else "FAILED"), "failed"
+    return f"{short} {age(ctx.get('createdAt'))}".strip(), desc, url, st
+
+
+def review_status(pr_raw):
+    """Return (summary, approved list, changes list, waiting list)."""
+    reviews = pr_raw["latestReviews"]["nodes"]
+    who = lambda st: [r["author"]["login"] for r in reviews
+                      if r["state"] == st and r.get("author")]
+    approved, changes = who("APPROVED"), who("CHANGES_REQUESTED")
+    waiting = [(r.get("requestedReviewer") or {}).get("login")
+               or (r.get("requestedReviewer") or {}).get("name") or "?"
+               for r in pr_raw["reviewRequests"]["nodes"]]
+    names = lambda l: ",".join(map(short_user, l))
+    if pr_raw["isDraft"]:
+        s = "draft"
+    elif changes:
+        s = f"changes req ({names(changes)})"
+    elif pr_raw["reviewDecision"] == "APPROVED":
+        s = f"approved ({names(approved)})" if approved else "approved"
+    elif waiting:
+        s = f"waiting ({names(waiting)})"
+    else:
+        s = (pr_raw["reviewDecision"] or "none").lower().replace("_", " ")
+    return s, approved, changes, waiting
+
+
+def unanswered_comments(pr_raw, last_push):
+    """Return reviewer comments with no later reply from the PR author."""
+    author = pr_raw["author"]["login"]
+    out = []
+    for c in pr_raw["comments"]["nodes"]:
+        login = (c.get("author") or {}).get("login", "")
+        body = c["body"].strip()
+        if login == author:
+            out = []  # author replied to everything before this
+        elif login and not login.startswith(BOTS) and not body.startswith("merge-me"):
+            out.append({"author": short_user(login), "body": body[:500], "at": c["createdAt"],
+                        "pushed_after": bool(last_push and last_push > c["createdAt"])})
+    return out
+
+
+def analyze(pr_raw, jira, args):
+    """Build the row and blocker items for one PR."""
+    commit = (pr_raw["commits"]["nodes"] or [{"commit": {}}])[0]["commit"]
+    rollup = commit.get("statusCheckRollup")
+    contexts = rollup["contexts"]["nodes"] if rollup else []
+    failed, pending, passed = summarize_checks(contexts)
+    orch, orch_desc, orch_url, orch_state = orch_status(pr_raw, contexts)
+    review, approved, changes, waiting = review_status(pr_raw)
+    m = TICKET_RE.search(pr_raw["title"]) or TICKET_RE.search(pr_raw["headRefName"])
+    labels = [l["name"] for l in pr_raw["labels"]["nodes"]]
+    state = "merged" if orch_state == "merged" else pr_raw["state"].lower()
+    pr = {"number": pr_raw["number"], "url": pr_raw["url"], "title": pr_raw["title"],
+          "repo": pr_raw["repository"]["nameWithOwner"], "base": pr_raw["baseRefName"],
+          "head_oid": commit.get("oid"), "state": state, "labels": labels,
+          "ticket": m.group(0) if m else "", "updated": age(pr_raw["updatedAt"]),
+          "review": review if state == "open" else "-", "orch": orch,
+          "orch_url": orch_url, "orch_state": orch_state}
+
+    items, required = [], set()
+    if state == "open":
+        jenkins = []
+        for chk in failed:
+            if "/actions/runs/" in chk["url"]:
+                items.append(classify_actions(pr, chk, jira, required))
+            elif is_jenkins(chk):
+                jenkins.append(chk)
+            else:
+                items.append(triage(chk, [], "check"))
+        if jenkins:
+            items.append(classify_jenkins(pr, jenkins, contexts))
+        # a stale jenkins failure only matters until its replacement finishes
+        live = [i for i in items if i["kind"] != "stale"]
+
+        if orch_state == "failed":
+            plan = re.search(r"/testplan/(\d+)", orch_url or "")
+            items.append(item("triage", f"orchestrator failed: {orch_desc}", url=orch_url,
+                              hint=f"fw-tpe-investigate {plan.group(1)}" if plan else ""))
+        elif orch_state == "queued" and shutil.which("orchestrator"):
+            job = re.search(r"job id: (\d+)", orch_desc)
+            if job:
+                out = subprocess.run(
+                    ["orchestrator", "--repo-name", f"{pr['repo']}.git", "job_status",
+                     job.group(1)], capture_output=True, text=True, timeout=30).stdout
+                items.append(item("info", f"orchestrator job {job.group(1)}", snippet=out.splitlines()))
+
+        unresolved = sum(not t["isResolved"] for t in pr_raw["reviewThreads"]["nodes"])
+        comments = unanswered_comments(pr_raw, commit.get("committedDate") or "")
+        if changes or unresolved or comments:
+            parts = [f"changes requested by {','.join(map(short_user, changes))}" if changes else "",
+                     f"{unresolved} unresolved threads" if unresolved else "",
+                     f"{len(comments)} unanswered comments" if comments else ""]
+            items.append(item("review", "; ".join(filter(None, parts)), comments=comments))
+
+        ready = (not pr_raw["isDraft"] and pr_raw["reviewDecision"] == "APPROVED"
+                 and not live and not pending and not orch_state and not changes)
+        if ready and "is_merge_ready" not in labels:
+            items.append(item("run", "approved + green; add is_merge_ready label",
+                              cmd=f"gh pr edit {pr['number']} --repo {pr['repo']} --add-label is_merge_ready"))
+        elif ready:
+            items.append(item("run", "approved + green, not in orchestrator; submit merge-me",
+                              cmd=["gh", "pr", "comment", str(pr["number"]), "--repo", pr["repo"],
+                                   "--body", "merge-me"]))
+        elif not live and pending:
+            items.append(item("wait", f"{len(pending)} checks running"))
+        elif not pr_raw["isDraft"] and waiting and not approved:
+            items.append(item("wait", f"review from {','.join(map(short_user, waiting))}"))
+
+    gh_failed = [c for c in failed if not is_jenkins(c)]
+    gh_pending = [c for c in pending if not is_jenkins(c)]
+    gh_passed = [c for c in passed if not is_jenkins(c)]
+    if gh_failed:
+        ci = f"FAIL {len(gh_failed)}" + (f", {len(gh_pending)} running" if gh_pending else "")
+    elif gh_pending:
+        ci = f"running {len(gh_pending)}"
+    else:
+        ci = "pass" if gh_passed else "none"
+    pr["jenkins"] = jenkins_summary(failed, pending, passed, contexts)
+    pr["ci"] = ci
+    # one rerun covers every failed job in the same run
+    seen = {}
+    for it in items:
+        if it["cmd"] in seen:
+            seen[it["cmd"]]["msg"] += f"; {it['msg']}"
+            it["kind"] = "dup"
+        elif it["cmd"]:
+            seen[it["cmd"]] = it
+    items = [it for it in items if it["kind"] != "dup"]
+    for n, it in enumerate(items, 1):
+        it["id"] = f"{pr['number']}.{n}"
+    pr["items"] = items
+    pr["next"] = next_step(items)
+    return pr
+
+
+PRIORITY = ["triage", "decide", "manual", "review", "stale", "run", "wait", "info"]
+NEXT_LABEL = {"triage": "investigate", "decide": "decide JIRA", "manual": "fix",
+              "review": "address review", "stale": "rerun", "run": "", "wait": "wait"}
+
+
+def next_step(items):
+    """Return a short next-step label for the table."""
+    if not items:
+        return "-"
+    top = min(items, key=lambda i: PRIORITY.index(i["kind"]))
+    if top["kind"] == "run":
+        return "merge-me" if "merge-me" in (top["cmd"] or "") else "add label"
+    if top["kind"] == "stale" and not top["cmd"]:
+        return "wait (stale)"
+    if top["kind"] == "manual":
+        if "rebase" in top["msg"]:
+            return "rebase"
+        if "In Progress" in top["msg"]:
+            return "JIRA status"
+        if "rebuild" in top["msg"]:
+            return "rebuild"
+    if top["kind"] == "wait" and top["msg"].startswith("review"):
+        return "wait review"
+    return NEXT_LABEL.get(top["kind"], top["kind"])
+
+
+# ---------------------------------------------------------------- output
+
+def truncate(s, n):
+    return s if len(s) <= n else s[: n - 1] + "…"
+
+
+def render(prs, args, jira):
+    """Print the status table and per-PR blocker list."""
+    multi_repo = len({p["repo"] for p in prs}) > 1
+    head = ["PR", "Title", "Base", "Review", "CI", "Jenkins", "Orchestrator", "JIRA", "Next", "Upd"]
+    if args.state != "open":
+        head.insert(2, "State")
+    out = ["| " + " | ".join(head) + " |", "|" + "---|" * len(head)]
+    for p in prs:
+        num = f"{p['repo'].split('/')[-1]}#{p['number']}" if multi_repo else f"#{p['number']}"
+        j = jira.cache.get(p["ticket"]) if p["ticket"] else None
+        ticket = f"{p['ticket']} ({j['status']})" if j else (p["ticket"] or "-")
+        cells = [num, truncate(p["title"], args.width), p["base"], p["review"], p["ci"],
+                 p["jenkins"],
+                 p["orch"] or "-", ticket, p["next"], p["updated"]]
+        if args.state != "open":
+            cells.insert(2, p["state"])
+        out.append("| " + " | ".join(c.replace("|", "/") for c in cells) + " |")
+    print("\n".join(out))
+
+    shown = [p for p in prs if any(i["kind"] != "wait" or args.verbose for i in p["items"])]
+    if shown:
+        print()
+    for p in shown:
+        print(f"#{p['number']} {truncate(p['title'], 60)}")
+        for i in p["items"]:
+            if i["kind"] == "wait" and not args.verbose:
+                continue
+            print(f"  [{i['id']}] {i['kind']:<6} {i['msg']}")
+            if i.get("cmd"):
+                print(f"           $ {i['cmd']}")
+            if i.get("url"):
+                print(f"           {i['url']}")
+            if i.get("hint"):
+                print(f"           hint: {i['hint']}")
+            for c in i.get("comments") or []:
+                tag = " (pushed since)" if c["pushed_after"] else ""
+                print(f"           {c['author']}{tag}: {truncate(' '.join(c['body'].split()), 150)}")
+            for line in (i.get("snippet") or [])[:12]:
+                print(f"           | {truncate(line, 160)}")
+
+
+def run_items(prs, ids):
+    """Execute the commands attached to the given blocker item ids."""
+    items = {i["id"]: i for p in prs for i in p["items"]}
+    rc = 0
+    for item_id in ids:
+        i = items.get(item_id)
+        if not i or not i.get("argv"):
+            print(f"skip {item_id}: " + (i["msg"] if i else "no such item"), file=sys.stderr)
+            rc = 1
+            continue
+        print(f"$ {i['cmd']}")
+        rc |= subprocess.run(i["argv"], env=GH_ENV).returncode
+    sys.exit(rc)
+
+
+def build_query(args):
+    q = f"is:pr author:{args.author}"
+    if args.repo != "all":
+        q += f" repo:{args.repo}"
+    since = (dt.date.today() - dt.timedelta(days=args.days)).isoformat()
+    if args.state == "open":
+        q += " is:open" + ("" if args.drafts else " draft:false")
+    elif args.state == "closed":
+        q += f" is:closed closed:>={since}"
+    else:
+        q += f" updated:>={since}"
+    if args.pr:
+        q += " " + " ".join(str(n) for n in args.pr)
+    return q + " sort:updated-desc"
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("pr", nargs="*", type=int, help="limit to these PR numbers")
+    ap.add_argument("--repo", default=DEFAULT_REPO, help="owner/name or 'all'")
+    ap.add_argument("--author", default="@me", help="PR author login (default: you)")
+    ap.add_argument("--gh-user", default=os.environ.get("FW_PR_STATUS_GH_USER"),
+                    help="gh login to query as (default: active org login; "
+                         "env FW_PR_STATUS_GH_USER)")
+    ap.add_argument("--state", choices=["open", "closed", "all"], default="open")
+    ap.add_argument("--days", type=int, default=7, help="window for --state closed/all")
+    ap.add_argument("--drafts", action="store_true", help="include draft PRs")
+    ap.add_argument("--no-jira", action="store_true", help="skip JIRA lookups")
+    ap.add_argument("--width", type=int, default=40, help="title column width")
+    ap.add_argument("-v", "--verbose", action="store_true", help="show wait items too")
+    ap.add_argument("--json", action="store_true", help="emit rows and items as JSON")
+    ap.add_argument("--run", metavar="IDS",
+                    help="comma-separated item ids whose command to execute (e.g. 9226.1,9231.1)")
+    args = ap.parse_args()
+
+    setup_gh_env(args.gh_user)
+    q = build_query(args)
+    try:
+        out = gh("api", "graphql", "-f", f"query={QUERY}", "-f", f"q={q}")
+    except subprocess.CalledProcessError as e:
+        sys.exit(f"gh query failed: {e.stderr.strip()}")
+    raw = [n for n in json.loads(out)["data"]["search"]["nodes"] if n]
+    if args.pr:
+        raw = [r for r in raw if r["number"] in args.pr]
+
+    jira = Jira(not args.no_jira)
+    titles = [TICKET_RE.search(r["title"]) or TICKET_RE.search(r["headRefName"]) for r in raw]
+    jira.fetch([m.group(0) for m in titles if m])
+    with cf.ThreadPoolExecutor(8) as pool:
+        prs = list(pool.map(lambda r: analyze(r, jira, args), raw))
+
+    if args.run:
+        run_items(prs, args.run.split(","))
+    if args.json:
+        for p in prs:
+            p["jira"] = {k: (sorted(v) if isinstance(v, set) else v)
+                         for k, v in (jira.cache.get(p["ticket"]) or {}).items()}
+        print(json.dumps(prs, indent=2))
+    elif not prs:
+        print(f"no PRs matching: {q}")
+    else:
+        render(prs, args, jira)
+
+
+if __name__ == "__main__":
+    main()

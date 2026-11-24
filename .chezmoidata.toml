@@ -7,14 +7,12 @@ dev-jasyang-sim = "fw-work"
 provider = "openai-codex"
 default = "gpt-6.1-sol"
 top = "openai-codex/gpt-6.1-sol"
-mid = "openai-codex/gpt-6-sol"
+mid = "openai-codex/gpt-6.1-sol"
 low = "openai-codex/gpt-6-luna"
 enabled = [
   "openai-codex/gpt-6.1-sol",
   "openai-codex/gpt-6-sol",
   "openai-codex/gpt-6-luna",
-  "openai-codex/gpt-5.3-codex-spark",
-  "openai-codex/gpt-5.5",
 ]
 
 [profiles.fw-work.models]

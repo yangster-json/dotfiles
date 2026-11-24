@@ -28,6 +28,15 @@ rename a symbol) → one `sed`, one Write, or one `edit` call with multiple
 `edits[]` entries. Batch independent tool calls into one message.
 Preplan tool calls; batch the independent ones.
 
+# Output budget
+
+Every tool result stays in context for the rest of the session.
+- Bound bash output: pipe through `head`/`tail`/`grep -m`/`wc -l`; use
+  `--stat`, `-q`, `--oneline`. Send noisy logs to a file and grep it.
+- Write a file once; change it with `edit`, never by rewriting it.
+- Don't paste file content back into heredocs that already exists on disk.
+- Delegate broad log digging/greps to a subagent; take back only the summary.
+
 # Long-running commands
 
 Anything that may outlive a tool call: run it, or a wait loop for a detached
@@ -43,6 +52,12 @@ with `setsid nohup`, then task:
 ```
 
 Bracket the pattern's first char or pgrep matches its own shell.
+
+# Plannotator
+
+Never call the `plannotator` tool (annotate/review/last) on your own initiative.
+Open a browser review only when I explicitly ask in that request. `list` and
+`close` are fine anytime.
 
 # Communication
 
