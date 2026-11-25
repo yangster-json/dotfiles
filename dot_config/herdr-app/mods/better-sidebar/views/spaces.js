@@ -57,6 +57,25 @@ const AVATAR_COLORS = {
   ansi1: "#d9649a",
 };
 
+// Each worktree under a repo gets its own Catppuccin Mocha accent, by its place
+// among its siblings, ordered so neighbours contrast.
+const WORKTREE_COLORS = [
+  "#89b4fa", // blue
+  "#fab387", // peach
+  "#a6e3a1", // green
+  "#f5c2e7", // pink
+  "#94e2d5", // teal
+  "#f9e2af", // yellow
+  "#cba6f7", // mauve
+  "#89dceb", // sky
+  "#eba0ac", // maroon
+  "#b4befe", // lavender
+  "#f2cdcd", // flamingo
+  "#74c7ec", // sapphire
+  "#f38ba8", // red
+  "#f5e0dc", // rosewater
+];
+
 // A space speaks up only when something in it needs you.
 function glyph(status) {
   return status === "blocked" || status === "done" ? "●" : "·";
@@ -404,7 +423,9 @@ export class Spaces {
       out.push({ ...r, tree: null, kids: kids.length });
       if (!first) continue;
       placed.add(r.g.repo);
-      kids.forEach((k, n) => out.push({ ...k, tree: n === kids.length - 1 ? "└─" : "├─" }));
+      kids.forEach((k, n) =>
+        out.push({ ...k, tree: n === kids.length - 1 ? "└─" : "├─", hue: WORKTREE_COLORS[n % WORKTREE_COLORS.length] }),
+      );
     }
     // Herdr's own order nests the worktrees too, so the model and the list
     // agree and the number keys pick the space the row shows.
@@ -941,7 +962,7 @@ export class Spaces {
   }
   // ── Expanded/compact rows and sidebar rendering ──────────────────────────
 
-  row({ w, i, g, tree }, t) {
+  row({ w, i, g, tree, hue }, t) {
     const status = this.checkoutStatus(w);
     const hasPRLine = Boolean(status?.error);
     // One row is lit: under the lists view, the focused agent beneath takes it.
@@ -960,7 +981,7 @@ export class Spaces {
         el.opacity(0.5),
       )
       .on_mouse_down("right", () => this.menu(w))
-      .child(this.rowTitle(w, g, tree, t))
+      .child(this.rowTitle(w, g, tree, t, hue))
       .when(hasPRLine, (el) => el.child(this.prLine(w, t, Boolean(tree))));
     if (this.pressed !== null && this.over === w.id && this.pressed !== w.id)
       row.child(this.dropLine(w, t));
@@ -1017,14 +1038,22 @@ export class Spaces {
       });
   }
 
-  rowTitle(w, g, tree, t) {
+  rowTitle(w, g, tree, t, hue) {
     return h_flex()
       .gap(9)
       .items_center()
-      .when(Boolean(tree), (el) => el.when(!this.under, (e) => e.pl(22)).child(Icon("branch", 13).text_color(t.dim)))
+      .when(Boolean(tree), (el) =>
+        el.when(!this.under, (e) => e.pl(22)).child(Icon("branch", 13).text_color(hue ?? t.dim)),
+      )
       .when(!tree, (el) => el.child(this.avatar(w, t)))
       .child(
-        div().flex_initial().min_w(48).truncate().tooltip(w.name).text_color(t.foreground).child(w.name),
+        div()
+          .flex_initial()
+          .min_w(48)
+          .truncate()
+          .tooltip(w.name)
+          .text_color((tree && hue) || t.foreground)
+          .child(w.name),
       )
       .child(this.branchName(g, w.name, t))
       .child(this.gitTail(g, w.active, t, w));
