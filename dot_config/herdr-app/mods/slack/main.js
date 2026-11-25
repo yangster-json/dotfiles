@@ -24,15 +24,24 @@ import { v_flex, h_flex, InputState, Input } from "gpui-base";
 import { WebSocket } from "websocket";
 import EMOJI_NAMES from "./emoji-map.js";
 import { call, AUTH_ERRORS, missingScopes, newWizard, renderSetup, runCheck, saveTokens, removeTokens, button, lock } from "./setup.js";
-import { theme, settings, props as given, appHome, readTextFile, notify, shared, setShared, nextCommand, exec, home, window as appWindow, playSound, run } from "herdr";
+import { theme, settings, props as given, appHome, readTextFile, notify, shared, setShared, nextCommand, exec, home, window as appWindow, playSound, run, checking } from "herdr";
+import { loadSettings, duration } from "./settings.js";
 
 const NAME = "slack";
 const ICON = (name) => `mods/${NAME}/${name}.svg`;
 const STATE = "slack.state", CMD = "slack.cmd", UNREAD = "slack.unread", PEOPLE = "slack.people";
-const HYDRATE_DAYS = 60; // a conversation last heard from longer ago than this is not looked at again
 const HYDRATE_MS = 1500; // between those calls: Slack allows about 50 a minute
-const HISTORY = 40;
-const SHOWN = 100; // rows in a group
+
+// Preferences a person may change in the installed mod.json under `settings` (Better Config
+// edits them). Tokens never go here: they stay in data/slack/.
+const DEFAULT_SETTINGS = {
+  toasts: { duration: "12s", soundGap: "1.5s" },
+  history: { pageSize: 40 },
+  list: { rowsPerGroup: 100 },
+  catchUp: { days: 60, unreadDays: 14 },
+};
+// A whole number of at least 1, else the default's.
+const count = (value, fallback) => (Number.isFinite(value) && value >= 1 ? Math.floor(value) : fallback);
 const KIND_ICON = { im: "user", mpim: "users", group: "lock", channel: "hash" };
 const GROUPS = [
   { id: "dm", label: "Direct messages", kinds: ["im", "mpim"] },
@@ -148,6 +157,24 @@ export default class Slack extends View {
   init(initial, cx) {
     const p = given() ?? initial ?? {};
     this.isBg = Boolean(p.bg);
+    // Settings: the defaults at once, mod.json's once read (the catch-up waits for them).
+    this.settings = DEFAULT_SETTINGS;
+    this.settingsLoaded = Promise.resolve();
+    if (!checking()) {
+      let loaded;
+      this.settingsLoaded = new Promise((done) => { loaded = done; });
+      cx.spawn(async (cx) => {
+        try {
+          const { settings: s, problems } = await loadSettings(NAME, DEFAULT_SETTINGS);
+          this.settings = s;
+          for (const problem of problems) console.warn(`slack mod.json settings: ${problem}`);
+        } finally {
+          loaded();
+          this.dirty = true;
+          cx.notify();
+        }
+      });
+    }
     if (this.isBg) return this.initBg(cx);
     // The panel: its own inputs, and the last command it waits on.
     this.filter = InputState.new();
@@ -429,6 +456,7 @@ export default class Slack extends View {
   }
 
   async boot(cx, gen) {
+    await this.settingsLoaded;
     this.appToken = await this.readToken("app-token");
     this.userToken = await this.readToken("user-token");
     if (gen !== this.gen) return;
@@ -525,7 +553,7 @@ export default class Slack extends View {
     // channels, then group chats; those already known quiet for 60 days are left alone.
     // The first start goes through all of them (about 10 minutes, and the list reorders as
     // they arrive); later starts begin from the kept last messages.
-    const since = Date.now() - HYDRATE_DAYS * 86400000;
+    const since = Date.now() - count(this.settings.catchUp.days, DEFAULT_SETTINGS.catchUp.days) * 86400000;
     const rank = (c) => (c.kind === "im" ? 0 : c.kind === "mpim" ? 2 : 1);
     const todo = [...this.convs.values()]
       .filter((c) => !c.dormant && (c.ts ? c.ts > since : true))
@@ -557,7 +585,7 @@ export default class Slack extends View {
     this.cacheDirty = true;
     const mine = latest.user === this.me.id;
     // Older than two weeks is history, not news (an old app DM stays "unread" in Slack for ever).
-    const fresh = Number(latest.ts) > Number(this.seen[c.id] ?? 0) && Date.now() - c.ts < 14 * 86400000;
+    const fresh = Number(latest.ts) > Number(this.seen[c.id] ?? 0) && Date.now() - c.ts < count(this.settings.catchUp.unreadDays, DEFAULT_SETTINGS.catchUp.unreadDays) * 86400000;
     c.unread = 0;
     if (!mine && fresh) {
       const j = await this.api("conversations.info", { channel: c.id });
@@ -770,7 +798,7 @@ export default class Slack extends View {
       title: c.kind === "im" ? n.title : `${n.title} · ${n.where}`,
       body: n.body,
       level: "info",
-      timeout: 12000,
+      timeout: duration(this.settings.toasts.duration, 12000),
       icon: this.avatars[n.uid] ?? ICON("toast-icon"),
       action: { name: `${NAME}.${go}` },
     });
@@ -780,7 +808,7 @@ export default class Slack extends View {
   // Slack's sound (mods/slack/knock.mp3), once at most every 1.5 s, unless sounds are off in
   // Herdr's settings or in the Slack panel's gear menu.
   ding() {
-    if (!this.soundOn || settings()?.sounds?.enabled === false || Date.now() - (this.dinged ?? 0) < 1500) return;
+    if (!this.soundOn || settings()?.sounds?.enabled === false || Date.now() - (this.dinged ?? 0) < duration(this.settings.toasts.soundGap, 1500)) return;
     this.dinged = Date.now();
     try { playSound(`mods/${NAME}/knock.mp3`); } catch (_) {}
   }
@@ -875,14 +903,15 @@ export default class Slack extends View {
   }
 
   async fetchMessages(id, before) {
-    const params = { channel: id, limit: String(HISTORY) };
+    const pageSize = count(this.settings.history.pageSize, DEFAULT_SETTINGS.history.pageSize);
+    const params = { channel: id, limit: String(pageSize) };
     if (before) params.latest = before;
     const j = await this.api("conversations.history", params);
     if (!j.ok) throw new Error(`Slack says ${j.error}`);
     const msgs = (j.messages ?? []).slice().reverse();
     await this.resolveUsers([...msgs.map((m) => m.user), ...msgs.flatMap((m) => m.reply_users ?? [])]);
     for (const m of msgs) for (const mention of String(m.text ?? "").matchAll(/<@([UW][A-Z0-9]+)/g)) await this.resolveUsers([mention[1]]);
-    return { msgs, more: (j.messages ?? []).length >= HISTORY };
+    return { msgs, more: (j.messages ?? []).length >= pageSize };
   }
 
   async openConv(id) {
@@ -1206,7 +1235,7 @@ export default class Slack extends View {
         .child(div().child(String(rows.length)))
         .child(div().flex_1())
         .when(!open && unread > 0, (el) => el.child(div().px(5).rounded(8).bg(t.blocked).text_size(10.5).font_semibold().text_color("#ffffff").child(String(unread)))));
-      if (open) for (const c of rows.slice(0, SHOWN)) children.push(this.row(t, c));
+      if (open) for (const c of rows.slice(0, count(this.settings.list.rowsPerGroup, DEFAULT_SETTINGS.list.rowsPerGroup))) children.push(this.row(t, c));
     }
     return v_flex().flex_1().min_h(0)
       .child(div().relative().flex_none().mx(8).mt(8).mb(4)

@@ -1,1 +1,1 @@
-{ "place": "none", "title": "Splits Nav", "overlay": { "kind": "dialog", "width": 560 } }
+{ "$schema": "./mod.schema.json", "place": "none", "title": "Splits Nav", "overlay": { "kind": "dialog", "width": 560 } }

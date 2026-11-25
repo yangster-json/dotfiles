@@ -2,7 +2,8 @@
 // in the same panel. It only reads: nothing here writes to GitHub or sends to an agent.
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex, Scrollbar, TextView, v_virtual_list, TextareaState, Textarea } from "gpui-base";
-import { agents, panes, spaces, focused, exec, run, theme, props, settings, shared, setShared, nextCommand, window as appWindow } from "herdr";
+import { agents, panes, spaces, focused, exec, run, theme, props, settings, shared, setShared, nextCommand, window as appWindow, checking } from "herdr";
+import { loadSettings, duration } from "./settings.js";
 import { MERGE_METHODS, createGh, parseRemote, parseWorktrees, runIdFromUrl } from "./gh.js";
 import { createTracker } from "./tracker.js";
 import { translator, relative, effectiveLang } from "./i18n.js";
@@ -16,7 +17,25 @@ const MOD = "pr-flow";
 const VIEW_KEY = "pr-flow.view";
 const LANG_KEY = "pr-flow.lang";
 const TICK_MS = 5000;
-const FILES_FOLD_AT = 10; // more changed files than this start folded
+// Preferences a person may change in the installed mod.json under `settings` (Better Config
+// edits them). A layout's own props (poll_seconds, ci_wait, ai_checks, mine, merge) still win.
+const DEFAULT_SETTINGS = {
+  refresh: { poll: "30s" }, // how often a PR with an agent refreshes; at least 10s
+  ci: { wait: "2m", ai_checks: [] }, // wait for CI to appear; more check names counted as AI review
+  list: { mine: false, files_fold_at: 10 }, // every open PR you authored; files fold past this count
+  merge: { method: "off" }, // merge button: off, squash, merge or rebase
+};
+
+// The tracker's settings from mod.json's, with the layout's props over them.
+function trackerSettings(s, p) {
+  const checks = Array.isArray(p.ai_checks) ? p.ai_checks : Array.isArray(s.ci.ai_checks) ? s.ci.ai_checks : [];
+  return {
+    pollMs: Math.max(10_000, Number(p.poll_seconds) * 1000 || duration(s.refresh.poll, 30_000)),
+    ciWaitMs: parseDuration(p.ci_wait, duration(s.ci.wait, 120_000)),
+    aiChecks: checks.map((x) => String(x).toLowerCase()),
+    mine: typeof p.mine === "boolean" ? p.mine : s.list.mine === true,
+  };
+}
 
 const icon = (name, size, color) => svg(`mods/${MOD}/${name}.svg`).size(size).flex_none().text_color(color);
 const toneColor = (t, tone) => ({ ok: t.ansi2, bad: t.ansi1, warn: t.blocked, wait: t.foreground, run: t.working, merge: t.ansi2, merged: t.ansi5, dim: t.dim, comment: t.muted, todo: t.dim }[tone] ?? t.muted);
@@ -79,6 +98,13 @@ function agentList() {
 }
 
 export default class PrFlow extends View {
+  // The merge button's method: the layout's `merge` prop, else the setting; null hides the button.
+  pickMerge(p) {
+    if (MERGE_METHODS.includes(p.merge)) return p.merge;
+    const method = this.settings?.merge?.method;
+    return MERGE_METHODS.includes(method) ? method : null;
+  }
+
   init(_props, cx) {
     const p = props() ?? {};
     this.viewer = p.screen === "viewer";
@@ -100,14 +126,21 @@ export default class PrFlow extends View {
     }
 
     this.gh = createGh(exec);
+    this.settings = DEFAULT_SETTINGS;
+    // One object the tracker keeps; mod.json's values are copied into it once read.
+    this.trackerSettings = trackerSettings(this.settings, p);
+    if (!checking())
+      cx.spawn(async (cx) => {
+        const { settings: s, problems } = await loadSettings(MOD, DEFAULT_SETTINGS);
+        this.settings = s;
+        for (const problem of problems) console.warn(`pr-flow mod.json settings: ${problem}`);
+        Object.assign(this.trackerSettings, trackerSettings(s, p));
+        this.mergeMethod = this.pickMerge(p);
+        cx.notify();
+      });
     this.tracker = createTracker({
       gh: this.gh,
-      settings: {
-        pollMs: Math.max(10_000, Number(p.poll_seconds) * 1000 || 30_000),
-        ciWaitMs: parseDuration(p.ci_wait, 120_000),
-        aiChecks: (Array.isArray(p.ai_checks) ? p.ai_checks : []).map((x) => String(x).toLowerCase()),
-        mine: p.mine === true,
-      },
+      settings: this.trackerSettings,
       remoteOf: async (cwd, on) => {
         const r = await exec("git", ["--no-optional-locks", "remote", "get-url", "origin"], { cwd, on: on ?? undefined });
         return r.code === 0 ? parseRemote(r.stdout) : null;
@@ -132,9 +165,9 @@ export default class PrFlow extends View {
     this.issueData = new Map(); // url -> issue, or { failed: true }
     this.ghReady = true;
     this.busy = false;
-    // The merge button, only with the `merge` prop ("squash", "merge" or "rebase"). The first press
-    // arms it for a few seconds, the second merges.
-    this.mergeMethod = MERGE_METHODS.includes(p.merge) ? p.merge : null;
+    // The merge button, only with the `merge` prop or setting ("squash", "merge" or "rebase"). The
+    // first press arms it for a few seconds, the second merges.
+    this.mergeMethod = this.pickMerge(p);
     this.mergeArmed = null; // url
     this.merging = null; // url
     this.mergeError = null; // { url, message }
@@ -204,7 +237,8 @@ export default class PrFlow extends View {
 
   // Long lists start folded, so they don't push the description out of reach.
   filesOpen(card, count) {
-    return this.filesFold.get(card.url) ?? count <= FILES_FOLD_AT;
+    const foldAt = Number.isFinite(this.settings?.list?.files_fold_at) ? this.settings.list.files_fold_at : DEFAULT_SETTINGS.list.files_fold_at;
+    return this.filesFold.get(card.url) ?? count <= foldAt;
   }
 
   toggleRun(card, runId, cx) {

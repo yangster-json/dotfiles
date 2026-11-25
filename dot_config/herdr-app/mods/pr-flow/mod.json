@@ -1,1 +1,11 @@
-{ "place": "right", "size": 340, "title": "Pull requests" }
+{
+  "$schema": "./mod.schema.json",
+  "place": "right",
+  "size": 340,
+  "title": "Pull requests",
+  "settings": {
+    "list": {
+      "mine": true
+    }
+  }
+}

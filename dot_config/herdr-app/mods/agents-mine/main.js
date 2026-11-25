@@ -3,7 +3,14 @@
 
 import { View, div, image, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { agents, terminals, panes, focused, spaces, run, theme, shared, setShared, setAgentOrder, openOverlay, closeOverlay, props, window, layout } from "herdr";
+import { agents, terminals, panes, focused, spaces, run, theme, shared, setShared, setAgentOrder, openOverlay, closeOverlay, props, window, layout, checking } from "herdr";
+import { loadSettings, duration as toMs } from "./settings.js";
+
+// Preferences a person may change in the installed mod.json under `settings` (Better Config edits them).
+const DEFAULT_SETTINGS = {
+  subagents: { show: true, color: "#89b4fa" },
+  times: { show: true, refresh: "30s" },
+};
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -93,7 +100,21 @@ export default class Agents extends View {
     if (!Array.isArray(this.pendingPins)) this.pendingPins = [];
     if (!this.pendingPins.length) localStorage.removeItem("pins");
     this.migratingPins = new Set();
-    cx.timer.every(30000, (cx) => cx.notify());
+    this.settings = DEFAULT_SETTINGS;
+    if (checking()) return;
+    cx.spawn(async (cx) => {
+      const { settings, problems } = await loadSettings("agents-mine", DEFAULT_SETTINGS);
+      this.settings = settings;
+      for (const problem of problems) console.warn(`agents-mine mod.json settings: ${problem}`);
+      cx.notify();
+    });
+    // Redraws so the "since" times move on; the interval is read each round, so a changed setting applies.
+    cx.spawn(async (cx) => {
+      for (;;) {
+        await cx.sleep(toMs(this.settings.times.refresh, 30000));
+        if (this.settings.times.show) cx.notify();
+      }
+    });
   }
 
   // Stamps agents whose state changed. Done and idle count as one: looking at a
@@ -303,6 +324,11 @@ export default class Agents extends View {
 
     // set by the herdr-app-subagents pi extension
     const subagents = (a) => all.find((k) => k.address === a.address)?.labels?.["pi.subagents"];
+    const prefs = this.settings ?? DEFAULT_SETTINGS;
+    const subShow = prefs.subagents.show;
+    // A theme color name ("accent", "working") or a hex color.
+    const subColor = t[prefs.subagents.color] ?? prefs.subagents.color;
+    const timesShow = prefs.times.show;
     const row = (a, i, subs = []) => {
       const pic = icon(a.program, 16, t.foreground);
       const more = detail.get(a.address);
@@ -373,12 +399,12 @@ export default class Agents extends View {
           })).child(pic)))
         .child(h_flex().flex_1().min_w(0).gap(5).items_center()
           .child(div().min_w(0).max_w(full && more ? 120 : 200).truncate().text_color(idle ? t.muted : t.foreground).child(name))
-          .when(Boolean(subagents(a)), el => el.child(div().flex_none().text_color("#89b4fa").child(`\u23f3${subagents(a)}`)))
+          .when(subShow && Boolean(subagents(a)), el => el.child(div().flex_none().text_color(subColor).child(`\u23f3${subagents(a)}`)))
           .when(full && Boolean(more), el => el.child(div().flex_1().min_w(0).truncate().text_color(t.dim).child(`\u00b7 ${more}`))))
         .when(Boolean(machine), el => el.child(div().text_size(10).text_color(t.dim).child(machine)))
         .when(subs.length > 0, el => el.child(fold(a, subs)))
         .when(this.hovered === a.address, el => el.child(pin))
-        .when(this.hovered !== a.address && Boolean(when), el => el.child(div().flex_none().text_size(11).text_color(t.dim).child(duration(now - when))))
+        .when(timesShow && this.hovered !== a.address && Boolean(when), el => el.child(div().flex_none().text_size(11).text_color(t.dim).child(duration(now - when))))
         .child(this.status(t, a, byPriority && !isPinned));
     };
 

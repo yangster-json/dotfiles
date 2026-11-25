@@ -1,1 +1,1 @@
-{ "place": "none", "title": "Slack" }
+{ "$schema": "./mod.schema.json", "place": "none", "title": "Slack" }

@@ -1,0 +1,64 @@
+// HTTP client for one Plannotator session. The server guards writes by Origin;
+// this client sends none, which the guard accepts (isSameOriginOrNoOrigin).
+
+export class Api {
+  constructor(origin) {
+    this.origin = origin.replace(/\/+$/, "");
+  }
+
+  url(path) {
+    return this.origin + path;
+  }
+
+  async get(path) {
+    const res = await fetch(this.url(path));
+    // Plannotator 0.29 answers some GETs (/api/draft with no draft) with an
+    // empty 204, which res.json() rejects; an empty body is null instead.
+    return { status: res.status, ok: res.ok, json: await safeJson(res) };
+  }
+
+  async send(method, path, body) {
+    const res = await fetch(this.url(path), {
+      method,
+      headers: body === undefined ? {} : { "Content-Type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    return { status: res.status, ok: res.ok, json: await safeJson(res) };
+  }
+
+  /** Runs a vendor Decision ({method, path, body}). */
+  decide(decision) {
+    return this.send(decision.method, decision.path, decision.body);
+  }
+}
+
+async function safeJson(res) {
+  try {
+    const text = await res.text();
+    return text ? JSON.parse(text) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Which Plannotator server this is, from the endpoints it answers. */
+export async function loadSession(api) {
+  const plan = await api.get("/api/plan");
+  if (plan.ok) {
+    const s = plan.json;
+    const mode = s.mode ?? "plan";
+    const kind = mode.startsWith("annotate") ? "annotate" : mode === "archive" ? "archive" : "plan";
+    return { kind, data: s, native: drawnNatively(s) };
+  }
+  const diff = await api.get("/api/diff");
+  if (diff.ok) return { kind: "review", data: diff.json, native: true };
+  throw new Error(`Not a Plannotator session (GET /api/plan ${plan.status}, /api/diff ${diff.status})`);
+}
+
+// Sessions this pane can't draw yet: folders and bundles need the file
+// browser, live apps and raw HTML need a web view.
+const BROWSER_ONLY_MODES = new Set(["annotate-folder", "annotate-bundle", "annotate-app", "archive"]);
+function drawnNatively(s) {
+  if (BROWSER_ONLY_MODES.has(s.mode)) return false;
+  return !s.renderAs || s.renderAs === "markdown";
+}

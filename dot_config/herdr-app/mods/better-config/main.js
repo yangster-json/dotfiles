@@ -6,7 +6,22 @@
 // update wiped can be put back.
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex, Scrollbar, InputState, Input, Select, Popup, Checkbox } from "gpui-base";
-import { appHome, home, exec, readTextFile, writeTextFile, theme, props, closeOverlay, run, window, layout } from "herdr";
+import * as fs from "fs/promises";
+import {
+  appHome,
+  home,
+  exec,
+  readTextFile,
+  writeTextFile,
+  theme,
+  props,
+  closeOverlay,
+  run,
+  window,
+  layout,
+  watchFolder,
+  checking,
+} from "herdr";
 import {
   fieldsOf,
   getPath,
@@ -28,7 +43,9 @@ import {
 import { pickListMods, pickMkdir } from "./shell.js";
 
 const I = (name) => `mods/better-config/icons/${name}.svg`;
-const POLL_MS = 3000;
+// A watch on mods/ catches edits at once; this slower poll catches the files outside it
+// (keys.json, installed.json, the kept copies), and stands in if the watch fails.
+const POLL_MS = 10000;
 // The Installed page's place in the list; no mod folder can have this name.
 const INSTALLED = "*installed";
 const USE = { layout: "In this layout", key: "Opens by key" };
@@ -59,63 +76,108 @@ export default class BetterConfig extends View {
       cx.notify();
     });
     // Picks up edits made by hand, or by an update, while the dialog is open.
-    cx.timer.every(POLL_MS, (cx) =>
+    const reload = (cx) =>
       cx.spawn(async (cx) => {
         if (await this.load()) cx.notify();
-      }),
-    );
+      });
+    cx.timer.every(POLL_MS, reload);
+    if (!checking())
+      cx.spawn(async (cx) => {
+        try {
+          for (;;) {
+            await watchFolder(`${appHome()}/mods`);
+            if (await this.load()) cx.notify();
+          }
+        } catch {}
+      });
   }
 
   keptFolder() {
     return `${home()}/.config/herdr-mods/better-config`;
   }
 
+  // Makes the kept folder once. It's outside appHome, where fs can't write, so a missing
+  // folder still needs a shell; an existing one (the usual case) costs nothing.
+  ensureKeptFolder() {
+    this.keptFolderReady ??= (async () => {
+      try {
+        if (await fs.exists(this.keptFolder())) return;
+      } catch {}
+      const { program, args } = pickMkdir(this.keptFolder(), window()?.platform);
+      await exec(program, args);
+    })().catch((e) => {
+      this.keptFolderReady = null;
+      throw e;
+    });
+    return this.keptFolderReady;
+  }
+
+  // The folder names under mods/. Read directly; a shell listing only if that fails
+  // (starting powershell.exe costs over a second on Windows).
+  async modNames() {
+    const dir = `${appHome()}/mods`;
+    try {
+      const entries = await fs.readdir(dir, { withFileTypes: true });
+      return entries.filter((e) => e.isDirectory()).map((e) => e.name);
+    } catch {
+      const { program, args } = pickListMods(dir, window()?.platform);
+      const listing = await exec(program, args);
+      return listing.stdout.split("\n").map((n) => n.replace(/\/$/, "")).filter(Boolean);
+    }
+  }
+
+  // One mod folder: its Installed entry, and its settings when it has any.
+  async loadOne(name) {
+    const path = `${appHome()}/mods/${name}/mod.json`;
+    const keptPath = `${this.keptFolder()}/${name}.json`;
+    const [raw, schemaRaw, keptRaw] = await Promise.all([
+      readTextFile(path),
+      readTextFile(`${appHome()}/mods/${name}/mod.schema.json`).catch(() => null),
+      readTextFile(keptPath).catch(() => null),
+    ]);
+    if (raw === null) return { entry: { name, manifest: null, missing: true }, mod: null };
+    let manifest = null;
+    let error = null;
+    try {
+      manifest = JSON.parse(raw);
+    } catch (e) {
+      error = `mod.json isn't valid JSON, so nothing here can be changed until it's fixed: ${e.message}`;
+    }
+    const entry = { name, manifest };
+    let schema = null;
+    try {
+      schema = JSON.parse(schemaRaw ?? "null");
+    } catch {}
+    const fields = fieldsOf(schema, manifest?.settings);
+    if (manifest && !fields.length) return { entry, mod: null };
+    if (!manifest && !schema?.properties?.settings && !/"settings"/.test(raw)) return { entry, mod: null };
+    let kept = null;
+    try {
+      kept = keptRaw ? JSON.parse(keptRaw) : null;
+    } catch {}
+    const mod = { name, path, raw, manifest, schema, fields, error, keptPath, keptRaw, kept, lost: {} };
+    if (manifest) {
+      mod.lost = lostValues(kept, fields, manifest);
+      // Nothing lost: the copy follows the file, including edits made by hand.
+      if (!Object.keys(mod.lost).length) await this.keep(mod);
+    }
+    return { entry, mod };
+  }
+
   // Every installed mod with settings: described by its mod.schema.json, or set in its mod.json. Returns whether anything changed.
   async load() {
-    const { program, args } = pickListMods(`${appHome()}/mods`, window()?.platform);
-    const listing = await exec(program, args);
-    const names = listing.stdout.split("\n").map((n) => n.replace(/\/$/, "")).filter(Boolean);
-    const mods = [];
-    const entries = [];
-    for (const name of names) {
-      const path = `${appHome()}/mods/${name}/mod.json`;
-      const raw = await readTextFile(path);
-      if (raw === null) {
-        entries.push({ name, manifest: null, missing: true });
-        continue;
-      }
-      let manifest = null;
-      let error = null;
-      try {
-        manifest = JSON.parse(raw);
-      } catch (e) {
-        error = `mod.json isn't valid JSON, so nothing here can be changed until it's fixed: ${e.message}`;
-      }
-      entries.push({ name, manifest });
-      let schema = null;
-      try {
-        schema = JSON.parse((await readTextFile(`${appHome()}/mods/${name}/mod.schema.json`)) ?? "null");
-      } catch {}
-      const fields = fieldsOf(schema, manifest?.settings);
-      if (manifest && !fields.length) continue;
-      if (!manifest && !schema?.properties?.settings && !/"settings"/.test(raw)) continue;
-      const keptPath = `${this.keptFolder()}/${name}.json`;
-      const keptRaw = await readTextFile(keptPath);
-      let kept = null;
-      try {
-        kept = keptRaw ? JSON.parse(keptRaw) : null;
-      } catch {}
-      const mod = { name, path, raw, manifest, schema, fields, error, keptPath, keptRaw, kept, lost: {} };
-      if (manifest) {
-        mod.lost = lostValues(kept, fields, manifest);
-        // Nothing lost: the copy follows the file, including edits made by hand.
-        if (!Object.keys(mod.lost).length) await this.keep(mod);
-      }
-      mods.push(mod);
-    }
+    const names = await this.modNames();
+    const [results, installedJson, keys] = await Promise.all([
+      Promise.all(names.map((name) => this.loadOne(name))),
+      this.readJson(`${appHome()}/installed.json`),
+      this.readJson(`${appHome()}/keys.json`),
+    ]);
+    const entries = results.map((r) => r.entry);
+    const shipped = shippedMods(installedJson);
+    // Only your own mods in the list; Herdr's stay on the Installed page.
+    const mods = results.map((r) => r.mod).filter((m) => m && !shipped.has(m.name));
     mods.sort((a, b) => this.titleOf(a).localeCompare(this.titleOf(b)));
-    const installed = installedRows(entries, shippedMods(await this.readJson(`${appHome()}/installed.json`)));
-    const keys = await this.readJson(`${appHome()}/keys.json`);
+    const installed = installedRows(entries, shipped);
     const shown = layout();
     const shape = (list, rows, k, l) => JSON.stringify([list.map((m) => [m.name, m.raw, m.keptRaw]), rows, k, l]);
     const before = shape(this.mods, this.installed, this.keys, this.layout);
@@ -146,12 +208,11 @@ export default class BetterConfig extends View {
   async keep(mod) {
     const next = { version: mod.manifest.version ?? null, values: changedValues(mod.fields, mod.manifest.settings) };
     if (mod.kept && equal(mod.kept, next)) return;
+    // Nothing to keep and no copy yet: don't make one (most mods have no settings).
+    if (mod.keptRaw === null && !Object.keys(next.values).length) return;
     const text = `${JSON.stringify(next, null, 2)}\n`;
     try {
-      if (mod.keptRaw === null) {
-        const { program, args } = pickMkdir(this.keptFolder(), window()?.platform);
-        await exec(program, args);
-      }
+      if (mod.keptRaw === null) await this.ensureKeptFolder();
       await writeTextFile(mod.keptPath, text, mod.keptRaw);
       mod.kept = next;
       mod.keptRaw = text;
@@ -174,11 +235,19 @@ export default class BetterConfig extends View {
           mod.raw = text;
           mod.manifest = JSON.parse(text);
           mod.fields = fieldsOf(mod.schema, mod.manifest.settings);
+          // What load() would have worked out, without reading every mod again.
+          mod.lost = lostValues(mod.kept, mod.fields, mod.manifest);
           await this.keep(mod);
+          let rebound = false;
           for (const [key, value] of edits) {
             const field = mod.fields.find((f) => f.key === key);
-            if (field?.type === "key") await this.bindKey(name, field, value ?? field.default);
+            if (field?.type === "key") {
+              await this.bindKey(name, field, value ?? field.default);
+              rebound = true;
+            }
           }
+          if (rebound) this.keys = await this.readJson(`${appHome()}/keys.json`);
+          this.makeInputs();
           failed = null;
           break;
         } catch (e) {
@@ -188,7 +257,6 @@ export default class BetterConfig extends View {
       }
       if (failed) this.notes[`${name}:*`] = `Couldn't save: ${failed}`;
       else delete this.notes[`${name}:*`];
-      await this.load();
       cx.notify();
     });
   }
@@ -205,10 +273,7 @@ export default class BetterConfig extends View {
       await writeTextFile(path, `${JSON.stringify(next.keys, null, 2)}\n`, raw);
       const kept = `${JSON.stringify(next.displaced, null, 2)}\n`;
       if (kept !== (keptRaw ?? "{}\n")) {
-        if (keptRaw === null) {
-          const { program, args } = pickMkdir(this.keptFolder(), window()?.platform);
-          await exec(program, args);
-        }
+        if (keptRaw === null) await this.ensureKeptFolder();
         await writeTextFile(keptPath, kept, keptRaw);
       }
       delete this.notes[note];
@@ -845,9 +910,13 @@ export default class BetterConfig extends View {
             v_flex()
               .gap(2)
               .children(
-                this.mods.map((mod) =>
-                  this.navItem(t, mod.name, this.titleOf(mod), mod.error || Object.keys(mod.lost).length > 0),
-                ),
+                this.mods.map((mod, _i, all) => {
+                  // Two mods with one title (Herdr's Agents and yours): the folder tells them apart.
+                  const title = this.titleOf(mod);
+                  const clash = all.some((m) => m !== mod && this.titleOf(m) === title);
+                  const label = clash && title !== mod.name ? `${title} (${mod.name})` : title;
+                  return this.navItem(t, mod.name, label, mod.error || Object.keys(mod.lost).length > 0);
+                }),
               ),
           ),
       )

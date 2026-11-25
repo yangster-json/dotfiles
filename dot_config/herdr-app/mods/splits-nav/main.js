@@ -32,6 +32,16 @@ import {
 } from "./nav.js";
 import { autoInstall, linkNotify } from "./install.js";
 import { hasMount, layoutPlan, shippedLayouts } from "./layouts.js";
+import { loadSettings } from "./settings.js";
+
+// Preferences a person may change in the installed mod.json under `settings`
+// (Better Config edits them). Key bindings stay in this mod's own panel.
+const DEFAULT_SETTINGS = {
+  navigation: { wrap: true },
+  resize: { percent: 3 },
+  nvim: { autoInstall: true, warnUnreachable: true },
+  layouts: { autoPlant: true },
+};
 
 // Budget for one request's reply. The command loop never waits on it (each
 // terminal drains its own queue in its own task), so a blocked nvim still lands
@@ -45,9 +55,6 @@ const NVIM_TIMEOUT_MS = 10000;
 // itself and runs: a stuck mute never outlives this long.
 const RECORDING_TTL_MS = 2 * 60 * 1000;
 const NAV_DISCOVERY = "splits-nav-probe.json";
-/** One resize notch as a herdr ratio (3% of the terminal dimension),
- *  matching the reference plugin's default_amount. */
-const HERDR_RESIZE_AMOUNT = 0.03;
 
 // Bare modifier presses are not chords; while recording, they are ignored so
 // the user can set a modifier down and then pick the key. Same list as
@@ -133,8 +140,9 @@ async function waitFocus(cx, pred) {
  *  right after run("pane.go"), so poll until the app settles before deciding
  *  there is no neighbor. Returns whether focus ended somewhere else.
  * @param {import("gpui-kit").AsyncContext} cx @param {string} dir
+ * @param {boolean} [wrap] go round to the far side at the layout edge
  * @returns {Promise<boolean>} */
-async function herdrMove(cx, dir) {
+async function herdrMove(cx, dir, wrap = true) {
   const before = focused()?.pane;
   if (!before) return false;
   const pane = panes().find((p) => p.pane === before);
@@ -142,6 +150,7 @@ async function herdrMove(cx, dir) {
   const moved = (/** @type {string | undefined} */ p) => p !== before;
   run("pane.go", { direction: dir });
   if (await waitFocus(cx, moved) !== null) return true;
+  if (!wrap) return false;
   run("pane.go", { direction: REVERSE_DIRECTIONS[dir] }); // at the edge: wrap
   return await waitFocus(cx, moved) !== null;
 }
@@ -233,8 +242,9 @@ async function paneCells(address) {
  *  on the opposite side eats into it. A side with no neighbour resizes nothing.
  *  @param {import("gpui-kit").AsyncContext} cx @param {string} dir
  *  @param {string} terminal @param {(e: unknown) => void} [onError]
+ *  @param {number} [amount] one notch as a share of the axis (0.03: 3%)
  *  @returns {Promise<void>} */
-async function herdrResize(cx, dir, terminal, onError) {
+async function herdrResize(cx, dir, terminal, onError, amount = 0.03) {
   try {
     const pane = panes().find((p) => p.terminal === terminal);
     if (!pane || pane.zoomed) return; // a mod pane, or zoom has no border
@@ -269,7 +279,7 @@ async function herdrResize(cx, dir, terminal, onError) {
     if (probed && Math.abs((horizontal ? mine.rows : mine.cols) - (horizontal ? theirs.rows : theirs.cols)) > 1) {
       return; // not the same row/column: the border between them is not ours
     }
-    const step = Math.max(2, Math.round(HERDR_RESIZE_AMOUNT * (myAxis + theirAxis)));
+    const step = Math.max(2, Math.round(amount * (myAxis + theirAxis)));
     const grow = beside ? 1 : -1; // border on that side moves out (grow) or in (shrink)
     const moving = Math.max(2, Math.min(myAxis + grow * step, myAxis + theirAxis - 2));
     const delta = moving - myAxis;
@@ -384,6 +394,7 @@ export default class SplitsNav extends View {
     this.handle = cx.focus_handle();
     this.recording = null;
     this.badKey = null;
+    this.settings = DEFAULT_SETTINGS;
     if (this.panel) {
       // Seed from the bindings that are live now, so a hand-edited keys.json
       // is what the panel shows and an Apply starts from reality.
@@ -402,15 +413,25 @@ export default class SplitsNav extends View {
     /** Act on the herdr pane instead of nvim.
      *  @param {import("gpui-kit").AsyncContext} c @param {string} op @param {string} dir @param {string} terminal */
     const toHerdr = (c, op, dir, terminal) =>
-      op === "resize" ? herdrResize(c, dir, terminal, resizeErr) : herdrMove(c, dir);
+      op === "resize"
+        ? herdrResize(c, dir, terminal, resizeErr, this.resizeAmount())
+        : herdrMove(c, dir, this.settings.navigation.wrap);
     void pruneStaleDiscovery(cx);
-    // Wire the nvim half on first real load. Only the docked copy does this
-    // (the overlay panel is a dialog), and only in a real window: the checker
-    // has none, so check stays free of side effects. Fire-and-forget — exec
-    // runs off the UI thread and the press queue below is untouched.
-    void this.autoInstallLinkNvim();
-    // Also cover installations without the independent layout watcher.
-    void this.plantLayouts();
+    // Settings first: they decide whether the nvim plugin is linked and the
+    // layouts planted. Wire the nvim half on first real load. Only the docked
+    // copy does this (the overlay panel is a dialog), and only in a real
+    // window: the checker has none, so check stays free of side effects.
+    // Fire-and-forget — exec runs off the UI thread and the press queue below
+    // is untouched.
+    cx.spawn(async (cx) => {
+      const { settings, problems } = await loadSettings("splits-nav", DEFAULT_SETTINGS);
+      this.settings = settings;
+      for (const problem of problems) console.warn(`splits-nav mod.json settings: ${problem}`);
+      cx.notify();
+      if (settings.nvim.autoInstall) void this.autoInstallLinkNvim();
+      // Also cover installations without the independent layout watcher.
+      if (settings.layouts.autoPlant) void this.plantLayouts();
+    });
     // Only the docked copy listens: a second copy's nextCommand() would race
     // for the same commands. Commands are handled serially (one at a time)
     // so a held key never stacks sockets.
@@ -486,7 +507,7 @@ export default class SplitsNav extends View {
                 break;
               }
               if (resp === null || resp.action === "ignore") {
-                if (!this.nvimUnreachableNotified) {
+                if (!this.nvimUnreachableNotified && this.settings.nvim.warnUnreachable) {
                   notify({
                     title: "Splits Nav",
                     body: "The nvim plugin isn't running (or is outdated, or its discovery file"
@@ -506,7 +527,8 @@ export default class SplitsNav extends View {
                 // either bounces inside nvim (the reference's at_edge=wrap).
                 if (press.op === "resize") {
                   await toHerdr(task, press.op, press.dir, terminal);
-                } else if (!(await herdrMove(task, press.dir))) {
+                } else if (!(await herdrMove(task, press.dir, this.settings.navigation.wrap))
+                  && this.settings.navigation.wrap) {
                   await askNvim(task, terminal, press.dir, "wrap", press.command);
                 }
               }
@@ -521,6 +543,14 @@ export default class SplitsNav extends View {
         });
       }
     });
+  }
+
+  /** One resize notch as a share of the axis, from the percent setting
+   *  (3 by default, the reference plugin's default_amount).
+   *  @returns {number} */
+  resizeAmount() {
+    const percent = this.settings.resize.percent;
+    return Number.isFinite(percent) && percent > 0 ? Math.min(percent, 50) / 100 : 0.03;
   }
 
   /** Report a resize failure once per load, so a broken core path is visible

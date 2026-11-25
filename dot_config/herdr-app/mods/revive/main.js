@@ -12,6 +12,7 @@ import { exec, run, theme, focused, appHome, home, props, closeOverlay, notify, 
 import * as herdr from "herdr";
 import { AGENTS, canFork, canRestore, command, shortId, ago, unresumable, needsCommand, cameBack } from "./lib/core.js";
 import { updater, VERSION, PROMPT, RELEASES } from "./lib/update.js";
+import { loadSettings, duration } from "./settings.js";
 
 /**
  * Whether `herdr-app check` is loading the dialog: `init()` runs for real
@@ -50,6 +51,8 @@ const MONO = "JetBrains Mono";
 const REFRESH_MS = 4000;
 // The dialog grows with its content up to this share of the window; past it, the sessions scroll.
 const MAX_SHARE = 0.85;
+// Preferences a person may change in the installed mod.json under `settings`.
+const DEFAULT_SETTINGS = { dialog: { refresh: "4s", maxHeight: MAX_SHARE }, updates: { check: true } };
 // Room kept for the header and the footer; a note takes NOTE_H more, the
 // new-release strip UPDATE_H, the came-back strip CAME_BACK_H.
 const CHROME_H = 150;
@@ -64,11 +67,12 @@ const CAME_BACK_SEEN = "revive.cameBack";
  * window, or null when the window's size isn't known. A dialog sized by its
  * content can't shrink a part of itself, so the part gets a height of its own.
  */
-function listMaxH(extra) {
+function listMaxH(extra, share = MAX_SHARE) {
   let height = null;
   try { height = window.viewport_size()?.height; } catch { /* no window yet */ }
   if (!Number.isFinite(height) || height <= 0) return null;
-  return Math.max(160, Math.floor(height * MAX_SHARE) - CHROME_H - extra);
+  if (!Number.isFinite(share) || share <= 0 || share > 1) share = MAX_SHARE;
+  return Math.max(160, Math.floor(height * share) - CHROME_H - extra);
 }
 
 /** A folder the way a shell prompt shows it: the home folder as `~`. */
@@ -188,12 +192,23 @@ export default class Revive extends View {
     this.handle.focus();
     // An overlay may not take focus while it is still opening; ask again once it is up.
     cx.timer.after(120, () => this.handle.focus());
-    this.update = updater({ shared, setShared, fetch, wait: (ms) => new Promise((done) => cx.timer.after(ms, () => done())) });
+    this.settings = DEFAULT_SETTINGS;
+    const wait = (ms) => new Promise((done) => cx.timer.after(ms, () => done()));
+    this.update = updater({ shared, setShared, fetch, wait });
     // Under `herdr-app check`: draw, but run nothing (no engine, no refresh, no GitHub).
     if (checking()) { this.loading = false; return; }
     this.load(cx, { setup: true });
-    cx.timer.every(REFRESH_MS, (cx) => this.load(cx));
-    cx.spawn(async (cx) => { await this.update.check(); cx.notify(); });
+    // The refresh and the update check follow mod.json's settings, so they start once those are read.
+    cx.spawn(async (cx) => {
+      const { settings, problems } = await loadSettings("revive", DEFAULT_SETTINGS);
+      this.settings = settings;
+      for (const problem of problems) console.warn(`revive mod.json settings: ${problem}`);
+      cx.timer.every(duration(settings.dialog.refresh, REFRESH_MS), (cx) => this.load(cx));
+      this.update = updater({ shared, setShared, fetch, wait, check: settings.updates.check });
+      cx.notify();
+      await this.update.check();
+      cx.notify();
+    });
     cx.spawn(async (cx) => { await this.loadPrograms(); cx.notify(); });
   }
 
@@ -602,7 +617,7 @@ export default class Revive extends View {
     const nothing = !this.loading && !others.length && !mine?.rec && !AGENTS[mine?.live] && !this.focus?.includes("/");
     const latest = this.update?.available() ?? null;
     const back = cameBack(this.entries, { seen: shared(CAME_BACK_SEEN) });
-    const listH = listMaxH((this.note ? NOTE_H : 0) + (latest ? UPDATE_H : 0) + (back.list.length ? CAME_BACK_H : 0));
+    const listH = listMaxH((this.note ? NOTE_H : 0) + (latest ? UPDATE_H : 0) + (back.list.length ? CAME_BACK_H : 0), this.settings.dialog.maxHeight);
     // When an omp row shows Continue, the other rows keep its room, so the states line up.
     const continueCol = [...needs, ...rest].some((e) => !e.unrecorded && canRestore(e.rec.agent));
     return v_flex().id("revive").track_focus(this.handle).on_key_down((e, cx) => this.key(e, cx))
