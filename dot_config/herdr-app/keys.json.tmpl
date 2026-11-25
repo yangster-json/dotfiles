@@ -1,0 +1,30 @@
+{{- /* shipped defaults (0.1.18) plus personal keys below */ -}}
+{{- $defaults := include (printf "%s/source-only/herdr-app/%s" .chezmoi.sourceDir (ternary "keys.macos.json" "keys.json" (eq .chezmoi.os "darwin"))) | fromJson -}}
+{{- $lazygit := dict "command" "tab.new" "args" (dict "name" "lazygit" "argv" (list "lazygit")) -}}
+{{- $_ := set $defaults.global (ternary "cmd-shift-g" "ctrl-shift-g" (eq .chezmoi.os "darwin")) $lazygit -}}
+{{- /* splits-nav (mods/splits-nav/keys.json); its settings dialog rewrites keys.json in place */ -}}
+{{- $nav := dict "alt-h" "resize-left" "alt-j" "resize-down" "alt-k" "resize-up" "alt-l" "resize-right" (ternary "cmd-shift-s" "ctrl-alt-s" (eq $.chezmoi.os "darwin")) "settings" -}}
+{{- range $k, $v := $nav -}}
+{{-   $_ := set $defaults.global $k (printf "splits-nav.%s" $v) -}}
+{{- end -}}
+{{- /* ctrl+hjkl go through nav-remote, which hands local cases to splits-nav */ -}}
+{{- range $k, $v := dict "ctrl-h" "left" "ctrl-j" "down" "ctrl-k" "up" "ctrl-l" "right" -}}
+{{-   $_ := set $defaults.global $k (printf "nav-remote.%s" $v) -}}
+{{- end -}}
+{{- /* installed mods: auto-title, revive, better-config (cmd on macOS, ctrl-alt elsewhere) */ -}}
+{{- $mk := ternary "cmd-alt" "ctrl-alt" (eq .chezmoi.os "darwin") -}}
+{{- $_ := set $defaults.global (printf "%s-t" $mk) "mod.open:auto-title" -}}
+{{- $_ := set $defaults.global (ternary "cmd-shift-r" "ctrl-alt-r" (eq .chezmoi.os "darwin")) "mod.open:revive" -}}
+{{- $_ := set $defaults.global (printf "%s-," $mk) "mod.open:better-config" -}}
+{{- /* ctrl-g prefix, mirroring ~/.config/herdr/config.toml */ -}}
+{{- range $k, $v := dict "h" "pane.go:left" "j" "pane.go:down" "k" "pane.go:up" "l" "pane.go:right" "shift-h" "pane.swap:left" "shift-j" "pane.swap:down" "shift-k" "pane.swap:up" "shift-l" "pane.swap:right" "ctrl-h" "splits-nav.resize-left" "ctrl-j" "splits-nav.resize-down" "ctrl-k" "splits-nav.resize-up" "ctrl-l" "splits-nav.resize-right" "%" "pane.split:right" "v" "pane.split:right" "\"" "pane.split:down" "-" "pane.split:down" "x" "pane.close" "z" "pane.zoom" "c" "tab.new" "n" "tab.next" "p" "tab.prev" "," "tab.rename" "shift-t" "tab.rename" "&" "tab.close" "shift-x" "tab.close" "s" "mod.open:picker" "w" "mod.open:picker" "shift-n" "space.new" "$" "space.rename" "shift-w" "space.rename" "b" "layout.toggle:sidebar" "shift-s" "app.settings" "1" "tab.select:1" "2" "tab.select:2" "3" "tab.select:3" "4" "tab.select:4" "5" "tab.select:5" "6" "tab.select:6" "7" "tab.select:7" "8" "tab.select:8" "9" "tab.select:9" -}}
+{{-   $_ := set $defaults.global (printf "ctrl-g %s" $k) $v -}}
+{{- end -}}
+{{- $_ := set $defaults.global "ctrl-g alt-g" $lazygit -}}
+{{- range $k, $v := dict "(" "space.prev" ")" "space.next" "[" "agent.prev" "]" "agent.next" "?" "app.help" "shift-/" "app.help" "r" "mod.open:revive" "a" "mod.open:auto-title" "ctrl-," "mod.open:better-config" -}}
+{{-   $_ := set $defaults.global (printf "ctrl-g %s" $k) $v -}}
+{{- end -}}
+{{- range $i := list 1 2 3 4 5 6 7 8 9 -}}
+{{-   $_ := set $defaults.global (printf "ctrl-g alt-%d" $i) (printf "space.select:%d" $i) -}}
+{{- end -}}
+{{ toPrettyJson $defaults }}

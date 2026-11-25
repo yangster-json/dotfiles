@@ -15,7 +15,7 @@
   "compaction": {
     "enabled": true
   },
-  "defaultThinkingLevel": "high",
+  "defaultThinkingLevel": "medium",
   "subagents": {
     "defaultSubagentOnlyExtensions": [
       {{- if $isWork }}
@@ -71,7 +71,8 @@
     {{- end }}
     "npm:pi-rtk-optimizer",
     "npm:@plannotator/pi-extension",
-    "npm:pi-blackhole"{{ if not $isWork }},
+    "npm:pi-blackhole",
+    "npm:pi-declutter"{{ if not $isWork }},
     "npm:pi-google-services",
     "npm:pi-chatgpt-limit"{{ end }}
   ],
@@ -83,4 +84,7 @@
   "hideThinkingBlock": true,
   "enabledModels": {{ $models.enabled | toJson }},
   "enableInstallTelemetry": false
+  {{- if hasKey $localSettings "extensionChangelogVersions" }},
+  "extensionChangelogVersions": {{ index $localSettings "extensionChangelogVersions" | toJson }}
+  {{- end }}
 }

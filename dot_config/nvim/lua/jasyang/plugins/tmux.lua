@@ -1,9 +1,9 @@
 return {
   "aserowy/tmux.nvim",
 
-  -- inside herdr, herdr-splits.nvim owns <C-hjkl> and the clipboard goes
+  -- inside herdr (tui or app), herdr-splits / splits-nav own <C-hjkl> and the clipboard goes
   -- straight to the system one (herdr has no paste buffers to sync with)
-  cond = vim.env.HERDR_ENV ~= "1",
+  cond = vim.env.HERDR_ENV ~= "1" and vim.env.HC_TERMINAL_ID == nil,
 
   config = function()
     require("tmux").setup({

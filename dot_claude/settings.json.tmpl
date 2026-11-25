@@ -8,7 +8,7 @@
   "permissions": {
     "defaultMode": "bypassPermissions"
   },
-  "model": "opus[1m]",
+  "model": "opus",
   "hooks": {
     "PreToolUse": [
       {
@@ -68,11 +68,20 @@
         ]
       },
       {
-        "matcher": "*",
+        "matcher": "^(startup|resume|clear|compact|fork)$",
         "hooks": [
           {
             "type": "command",
             "command": "bash '{{ .chezmoi.homeDir }}/.claude/hooks/herdr-agent-state.sh' session",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node /home/jasyang/.config/herdr-app/mods/revive/revive.mjs hook",
             "timeout": 10
           }
         ]
@@ -95,6 +104,17 @@
           {
             "type": "command",
             "command": "~/.claude/hooks/herdr-claude-session-title.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node /home/jasyang/.config/herdr-app/mods/revive/revive.mjs hook",
             "timeout": 10
           }
         ]
@@ -129,6 +149,9 @@
     },
     "claude-fable-5-1": {
       "effortLevel": "medium"
+    },
+    "claude-opus-5-5": {
+      "effortLevel": "high"
     }
   }
 }

@@ -1,0 +1,14 @@
+{
+  "zoom": 1,
+  "theme": "catppuccin-mocha",
+  "colors": {
+    "accent": "#cba6f7"
+  },
+  "sounds": {
+    "enabled": true
+  },
+  "copy_on_select": false,
+  "worktrees": {
+    "directory": "~/.herdr/worktrees"
+  }
+}

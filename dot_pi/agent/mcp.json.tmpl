@@ -19,6 +19,13 @@
     }{{ if $isWork }},
     "glean": {
       "url": "https://purestorage-be.glean.com/mcp/glean-mcp"
-    }{{ end }}
+    }{{ if .dshwMcpToken }},
+    "dshw": {
+      "type": "http",
+      "url": "https://dshw.app.purestorage.com/api/mcp/v1",
+      "headers": {
+        "Authorization": {{ printf "Bearer %s" .dshwMcpToken | toJson }}
+      }
+    }{{ end }}{{ end }}
   }
 }
