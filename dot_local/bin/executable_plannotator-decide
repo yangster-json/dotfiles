@@ -7,7 +7,7 @@ if [ -z "$base" ] && [ -s "$HOME/.local/state/plannotator-last-url" ]; then
   base=$(sed -E 's#^(https?://[^/]+).*#\1#; s#//[^:/]+#//127.0.0.1#' "$HOME/.local/state/plannotator-last-url")
 fi
 base="${base:-http://127.0.0.1:19432}"
-tui=$(ls -1 "$HOME"/.config/herdr/plugins/github/annotate-*/bin/plannotator-tui.exe 2>/dev/null | head -1)
+tui="$HOME/.local/bin/plannotator-tui"; "$tui" --version >/dev/null 2>&1 || tui=""
 
 info=$(curl -s -m 3 "$base/api/plan") || info=""
 meta=$(printf '%s' "$info" | python3 -c '

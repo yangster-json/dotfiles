@@ -3,8 +3,7 @@
 export NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
 export SHELL=/usr/bin/zsh
 
-# plannotator over ssh: advertise real host, notify via herdr
-if [ -n "$SSH_CONNECTION" ]; then
-  export PLANNOTATOR_URL_HOST="$(hostname -f)"
-  export PLANNOTATOR_BROWSER="$HOME/.local/bin/plannotator-notify"
-fi
+# plannotator: herdr-app pane, else herdr notification (ssh) or browser
+export PLANNOTATOR_BROWSER="$HOME/.local/bin/plannotator-herdr"
+# ssh-only box, herdr panes drop SSH_* so force remote
+export PLANNOTATOR_URL_HOST="$(hostname -f)" PLANNOTATOR_REMOTE=1

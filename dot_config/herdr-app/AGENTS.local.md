@@ -33,9 +33,14 @@ theme, and keep any new layout, mod or change on Mocha.
   `safeJson` for OK responses too, because Plannotator 0.29 answers
   `/api/draft` with an empty 204 and `res.json()` made the pane think the
   session had ended. Keep that fix if the mod is ever recopied.
-- Upstream's launcher is POSIX sh + jq; it's replaced by a Windows port at
-  `~/.local/bin/plannotator-herdr.ps1` with a `.cmd` shim (the shim is what
-  `PLANNOTATOR_BROWSER` points to: Plannotator runs it via `cmd /c start`).
+- Launchers, per OS (`.chezmoiignore` keeps each to its platform):
+  - Linux/macOS: `~/.local/bin/plannotator-herdr` (upstream POSIX sh + jq;
+    falls back to `plannotator-notify` over ssh/headless, else `xdg-open`).
+    `PLANNOTATOR_BROWSER` is set to it in `~/.zshenv`.
+  - Windows: `~/.local/bin/plannotator-herdr.ps1` with a `.cmd` shim (the
+    shim is what `PLANNOTATOR_BROWSER` points to: Plannotator runs it via
+    `cmd /c start`).
+  Keep both launchers in step when either changes.
 - `herdr-app` is a GUI-subsystem exe: from PowerShell, call it with
   `Start-Process -Wait -PassThru` to get its exit code; `$LASTEXITCODE` is
   never set for it.

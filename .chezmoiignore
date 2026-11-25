@@ -2,6 +2,7 @@ README.md
 .gitignore
 source-only
 tests
+**/__pycache__
 .claude/plugins/known_marketplaces.json
 .config/systemd/user/neru.service
 # herdr-app rewrites these in every mod folder on start
@@ -20,6 +21,14 @@ tests
 .config/herdr
 .config/neru/
 .claude
+# posix herdr/plannotator helpers; windows uses plannotator-herdr.ps1
+.local/bin/herdr-ai-rename-tab
+.local/bin/herdr-move-pane
+.local/bin/herdr-review-plan
+.local/bin/plannotator-decide
+.local/bin/plannotator-herdr
+.local/bin/plannotator-notify
+.local/bin/plannotator-tui
 {{ end -}}
 
 {{ if not $isFwWork -}}

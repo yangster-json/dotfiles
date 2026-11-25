@@ -134,6 +134,22 @@ jq -e '.model == "openai-codex/gpt-6-luna"' \
 assert_contains "$windows_ignore" '.pi/agent/skills/firmware-tlogs-search'
 assert_excludes "$windows_ignore" '.wezterm.lua'
 
+# plannotator launchers: posix on linux/macos, ps1+cmd on windows
+posix_helpers=(herdr-ai-rename-tab herdr-move-pane herdr-review-plan plannotator-decide plannotator-herdr plannotator-notify plannotator-tui)
+for h in "${posix_helpers[@]}"; do
+  [ -e "$source_dir/dot_local/bin/executable_$h" ] || { printf 'missing source for %s\n' "$h" >&2; exit 1; }
+  assert_contains "$windows_ignore" ".local/bin/$h"
+done
+assert_excludes "$windows_ignore" '.local/bin/plannotator-herdr.ps1'
+assert_excludes "$windows_ignore" '.local/bin/plannotator-herdr.cmd'
+assert_excludes "$windows_ignore" '.config/herdr-app'
+for os in linux darwin; do
+  posix_ignore=$(render generic-host "$os" "$ignore")
+  assert_contains "$posix_ignore" '.local/bin/plannotator-herdr.ps1'
+  assert_contains "$posix_ignore" '.local/bin/plannotator-herdr.cmd'
+  for h in "${posix_helpers[@]}"; do assert_excludes "$posix_ignore" ".local/bin/$h"; done
+done
+
 for os in darwin windows; do
   unsupported_ignore=$(render generic-host "$os" "$ignore")
   assert_contains "$unsupported_ignore" '.config/systemd/user/hyprland-session.target'

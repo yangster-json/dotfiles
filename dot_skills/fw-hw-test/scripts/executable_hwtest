@@ -243,25 +243,47 @@ echo "$status" > {shlex.quote(str(directory / 'exit'))}
     return 0
 
 
+def app_pane(terminal: str) -> str | None:
+    """Pane showing a local hc terminal in the herdr-app window."""
+    ls = subprocess.run(["herdr-app", "ls"], capture_output=True, text=True)
+    try:
+        spaces = json.loads(ls.stdout)["spaces"]
+    except (json.JSONDecodeError, KeyError, TypeError):
+        return None
+    for space in spaces:
+        if space.get("machine") is not None:
+            continue
+        for tab in space.get("tabs", []):
+            for term in tab.get("terminals", []):
+                if term.get("terminal") == terminal:
+                    return term.get("pane")
+    return None
+
+
 def view(label: str, log: pathlib.Path) -> None:
-    if os.environ.get("HERDR_ENV") != "1" or not shutil.which("herdr"):
-        print(f"view:    tail -n +1 -F {log}")
+    tail = f"tail -n +1 -F {shlex.quote(str(log))}"
+    terminal = os.environ.get("HC_TERMINAL_ID")
+    pane = app_pane(terminal) if terminal and shutil.which("herdr-app") else None
+    if not pane:
+        print(f"view:    {tail}")
         return
     # side by side keeps the agent pane full height
     direction = os.environ.get("HWTEST_VIEW_DIRECTION", "right")
     split = subprocess.run(
-        ["herdr", "pane", "split", "--current", "--direction", direction, "--no-focus"],
+        ["herdr-app", "do", "pane.split", "--direction", direction, "--pane", pane,
+         "--argv", json.dumps(["sh", "-c", tail])],
         capture_output=True, text=True,
     )
     try:
-        pane = json.loads(split.stdout)["result"]["pane"]["pane_id"]
+        new = json.loads(split.stdout)["pane"]
     except (json.JSONDecodeError, KeyError, TypeError):
-        print(f"view:    herdr split failed ({split.stderr.strip()}); tail -n +1 -F {log}")
+        print(f"view:    herdr-app split failed ({(split.stderr or split.stdout).strip()}); {tail}")
         return
-    subprocess.run(["herdr", "pane", "rename", pane, f"hwtest {label}"], capture_output=True)
-    subprocess.run(["herdr", "pane", "run", pane, f"tail -n +1 -F {shlex.quote(str(log))}"],
+    subprocess.run(["herdr-app", "do", "pane.rename", "--pane", new, "--name", f"hwtest {label}"],
                    capture_output=True)
-    print(f"view:    herdr pane {pane} (safe to close)")
+    # split takes focus; hand it back to the agent
+    subprocess.run(["herdr-app", "do", "pane.focus", "--pane", pane], capture_output=True)
+    print(f"view:    herdr-app pane {new} (safe to close)")
 
 
 def cmd_view(args: argparse.Namespace) -> int:
@@ -414,7 +436,7 @@ def main() -> int:
     start.add_argument("--label")
     start.add_argument("--repeat", type=int, default=1)
     start.add_argument("--update-fw", action="store_true")
-    start.add_argument("--view", action="store_true", help="open a herdr observer pane")
+    start.add_argument("--view", action="store_true", help="open a herdr-app observer pane")
     start.add_argument("--force", action="store_true", help="skip busy-slot check")
     start.add_argument("extra", nargs="*", help="extra testlauncher args after --")
     for name, func in (("view", cmd_view), ("status", cmd_status)):

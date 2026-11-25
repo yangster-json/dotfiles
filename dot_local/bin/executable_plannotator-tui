@@ -1,5 +1,14 @@
 #!/usr/bin/env bash
-# plannotator-tui from the herdr annotate plugin (hash dir varies)
-bin=$(ls -1 "$HOME"/.config/herdr/plugins/github/annotate-*/bin/plannotator-tui.exe 2>/dev/null | head -1)
+# plannotator-tui from the herdr annotate plugin; root from plugins.json
+reg="$HOME/.config/herdr/plugins.json"
+root=$(python3 -c '
+import json, sys
+d = json.load(open(sys.argv[1]))
+for p in d if isinstance(d, list) else d.get("plugins", []):
+    if p.get("plugin_id") == "annotate":
+        print(p.get("plugin_root", "")); break
+' "$reg" 2>/dev/null)
+bin="$root/bin/plannotator-tui.exe"
+[ -x "$bin" ] || bin=$(ls -1t "$HOME"/.config/herdr/plugins/github-installations/annotate-*/*/checkout/bin/plannotator-tui.exe 2>/dev/null | head -1)
 [ -x "$bin" ] || { echo "plannotator-tui missing: herdr plugin install plannotator/herdr-annotate" >&2; exit 1; }
 exec "$bin" "$@"

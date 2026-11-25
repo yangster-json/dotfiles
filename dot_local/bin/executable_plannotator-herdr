@@ -1,0 +1,58 @@
+#!/bin/sh
+# Open Plannotator sessions in a herdr-app pane instead of a browser.
+# POSIX launcher from github.com/iuliansafta/herdr-plannotator (Windows: .ps1).
+#
+#   plannotator-herdr <http://...>       browser mode: Plannotator runs this as
+#                                        PLANNOTATOR_BROWSER; it opens the pane
+#                                        and returns at once.
+#   plannotator-herdr <plannotator args> wrapper mode: runs plannotator with
+#                                        this launcher as its browser.
+#
+# PLANNOTATOR_HERDR_PLACE: right (default), down, or tab.
+set -eu
+
+self=$(readlink -f "$0")
+
+case "${1:-}" in
+http://* | https://*) ;;
+*) PLANNOTATOR_BROWSER=$self exec plannotator "$@" ;;
+esac
+
+url=$1
+# no local window (ssh, headless): herdr notification, else a browser
+fallback() {
+  echo "plannotator-herdr: $1; falling back" >&2
+  if [ -n "${SSH_CONNECTION:-}" ] || [ -z "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then
+    exec "$HOME/.local/bin/plannotator-notify" "$url"
+  fi
+  exec xdg-open "$url"
+}
+
+command -v herdr-app >/dev/null 2>&1 || fallback "herdr-app not found"
+command -v jq >/dev/null 2>&1 || fallback "jq not found"
+herdr-app status >/dev/null 2>&1 || fallback "no herdr window"
+
+version=$(plannotator --version 2>/dev/null | awk '{print $2}')
+props=$(jq -cn --arg url "$url" --arg version "$version" '{url: $url} + (if $version == "" then {} else {version: $version} end)')
+place=${PLANNOTATOR_HERDR_PLACE:-right}
+
+# pane and space of the agent's terminal, if local and shown
+pane="" space=""
+if [ -n "${HC_TERMINAL_ID:-}" ]; then
+  set -- $(herdr-app ls | jq -r --arg t "$HC_TERMINAL_ID" \
+    'first(.spaces[] | select(.machine == null) as $s | $s.tabs[].terminals[]
+       | select(.terminal == $t) | "\(.pane) \($s.id)") // empty')
+  pane=${1:-} space=${2:-}
+fi
+
+if [ -n "$pane" ] && [ "$place" != tab ]; then
+  herdr-app do pane.split --direction "$place" --pane "$pane" --mod plannotator --props "$props" >/dev/null &&
+    exit 0
+fi
+
+if [ -n "$space" ]; then
+  herdr-app do tab.new --space "$space" --name Plannotator --mod plannotator --props "$props" >/dev/null && exit 0
+else
+  herdr-app do tab.new --name Plannotator --mod plannotator --props "$props" >/dev/null && exit 0
+fi
+fallback "herdr-app could not open the pane"

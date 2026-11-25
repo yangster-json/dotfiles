@@ -1,7 +1,7 @@
 ---
 name: fw-hw-test
-description: Run WSSD hardware pytests by default through detached `hwtest` after drives.app, bay-presence, static-check, and build/copy preflight, optionally watched from a Herdr observer pane, with completion reported through bg-cmd-runner so the agent stays usable. Use for drun/testlauncher hardware tests and to list, watch, or kill such runs.
-compatibility: Requires `hwtest` (in `scripts/`, linked as `~/.pi/agent/bin/hwtest`), drun, a built firmware checkout, and pi-subagents with the bg-cmd-runner agent. Herdr is optional (observer pane only).
+description: Run WSSD hardware pytests by default through detached `hwtest` after drives.app, bay-presence, static-check, and build/copy preflight, optionally watched from a Herdr app observer pane, with completion reported through bg-cmd-runner so the agent stays usable. Use for drun/testlauncher hardware tests and to list, watch, or kill such runs.
+compatibility: Requires `hwtest` (in `scripts/`, linked as `~/.pi/agent/bin/hwtest`), drun, a built firmware checkout, and pi-subagents with the bg-cmd-runner agent. Herdr app (`herdr-app`, hc terminal) is optional (observer pane only).
 ---
 
 # Background hardware test
@@ -18,7 +18,7 @@ Only `hwtest kill` does.
 |---|---|
 | Runner | `hwtest start` → detached wrapper → `drun --env-file` → testlauncher, output to log |
 | Tag | `HWTEST_ID=<label>` passed into the container; `kill` finds processes by it |
-| Observer | Herdr pane running `tail -F <log>` (`--view` / `hwtest view`), split to the right of the agent pane (`HWTEST_VIEW_DIRECTION=down` to stack); safe to close |
+| Observer | Herdr app pane running `tail -F <log>` (`--view` / `hwtest view`, via `herdr-app do pane.split`), split to the right of the agent pane (`HWTEST_VIEW_DIRECTION=down` to stack); safe to close |
 | Completion | bg-cmd-runner runs `hwtest wait <label>`; Pi notifies on finish |
 | State | `~/.local/state/hwtest/<label>/` (`meta.json`, `test.log`, `exit`, `run.sh`) |
 
@@ -120,7 +120,7 @@ subagent({
 ```bash
 hwtest ls [--running]      # label, status, testbed/slot, elapsed, log
 hwtest status <label>      # summary + tagged in-container processes
-hwtest view <label>        # reopen the Herdr observer pane (or prints tail -F cmd)
+hwtest view <label>        # reopen the Herdr app observer pane (or prints tail -F cmd)
 rg -n 'RESULT:|TESTLAUNCHER_EXIT=|Test Passed|Test Failed|FAILED|FAILURES|Traceback' <log> | tail -100
 ```
 
@@ -163,4 +163,4 @@ ssh <route> "pkill -9 -f pyro; pkill -9 -f wssd_api"
 - Report node, controller, slot/bay, label, log path, final banner/`RESULT` and
   `TESTLAUNCHER_EXIT`.
 - For persistent artifact capture across runs, use `fw-run-pytest`.
-- Never close unrelated Herdr tabs/panes or stop Herdr.
+- Never close unrelated Herdr app tabs/panes or stop herdr-app/herdr-core.
