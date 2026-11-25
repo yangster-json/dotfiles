@@ -29,6 +29,8 @@ tests
 .local/bin/plannotator-herdr
 .local/bin/plannotator-notify
 .local/bin/plannotator-tui
+# source symlink targets a /home path; windows keeps its own loader file
+.pi/agent/extensions/herdr-revive.ts
 {{ end -}}
 
 {{ if not $isFwWork -}}
