@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Float Space mod.json",
+  "description": "What Herdr reads from Float Space's mod.json, and the settings it takes.",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "This file's schema, for editors."
+    },
+    "version": {
+      "type": "string",
+      "description": "The mod's version."
+    },
+    "title": {
+      "type": "string",
+      "description": "The mod's name, as Herdr shows it."
+    },
+    "place": {
+      "enum": [
+        "left",
+        "right",
+        "top",
+        "bottom",
+        "none"
+      ],
+      "description": "Where Herdr first docks the mod. \"none\": only where a layout or another mod puts it."
+    },
+    "size": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Its first size, in pixels."
+    },
+    "focusable": {
+      "type": "boolean",
+      "description": "Lets pane.go give a shown copy the keyboard."
+    },
+    "overlay": {
+      "type": "object",
+      "description": "How mod.open shows it.",
+      "properties": {
+        "kind": {
+          "enum": [
+            "dialog",
+            "popup",
+            "window"
+          ]
+        },
+        "frame": {
+          "enum": [
+            "none"
+          ]
+        },
+        "width": {
+          "type": "number",
+          "minimum": 0
+        },
+        "height": {
+          "type": "number",
+          "minimum": 0
+        },
+        "at": {
+          "type": "object",
+          "properties": {
+            "x": {
+              "type": "number"
+            },
+            "y": {
+              "type": "number"
+            }
+          }
+        }
+      }
+    },
+    "settings": {
+      "type": "object",
+      "description": "Your changes. A setting left out uses its default.",
+      "additionalProperties": false,
+      "properties": {
+        "window": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "width": {
+              "title": "Default width",
+              "description": "Width of the Normal size, which a first window opens at and Reset goes back to, as a share of Herdr's window. A size you already chose is kept.",
+              "type": "integer",
+              "default": 50,
+              "minimum": 15,
+              "maximum": 95,
+              "x-step": 5,
+              "x-unit": "%"
+            },
+            "height": {
+              "title": "Default height",
+              "description": "Height of the Normal size, which a first window opens at and Reset goes back to, as a share of Herdr's window. A size you already chose is kept.",
+              "type": "integer",
+              "default": 60,
+              "minimum": 15,
+              "maximum": 95,
+              "x-step": 5,
+              "x-unit": "%"
+            }
+          }
+        },
+        "alerts": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "blocked": {
+              "title": "Needs you",
+              "description": "Sound and notification when an agent in a Float Space terminal needs you.",
+              "type": "boolean",
+              "default": true
+            },
+            "done": {
+              "title": "Finished",
+              "description": "Sound and notification when an agent in a Float Space terminal finishes while you aren't looking at it. Its tab still gets a dot.",
+              "type": "boolean",
+              "default": true
+            }
+          }
+        }
+      }
+    }
+  }
+}

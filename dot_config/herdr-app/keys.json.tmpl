@@ -1,6 +1,7 @@
 {{- /* shipped defaults (0.1.18) plus personal keys below */ -}}
 {{- $defaults := include (printf "%s/source-only/herdr-app/%s" .chezmoi.sourceDir (ternary "keys.macos.json" "keys.json" (eq .chezmoi.os "darwin"))) | fromJson -}}
-{{- $lazygit := dict "command" "tab.new" "args" (dict "name" "lazygit" "argv" (list "lazygit")) -}}
+{{- /* lazygit opens in a floating space (mods/float-space-lazygit) */ -}}
+{{- $lazygit := "mod.open:float-space-lazygit" -}}
 {{- $_ := set $defaults.global (ternary "cmd-shift-g" "ctrl-shift-g" (eq .chezmoi.os "darwin")) $lazygit -}}
 {{- /* splits-nav (mods/splits-nav/keys.json); its settings dialog rewrites keys.json in place */ -}}
 {{- $nav := dict "alt-h" "resize-left" "alt-j" "resize-down" "alt-k" "resize-up" "alt-l" "resize-right" (ternary "cmd-shift-s" "ctrl-alt-s" (eq $.chezmoi.os "darwin")) "settings" -}}
@@ -16,6 +17,17 @@
 {{- $_ := set $defaults.global (printf "%s-t" $mk) "mod.open:auto-title" -}}
 {{- $_ := set $defaults.global (ternary "cmd-shift-r" "ctrl-alt-r" (eq .chezmoi.os "darwin")) "mod.open:revive" -}}
 {{- $_ := set $defaults.global (printf "%s-," $mk) "mod.open:better-config" -}}
+{{- $_ := set $defaults.global (printf "%s-p" $mk) "mod.open:better-search" -}}
+{{- /* float-space: a floating terminal space; inside terminals its keys take over the tab keys */ -}}
+{{- $_ := set $defaults.global "ctrl-shift-space" "mod.open:float-space" -}}
+{{- range $k, $v := dict "ctrl-shift-space" "float-space" "ctrl-shift-t" "float-space-new" "ctrl-tab" "float-space-next" "ctrl-shift-tab" "float-space-prev" "ctrl-shift-n" "float-space-notes" "ctrl-shift-w" "float-space-close" -}}
+{{-   $_ := set $defaults.terminal $k (printf "mod.open:%s" $v) -}}
+{{- end -}}
+{{- $_ := set $defaults "mod:float-space" (dict "ctrl-shift-space" "mod.open:float-space" "ctrl-tab" "float-space.next" "ctrl-shift-tab" "float-space.prev" "ctrl-shift-t" "float-space.new" "ctrl-shift-n" "float-space.notes" "ctrl-shift-w" "float-space.close") -}}
+{{- /* alt+digits stay with programs; spaces are ctrl-g ctrl-<n> */ -}}
+{{- range $i := list 1 2 3 4 5 6 7 8 9 -}}
+{{-   $_ := unset $defaults.global (printf "alt-%d" $i) -}}
+{{- end -}}
 {{- /* ctrl-g prefix, mirroring ~/.config/herdr/config.toml */ -}}
 {{- range $k, $v := dict "h" "pane.go:left" "j" "pane.go:down" "k" "pane.go:up" "l" "pane.go:right" "shift-h" "pane.swap:left" "shift-j" "pane.swap:down" "shift-k" "pane.swap:up" "shift-l" "pane.swap:right" "ctrl-h" "splits-nav.resize-left" "ctrl-j" "splits-nav.resize-down" "ctrl-k" "splits-nav.resize-up" "ctrl-l" "splits-nav.resize-right" "%" "pane.split:right" "v" "pane.split:right" "\"" "pane.split:down" "-" "pane.split:down" "x" "pane.close" "z" "pane.zoom" "c" "tab.new" "n" "tab.next" "p" "tab.prev" "," "tab.rename" "shift-t" "tab.rename" "&" "tab.close" "shift-x" "tab.close" "s" "mod.open:picker" "w" "mod.open:picker" "shift-n" "space.new" "$" "space.rename" "shift-w" "space.rename" "b" "layout.toggle:sidebar" "shift-s" "app.settings" "1" "tab.select:1" "2" "tab.select:2" "3" "tab.select:3" "4" "tab.select:4" "5" "tab.select:5" "6" "tab.select:6" "7" "tab.select:7" "8" "tab.select:8" "9" "tab.select:9" -}}
 {{-   $_ := set $defaults.global (printf "ctrl-g %s" $k) $v -}}
@@ -25,6 +37,6 @@
 {{-   $_ := set $defaults.global (printf "ctrl-g %s" $k) $v -}}
 {{- end -}}
 {{- range $i := list 1 2 3 4 5 6 7 8 9 -}}
-{{-   $_ := set $defaults.global (printf "ctrl-g alt-%d" $i) (printf "space.select:%d" $i) -}}
+{{-   $_ := set $defaults.global (printf "ctrl-g ctrl-%d" $i) (printf "space.select:%d" $i) -}}
 {{- end -}}
 {{ toPrettyJson $defaults }}

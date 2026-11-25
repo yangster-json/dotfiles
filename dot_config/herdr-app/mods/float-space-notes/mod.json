@@ -1,0 +1,17 @@
+{
+  "place": "none",
+  "title": "Float Notes",
+  "overlay": {
+    "kind": "window",
+    "frame": "none",
+    "width": 2,
+    "height": 2,
+    "at": {
+      "x": 0,
+      "y": 0
+    },
+    "props": {
+      "shortcut": "notes"
+    }
+  }
+}

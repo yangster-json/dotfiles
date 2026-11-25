@@ -4,8 +4,12 @@ source-only
 tests
 .claude/plugins/known_marketplaces.json
 .config/systemd/user/neru.service
+# herdr-app rewrites these in every mod folder on start
+.config/herdr-app/mods/*/gpui-kit.d.ts
+.config/herdr-app/mods/*/herdr.d.ts
+.config/herdr-app/mods/*/jsconfig.json
 
-{{- $fwOnlySkills := list "fw-hw-test" "triage-jira" "triage-local-logs" "firmware-tlogs-search" "web-browse" -}}
+{{ $fwOnlySkills := list "fw-hw-test" "triage-jira" "triage-local-logs" "firmware-tlogs-search" "web-browse" -}}
 {{- $isFwWork := eq (index .hostProfiles .chezmoi.hostname | default "default") "fw-work" -}}
 
 {{ if eq .chezmoi.os "windows" -}}
@@ -50,6 +54,8 @@ tests
 {{- if ne .chezmoi.os "windows" }}
 AppData
 .glzr/zebar/
+.local/bin/plannotator-herdr.ps1
+.local/bin/plannotator-herdr.cmd
 {{- end }}
 
 .pi/agent/bin/__pycache__

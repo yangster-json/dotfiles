@@ -1,6 +1,7 @@
 {
   "zoom": 1,
   "theme": "catppuccin-mocha",
+  "appearance": "dark",
   "colors": {
     "accent": "#cba6f7"
   },
@@ -10,5 +11,7 @@
   "copy_on_select": false,
   "worktrees": {
     "directory": "~/.herdr/worktrees"
-  }
+  },
+  "font": "IosevkaTerm Nerd Font Mono",
+  "font_size": 13
 }
