@@ -13,7 +13,6 @@ tests
 .zshrc
 .zshenv
 .oh-my-zsh
-.config/nvim
 .config/herdr
 .config/neru/
 .claude
